@@ -1,0 +1,61 @@
+name: CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: void_ci
+          POSTGRES_PASSWORD: void_ci_ephemeral_only
+          POSTGRES_DB: void_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U void_ci -d void_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.9.11'
+          python-version: '3.11'
+          enable-cache: true
+      - run: npm ci
+      - run: uv sync --frozen --group dev
+        working-directory: services/knowledge
+      - run: npm run typecheck
+      - run: npm test
+      - run: uv run --frozen pytest
+        working-directory: services/knowledge
+        env:
+          # Public credentials for this disposable CI service; never production secrets.
+          TEST_POSTGRES_URL: postgresql://void_ci:void_ci_ephemeral_only@127.0.0.1:5432/void_ci
+      - run: python -m unittest discover -s eval -p 'test_*.py' -v
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-failure
+          path: |
+            artifacts/playwright-report/
+            artifacts/playwright-results/
+            artifacts/screenshots/
+          if-no-files-found: ignore

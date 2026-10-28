@@ -1,0 +1,14 @@
+{
+  "name": "void-terminal",
+  "private": true,
+  "workspaces": ["apps/web"],
+  "scripts": {
+    "dev": "npm run dev --workspace @void-terminal/web",
+    "build": "npm run build --workspace @void-terminal/web",
+    "start": "npm run start --workspace @void-terminal/web",
+    "typecheck": "npm run typecheck --workspace @void-terminal/web",
+    "test": "npm run test --workspace @void-terminal/web",
+    "test:e2e": "npm run test:e2e --workspace @void-terminal/web"
+  },
+  "engines": {"node": ">=22"}
+}

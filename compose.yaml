@@ -1,0 +1,92 @@
+name: void-terminal
+x-knowledge-environment: &knowledge-environment
+  ENVIRONMENT: production
+  DATABASE_URL: postgresql://${POSTGRES_USER:-void}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-void}
+  KNOWLEDGE_API_TOKEN: ${KNOWLEDGE_API_TOKEN:?Set KNOWLEDGE_API_TOKEN in .env}
+  SHARED_DAILY_TOKEN_BUDGET: ${SHARED_DAILY_TOKEN_BUDGET:-0}
+  EMBEDDING_ENABLED: ${EMBEDDING_ENABLED:-false}
+  EMBEDDING_MODEL: ${EMBEDDING_MODEL:-intfloat/multilingual-e5-small}
+  EMBEDDING_MANIFEST: /app/models/embedding-manifest.json
+  HF_HOME: /app/models/huggingface
+  SENTENCE_TRANSFORMERS_HOME: /app/models/sentence-transformers
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-void}
+      POSTGRES_USER: ${POSTGRES_USER:-void}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - database:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+  knowledge:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.knowledge
+      args:
+        INSTALL_SEMANTIC: ${KNOWLEDGE_SEMANTIC_BUILD:-false}
+    environment: *knowledge-environment
+    volumes:
+      - sources:/data/sources
+      - models:/app/models
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, 'import os,urllib.request; r=urllib.request.Request("http://127.0.0.1:8000/v1/status",headers={"X-Knowledge-Token":os.environ["KNOWLEDGE_API_TOKEN"]}); urllib.request.urlopen(r,timeout=5)']
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+  web:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.web
+    ports:
+      - '127.0.0.1:${WEB_PORT:-3000}:3000'
+    environment:
+      KNOWLEDGE_URL: http://knowledge:8000
+      KNOWLEDGE_API_TOKEN: ${KNOWLEDGE_API_TOKEN:?Set KNOWLEDGE_API_TOKEN in .env}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_ALLOWED_BASE_URLS: ${DEEPSEEK_ALLOWED_BASE_URLS:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-flash}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      SHARED_MODE_ENABLED: ${SHARED_MODE_ENABLED:-false}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      PUBLIC_APP_ORIGIN: ${PUBLIC_APP_ORIGIN:-}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+    depends_on:
+      knowledge:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, 'fetch("http://127.0.0.1:3000/api/status").then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))']
+      interval: 15s
+      timeout: 10s
+      retries: 12
+    restart: unless-stopped
+  ingest:
+    profiles: [ingest]
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.knowledge
+      args:
+        INSTALL_SEMANTIC: ${KNOWLEDGE_SEMANTIC_BUILD:-false}
+    environment: *knowledge-environment
+    volumes:
+      - sources:/data/sources
+      - models:/app/models
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: [python, -m, knowledge.ingest]
+    command: [--help]
+volumes:
+  database:
+  sources:
+  models:

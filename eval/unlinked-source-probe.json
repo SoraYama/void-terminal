@@ -1,0 +1,21 @@
+{
+  "id": "unlinked-source-01",
+  "query": "米希尔为什么被称为愚痴的荆棘眷属？这句话的说话人和任务可以确认吗？",
+  "language": "zh-CN",
+  "expectedDocumentId": "agd:zh-CN:other:TextMapHash:1000149930",
+  "expectedSource": {
+    "commit": "792978e5503ecfba73dcb3562ed44a0d35a2abe2",
+    "locator": "/1000149930",
+    "path": "TextMap/TextMapCHS.json",
+    "repo": "DimbreathBot/AnimeGameData",
+    "url": "https://github.com/DimbreathBot/AnimeGameData/blob/792978e5503ecfba73dcb3562ed44a0d35a2abe2/TextMap/TextMapCHS.json"
+  },
+  "groundingQuote": "米希尔。愚痴的荆棘眷属…看样子，如今应该正在受苦吧。",
+  "expectedMetadata": {
+    "contextUnknown": true,
+    "kind": "orphan_textmap",
+    "schemaState": "unmapped",
+    "testState": "unknown"
+  },
+  "scope": "Separate provenance/uncertainty probe, excluded from the frozen 108-case benchmark. Source text supports only the quoted phrase. The imported record does not establish its speaker, task, release status or canonical interpretation; no model answer/refusal is evaluated."
+}

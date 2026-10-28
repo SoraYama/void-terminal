@@ -1,0 +1,209 @@
+{
+  "schemaVersion": 1,
+  "snapshotId": "agd-792978e5503e-1ac83cf28961",
+  "documentCount": 1548672,
+  "normalizedCorpusSha256": "ec83ef7273b4a4875048940ec42f1095963ea0399777a7e5b6d616c9dbc0b33c",
+  "sourceManifest": {
+    "schemaVersion": 1,
+    "sources": [
+      {
+        "id": "main",
+        "repo": "DimbreathBot/AnimeGameData",
+        "commit": "792978e5503ecfba73dcb3562ed44a0d35a2abe2",
+        "gameVersion": null,
+        "upstreamSnapshotLabel": "CNRELWin7.1.0_R48379043_S48511369_D48533839",
+        "license": "No explicit repository license found; game text remains original rights holders' material",
+        "languages": [
+          "zh-CN",
+          "en"
+        ],
+        "paths": [
+          "ExcelBinOutput/**",
+          "BinOutput/Talk/**",
+          "Readable/CHS/**",
+          "Readable/EN/**",
+          "Subtitle/**",
+          "TextMap/*CHS*.json",
+          "TextMap/*EN*.json"
+        ],
+        "minimumTables": [
+          "MainQuest",
+          "Quest",
+          "RandomMainQuest",
+          "RandomQuest",
+          "Npc",
+          "Weapon",
+          "Reliquary",
+          "ReliquarySet",
+          "Material",
+          "HomeWorldFurniture",
+          "FurnitureSuite",
+          "FurnitureMake",
+          "Document",
+          "Localization",
+          "BookSuit",
+          "BooksCodex",
+          "Avatar",
+          "FetterStory",
+          "Fetters",
+          "Reminder"
+        ],
+        "mirror": {
+          "repo": "Dimbreath/animegamedata2",
+          "url": "https://gitlab.com/Dimbreath/animegamedata2",
+          "policy": "Exact same Git commit identity verified before path-filtered archive acquisition."
+        }
+      },
+      {
+        "id": "supplement",
+        "repo": "theBowja/genshin-db",
+        "commit": "49a6544a6c6ae36089cb42fa591fc46f01de8bcf",
+        "gameVersion": null,
+        "license": "MIT applies to repository code; game text attribution is separate",
+        "languages": [
+          "zh-CN",
+          "en"
+        ],
+        "paths": [
+          "src/data/ChineseSimplified/**",
+          "src/data/English/**"
+        ],
+        "bundledInventory": "services/knowledge/knowledge/ingest/supplement-core-files.json",
+        "bundledInventoryScope": "All records in five categories in CHS+EN; remaining25categories explicitly not claimed"
+      }
+    ],
+    "policy": "Raw sources, normalized corpus, downloaded model weights and local catalogs remain ignored; fixed-commit source URLs accompany every imported document. Full coverage requires a complete nontruncated source tree and successful verified downloads, not a Contents API sample."
+  },
+  "caseSetSha256": "05903aac18100c217f22c36acc451f900ce8c5b0865f1917929c5d37056adac1",
+  "caseCount": 108,
+  "naturalQuestionCount": 84,
+  "byStratum": {
+    "manual_lore": 40,
+    "manual_context": 44,
+    "mechanical_title_lookup": 16,
+    "negative_control": 8
+  },
+  "byLanguage": {
+    "zh-CN": 74,
+    "en": 34
+  },
+  "byTargetType": {
+    "character": 10,
+    "voice": 8,
+    "book": 10,
+    "weapon": 10,
+    "artifact": 10,
+    "quest": 8,
+    "dialogue": 11,
+    "food": 8,
+    "furniture": 8,
+    "material": 7,
+    "tcg": 6,
+    "achievement": 2,
+    "enemy": 2,
+    "none": 8
+  },
+  "negativeAnchorAudit": {
+    "method": "Exact case-insensitive substring presence in title or text of every final normalized document; absence is not semantic irrelevance or refusal correctness.",
+    "documentsScanned": 1548672,
+    "matches": {
+      "霜银月海鲸舰": 0,
+      "第九枝量子时钟": 0,
+      "紫霜星河列车规章": 0,
+      "蓝晶螺旋核聚变": 0,
+      "Asterquartz Hyperloop": 0,
+      "Emberglass Accord of 2099": 0,
+      "Nebulacopper Moonwhale": 0,
+      "Zeroth-Branch Tachyon Engine": 0
+    }
+  },
+  "samplingLimitations": [
+    "Manually authored after source inspection, not blind evaluation or representative random user traffic.",
+    "Lore convenience sample favors early Mondstadt material and Jean; context sample intentionally adds Sumeru/Nahida/Irminsul.",
+    "Context-36 has three equivalent accepted dialogue targets; relevance judgments elsewhere are narrow and non-exhaustive.",
+    "No model API call or answer-quality assessment."
+  ],
+  "frozenCaseOriginSnapshotId": "agd-792978e5503e-14b4846c2e7d",
+  "finalNormalizedGroundingAudit": {
+    "expectedDocumentsValidated": 107,
+    "allPassed": true,
+    "caseBytesUnchanged": true,
+    "importedCatalogValidation": "Required again at measurement time; not inferred from this normalized-file audit."
+  },
+  "authoringNotesStatus": "Historical notes mentioning v3 refresh are retained verbatim to preserve the frozen case bytes. Expected document fields were bound to v4, then every target and source span was verified unchanged in final v5.",
+  "preCorrectionNormalizedCorpusSha256": "1ac83cf28961633c2775c5d58a043f140f2185c1c955d4c07d971b39aab87300",
+  "prepublicationMetadataCorrection": {
+    "documentCount": 153,
+    "manifestPath": "artifacts/reports/dialogue-locator-corrections.jsonl",
+    "manifestSha256": "b7be016a0f05ab4835bdc2d57f65a56ed0181315065cea9628a5e716a8b2223b",
+    "appliedAudit": "artifacts/reports/dialogue-locator-repair-applied.json",
+    "postRepairSourceAudit": "data/upstream/provenance-v5-post-repair-validation.json",
+    "expectedDocumentIntersection": 0,
+    "caseBytesChanged": false,
+    "scope": "Conventional dialogList source/entitySource pointers corrected before publication. Text, spans, chunks, IDs and relations unchanged. Explicitly chosen unpublished build snapshot ID retained; published snapshots remain immutable."
+  },
+  "acquisitionScope": {
+    "primary": {
+      "repo": "DimbreathBot/AnimeGameData",
+      "commit": "792978e5503ecfba73dcb3562ed44a0d35a2abe2",
+      "complete": true,
+      "mirror": "https://gitlab.com/Dimbreath/animegamedata2",
+      "mirrorCommitVerified": "792978e5503ecfba73dcb3562ed44a0d35a2abe2",
+      "scope": "All Excel, Talk, Readable and Subtitle files; full CHS/EN standard and Medium TextMaps",
+      "paths": [
+        {
+          "path": "ExcelBinOutput",
+          "files": 2234,
+          "archiveSha256": "1707cfdba9477a4fd25e0b347dbaf5ab959e016cb3302ec5716b931ae4fdafc7"
+        },
+        {
+          "path": "BinOutput/Talk",
+          "files": 55891,
+          "archiveSha256": "0ac1ba59380de7fd934892028b87781c899f16a06cda135ceea23a6723580221"
+        },
+        {
+          "path": "Readable",
+          "files": 28785,
+          "archiveSha256": "f262c496a0395e0aa7063cabbe5e01c576fcb00b56fc39febc71f4b4a4cd4159"
+        },
+        {
+          "path": "Subtitle",
+          "files": 4779,
+          "archiveSha256": "afc782c2014be8afb80521753da0002c556fe2240dabb644c004b72044fe9d19"
+        },
+        {
+          "path": "TextMap/TextMapCHS.json",
+          "files": 1,
+          "gitBlobSha": "069dc51786bb0b8c4480552b4686e7dab7a61bb5"
+        },
+        {
+          "path": "TextMap/TextMapEN.json",
+          "files": 1,
+          "gitBlobSha": "84b6a42dc6085646b18a314f0c28a01c4f0882be"
+        },
+        {
+          "path": "TextMap/TextMap_MediumCHS.json",
+          "files": 1,
+          "gitBlobSha": "ddf41a92f596f3f3300d7b0901c2b8f61a3ecb6d"
+        },
+        {
+          "path": "TextMap/TextMap_MediumEN.json",
+          "files": 1,
+          "gitBlobSha": "e70d5ee65644a983dee081b1df0aad7d8e9e0525"
+        }
+      ],
+      "files": 91693
+    },
+    "supplement": {
+      "repo": "theBowja/genshin-db",
+      "commit": "49a6544a6c6ae36089cb42fa591fc46f01de8bcf",
+      "files": 2944,
+      "complete": false,
+      "scopeComplete": true,
+      "scope": "All ChineseSimplified and English weapons/artifacts/characters/voiceovers/materials; five of30curated categories",
+      "knownGaps": [
+        "25 other supplementary categories are not included in the bundled acquisition inventory."
+      ]
+    }
+  }
+}

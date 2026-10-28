@@ -1,0 +1,33 @@
+{
+  "checked_date": "2026-10-28",
+  "assets": [
+    {
+      "file": "genshin-logo-header-official.png",
+      "width": 362,
+      "height": 66,
+      "sha256": "fe40c276ec9530112f81030f42c869d30be535cbd1cfc03a3e9b8a69ddf1b0fd",
+      "role": "original downloaded official reference asset"
+    },
+    {
+      "file": "genshin-logo-official.png",
+      "width": 354,
+      "height": 266,
+      "sha256": "6c5863d592fb3541a934a201075dd56ba89a7922ab262dfe9fa233d3b1650b2e",
+      "role": "original downloaded official reference asset"
+    },
+    {
+      "file": "scenery-sumeru-city.jpg",
+      "width": 640,
+      "height": 355,
+      "sha256": "49f2c689ffe61692b941cf1fd81b0b54c7f0eb911777a1b0563971afb8a4c708",
+      "role": "original downloaded official reference asset"
+    },
+    {
+      "file": "scenery-sumeru-world.jpg",
+      "width": 1920,
+      "height": 1080,
+      "sha256": "048cec0eb4cb3f7621cc609bbeac7c4381fb6fa8a934d9ffd00fb4c2dbd9b532",
+      "role": "original downloaded official reference asset"
+    }
+  ]
+}

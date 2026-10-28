@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "id": "main",
+      "repo": "DimbreathBot/AnimeGameData",
+      "commit": "792978e5503ecfba73dcb3562ed44a0d35a2abe2",
+      "gameVersion": null,
+      "upstreamSnapshotLabel": "CNRELWin7.1.0_R48379043_S48511369_D48533839",
+      "license": "No explicit repository license found; game text remains original rights holders' material",
+      "languages": [
+        "zh-CN",
+        "en"
+      ],
+      "paths": [
+        "ExcelBinOutput/**",
+        "BinOutput/Talk/**",
+        "Readable/CHS/**",
+        "Readable/EN/**",
+        "Subtitle/**",
+        "TextMap/*CHS*.json",
+        "TextMap/*EN*.json"
+      ],
+      "minimumTables": [
+        "MainQuest",
+        "Quest",
+        "RandomMainQuest",
+        "RandomQuest",
+        "Npc",
+        "Weapon",
+        "Reliquary",
+        "ReliquarySet",
+        "Material",
+        "HomeWorldFurniture",
+        "FurnitureSuite",
+        "FurnitureMake",
+        "Document",
+        "Localization",
+        "BookSuit",
+        "BooksCodex",
+        "Avatar",
+        "FetterStory",
+        "Fetters",
+        "Reminder"
+      ],
+      "mirror": {
+        "repo": "Dimbreath/animegamedata2",
+        "url": "https://gitlab.com/Dimbreath/animegamedata2",
+        "policy": "Exact same Git commit identity verified before path-filtered archive acquisition."
+      },
+      "treeSha": "5762f343358a87a14ec79db26479211522e44c18"
+    },
+    {
+      "id": "supplement",
+      "repo": "theBowja/genshin-db",
+      "commit": "49a6544a6c6ae36089cb42fa591fc46f01de8bcf",
+      "gameVersion": null,
+      "license": "MIT applies to repository code; game text attribution is separate",
+      "languages": [
+        "zh-CN",
+        "en"
+      ],
+      "paths": [
+        "src/data/ChineseSimplified/**",
+        "src/data/English/**"
+      ],
+      "bundledInventory": "services/knowledge/knowledge/ingest/supplement-core-files.json",
+      "bundledInventoryScope": "All records in five categories in CHS+EN; remaining 25 categories explicitly not claimed",
+      "treeSha": "f7a0f90c9d12dc5b13cc890f3f06ebb0a60bb02f"
+    }
+  ],
+  "policy": "Raw sources, normalized corpus, downloaded model weights and local catalogs remain ignored; fixed-commit source URLs accompany every imported document. Full coverage requires a complete nontruncated source tree and successful verified downloads, not a Contents API sample."
+}

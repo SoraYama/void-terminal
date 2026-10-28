@@ -1,0 +1,21 @@
+FROM ghcr.io/astral-sh/uv:0.9.11 AS uv
+FROM python:3.11-slim-bookworm
+ARG INSTALL_SEMANTIC=false
+COPY --from=uv /uv /usr/local/bin/uv
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 UV_LINK_MODE=copy \
+    HF_HOME=/app/models/huggingface SENTENCE_TRANSFORMERS_HOME=/app/models/sentence-transformers
+WORKDIR /app/services/knowledge
+COPY services/knowledge/pyproject.toml services/knowledge/uv.lock ./
+RUN if [ "$INSTALL_SEMANTIC" = "true" ]; then \
+      uv sync --frozen --no-dev --extra semantic --no-install-project; \
+    else uv sync --frozen --no-dev --no-install-project; fi
+COPY services/knowledge/knowledge ./knowledge
+RUN if [ "$INSTALL_SEMANTIC" = "true" ]; then \
+      uv sync --frozen --no-dev --extra semantic; \
+    else uv sync --frozen --no-dev; fi \
+    && useradd --uid 10001 --create-home knowledge \
+    && mkdir -p /data/sources /app/models && chown -R knowledge:knowledge /data /app/models
+ENV PATH=/app/services/knowledge/.venv/bin:$PATH
+USER knowledge
+EXPOSE 8000
+CMD ["uvicorn", "knowledge.app:app", "--host", "0.0.0.0", "--port", "8000"]
