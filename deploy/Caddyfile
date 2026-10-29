@@ -1,0 +1,32 @@
+{
+    # Filter runtime error/debug logs too; disabling access logs is insufficient.
+    log default {
+        format filter {
+            wrap json
+            fields {
+                request>headers delete
+                headers delete
+                request.headers delete
+            }
+        }
+    }
+}
+
+{$SITE_DOMAIN} {
+    encode zstd gzip
+    request_body {
+        max_size 200KB
+    }
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        -Server
+    }
+    reverse_proxy web:3000 {
+        # SSE flushes automatically. Keep normal disconnect cancellation.
+        header_up X-Forwarded-For {remote_host}
+        transport http {
+            read_timeout 300s
+        }
+    }
+}

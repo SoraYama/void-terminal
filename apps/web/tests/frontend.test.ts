@@ -2,7 +2,7 @@ import {describe,it,expect} from 'vitest';
 import {parseSSE,remarkCitations} from '../src/lib/stream';
 import {branchConversation,conversationSnapshot} from '../src/lib/history';
 import {contextWarning,branchContextNote} from '../src/lib/i18n';
-import {safePreferences} from '../src/lib/preferences';
+import {safePreferences,selectedProvider} from '../src/lib/preferences';
 describe('frontend durable and transport behavior',()=>{
  it('decodes arbitrary UTF8 and SSE boundaries and stops at done',async()=>{
  const bytes=new TextEncoder().encode('event: text_delta\r\ndata: {"text":"须弥"}\r\n\r\nevent: done\ndata: {"snapshotId":"s","finishReason":"stop"}\n\nevent: text_delta\ndata: {"text":"bad"}\n\n');
@@ -54,6 +54,14 @@ describe('frontend durable and transport behavior',()=>{
  });
  it('only persists allowlisted preferences and never credentials',()=>{
  expect(safePreferences({theme:'dark',locale:'en',sourceLanguage:'zh-CN',apiKey:'secret',mode:'shared'})).toEqual({theme:'dark',locale:'en',sourceLanguage:'zh-CN',mode:'shared'});
+ });
+ it('persists only credential-free model settings and never applies them to shared mode',()=>{
+  const saved=safePreferences({modelBaseUrl:'https://models.example.com/api/v1/',modelName:'org/my-model',apiKey:'secret'});
+  expect(selectedProvider(saved)).toEqual({baseUrl:'https://models.example.com/api/v1',model:'org/my-model'});
+  expect(saved).not.toHaveProperty('apiKey');
+  expect(selectedProvider({...saved,mode:'shared'})).toBeUndefined();
+  expect(safePreferences({modelBaseUrl:'https://host.example/v1?key=secret'})).not.toHaveProperty('modelBaseUrl');
+  expect(safePreferences({modelBaseUrl:'https://user:secret@host.example/v1'})).not.toHaveProperty('modelBaseUrl');
  });
 });
 

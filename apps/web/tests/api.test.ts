@@ -147,6 +147,28 @@ describe("public API bounds and credential handling", () => {
     });
     expect(calls).toEqual(["https://api.deepseek.com/models"]);
   });
+  it("tests a BYOK model override at the configured endpoint without generation", async () => {
+    const fetcher = vi.fn(async () => Response.json({ data: [{ id: "my-model" }] }));
+    vi.stubGlobal("fetch", fetcher);
+    const response = await testModel(req({ mode: "byok", provider: { model: "my-model" } }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, model: "my-model" });
+    expect(fetcher.mock.calls).toHaveLength(1);
+  });
+  it.each([{}, { model: "my-model" }, { baseUrl: "https://public.example/v1" }])(
+    "rejects shared provider overrides before keys, quota or network: %j", async provider => {
+      vi.stubEnv("DEEPSEEK_API_KEY", "server-secret");
+      const fetcher = vi.fn();
+      vi.stubGlobal("fetch", fetcher);
+      const response = await chat(req({ ...body, mode: "shared", provider }, null));
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ error: { code: "PROVIDER_BYOK_ONLY" } });
+      const testResponse = await testModel(req({ mode: "shared", provider }, null));
+      expect(testResponse.status).toBe(400);
+      expect(await testResponse.json()).toMatchObject({ code: "PROVIDER_BYOK_ONLY" });
+      expect(fetcher).not.toHaveBeenCalled();
+    },
+  );
   it("refuses an unallowlisted provider origin before sending a key", async () => {
     vi.stubEnv("DEEPSEEK_BASE_URL", "https://evil.example");
     const fetcher = vi.fn();

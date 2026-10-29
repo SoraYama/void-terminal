@@ -2,6 +2,7 @@ import {
   CONTENT_TYPES,
   type ChatRequest,
   type ContentType,
+  type ModelProvider,
 } from "../contracts";
 import { AppError } from "./errors";
 export const invalid = () =>
@@ -57,6 +58,20 @@ export function parseMode(value: unknown): "byok" | "shared" {
   if (value !== "byok" && value !== "shared") throw invalid();
   return value;
 }
+export function parseProvider(value: unknown, mode: "byok" | "shared"): ModelProvider | undefined {
+  if (value === undefined) return undefined;
+  if (mode !== "byok")
+    throw new AppError("PROVIDER_BYOK_ONLY", "Custom model settings require your own API key.", 400);
+  const invalidProvider = () => new AppError("INVALID_PROVIDER", "Enter a valid model name and HTTPS Base URL.", 400);
+  if (!record(value) || Object.keys(value).some(key => !["baseUrl", "model"].includes(key))) throw invalidProvider();
+  for (const [field, limit] of [["baseUrl", 2048], ["model", 200]] as const) {
+    if (value[field] !== undefined && (typeof value[field] !== "string" || value[field].length > limit || /[\x00-\x1f\x7f]/.test(value[field]))) throw invalidProvider();
+  }
+  return {
+    ...(typeof value.baseUrl === "string" && value.baseUrl.trim() ? { baseUrl: value.baseUrl.trim() } : {}),
+    ...(typeof value.model === "string" && value.model.trim() ? { model: value.model.trim() } : {}),
+  };
+}
 export function parseChat(value: unknown): ChatRequest {
   if (!record(value)) throw invalid();
   exactKeys(value, [
@@ -67,7 +82,10 @@ export function parseChat(value: unknown): ChatRequest {
     "depth",
     "snapshotId",
     "types",
+    "provider",
   ]);
+  const mode = parseMode(value.mode);
+  const provider = parseProvider(value.provider, mode);
   if (
     !Array.isArray(value.messages) ||
     value.messages.length < 1 ||
@@ -122,7 +140,8 @@ export function parseChat(value: unknown): ChatRequest {
     throw invalid();
   return {
     messages,
-    mode: parseMode(value.mode),
+    mode,
+    ...(provider ? { provider } : {}),
     language: value.language as ChatRequest["language"],
     ...(value.answerLanguage !== undefined
       ? { answerLanguage: value.answerLanguage as ChatRequest["language"] }

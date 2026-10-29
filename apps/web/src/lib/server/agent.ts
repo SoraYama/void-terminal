@@ -16,12 +16,12 @@ import {
   requestByteLimit,
   MAX_TOOL_ROUNDS,
   outputLimit,
-  providerConfig,
 } from "./config";
 import { AppError, safeError } from "./errors";
 import { knowledge } from "./knowledge";
 import { parseSSE } from "./sse";
 import { record } from "./validation";
+import { openProviderTransport, resolveProvider, type ResolvedProvider, type ProviderTransport } from "./provider";
 import { expandLoreQuery, initialLoreTypes, needsNarrativeContext, loreSystemPrompt, overviewRegion } from "./lore-policy";
 
 type Message = {
@@ -39,6 +39,7 @@ type Options = {
   key: string;
   signal: AbortSignal;
   emit: (event: ChatEvent) => void;
+  provider?: ResolvedProvider;
 };
 const MAX_CONTEXT_CHARS = 24000,
   MAX_SOURCES = 40,
@@ -429,8 +430,10 @@ export async function runAgent(
     usedTokens = 0;
   let usage: Usage = { inputTokens: 0, outputTokens: 0 };
   let aggregate = "";
+  let transport: ProviderTransport | undefined;
   try {
-    const config = providerConfig();
+    const config = options.provider ?? await resolveProvider(input.mode, input.provider, signal);
+    transport = openProviderTransport(config, signal);
     const evidence = new Evidence(input);
     const researchSelections: { query: string; types?: ContentType[]; matchedSources: number; includedSources: number; truncated: boolean }[] = [];
     const search = async (query: string, types = input.types, prepare = false) => {
@@ -577,7 +580,9 @@ ${contextPayload(evidence.sources)}`,
       },
       ...input.messages,
     ];
-    let synthesize = outlineLoaded && input.depth !== 'deep';
+    // An outline establishes coverage, not enough detail to narrate the arc.
+    // Keep the bounded research phase available for its important turns.
+    let synthesize = false;
     const deliberateAnswer = needsNarrativeContext(initialQuery) || input.depth === 'deep';
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
       const finalRound = synthesize || round === MAX_TOOL_ROUNDS;
@@ -598,9 +603,9 @@ ${contextPayload(evidence.sources)}` },
         ] : messages,
         stream: true,
         stream_options: { include_usage: true },
-        thinking: { type: finalRound && deliberateAnswer && new URL(config.base).origin === 'https://api.deepseek.com' ? 'enabled' : 'disabled' },
-        ...(finalRound && deliberateAnswer && new URL(config.base).origin === 'https://api.deepseek.com' ? {reasoning_effort: input.depth === 'deep' ? 'high' : 'low'} : {}),
-        max_tokens: outputLimit(input.depth, finalRound && deliberateAnswer && new URL(config.base).origin === 'https://api.deepseek.com'),
+        ...(config.deepseekExtensions ? { thinking: { type: finalRound && deliberateAnswer ? 'enabled' : 'disabled' } } : {}),
+        ...(finalRound && deliberateAnswer && config.deepseekExtensions ? {reasoning_effort: input.depth === 'deep' ? 'high' : 'low'} : {}),
+        max_tokens: outputLimit(input.depth, finalRound && deliberateAnswer && config.deepseekExtensions),
         ...(finalRound ? {} : { tools: toolDefinitions, tool_choice: "auto" }),
       });
       if (Buffer.byteLength(payload, "utf8") > requestByteLimit(input))
@@ -613,7 +618,7 @@ ${contextPayload(evidence.sources)}` },
       unknownBilling = true;
       let response: Response;
       try {
-        response = await fetch(`${config.base}/chat/completions`, {
+        response = await transport.fetch("/chat/completions", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -973,5 +978,5 @@ ${contextPayload(evidence.sources)}` },
           ? null
           : usedTokens,
     };
-  }
+  } finally { await transport?.close().catch(() => {}); }
 }

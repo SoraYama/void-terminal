@@ -2,13 +2,13 @@ import { randomUUID } from "node:crypto";
 import { runAgent } from "../../../lib/server/agent";
 import {
   credentials,
-  providerConfig,
   worstCaseTokens,
 } from "../../../lib/server/config";
 import { AppError, errorResponse } from "../../../lib/server/errors";
 import { issueIdentity } from "../../../lib/server/identity";
 import { knowledge } from "../../../lib/server/knowledge";
 import { parseChat, readJson, record } from "../../../lib/server/validation";
+import { resolveProvider } from "../../../lib/server/provider";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 240;
@@ -16,7 +16,7 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const input = parseChat(await readJson(request));
     const key = credentials(input.mode, request);
-    providerConfig();
+    const provider = await resolveProvider(input.mode, input.provider, request.signal);
     const identity =
       input.mode === "shared" ? issueIdentity(request) : undefined;
     let reservationId: string | undefined;
@@ -68,6 +68,7 @@ export async function POST(request: Request): Promise<Response> {
           try {
             const result = await runAgent(input, {
               key,
+              provider,
               signal,
               emit: (event) =>
                 send(

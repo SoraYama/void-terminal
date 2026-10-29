@@ -1,11 +1,13 @@
-import { credentials, providerConfig } from "../../../../lib/server/config";
+import { credentials } from "../../../../lib/server/config";
 import { AppError, safeError } from "../../../../lib/server/errors";
 import { issueIdentity } from "../../../../lib/server/identity";
 import { boundedJson } from "../../../../lib/server/knowledge";
+import { openProviderTransport, resolveProvider, type ProviderTransport } from "../../../../lib/server/provider";
 import {
   exactKeys,
   invalid,
   parseMode,
+  parseProvider,
   readJson,
   record,
 } from "../../../../lib/server/validation";
@@ -13,20 +15,25 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function POST(request: Request): Promise<Response> {
   let model = "deepseek-flash";
+  let transport: ProviderTransport | undefined;
   try {
     const body = await readJson(request);
     if (!record(body)) throw invalid();
-    exactKeys(body, ["mode"]);
+    exactKeys(body, ["mode", "provider"]);
     const mode = parseMode(body.mode);
+    const provider = parseProvider(body.provider, mode);
+    model = provider?.model || model;
     const key = credentials(mode, request);
-    const config = providerConfig();
+    const signal = AbortSignal.any([request.signal, AbortSignal.timeout(10000)]);
+    const config = await resolveProvider(mode, provider, signal);
     model = config.model;
+    transport = openProviderTransport(config, signal);
     const identity = mode === "shared" ? issueIdentity(request) : undefined;
     let response: Response;
     try {
-      response = await fetch(`${config.base}/models`, {
+      response = await transport.fetch("/models", {
         headers: { Authorization: `Bearer ${key}` },
-        signal: AbortSignal.any([request.signal, AbortSignal.timeout(10000)]),
+        signal,
         cache: "no-store",
         redirect: "error",
       });
@@ -76,8 +83,8 @@ export async function POST(request: Request): Promise<Response> {
   } catch (error) {
     const e = safeError(error);
     return Response.json(
-      { ok: false, model, message: e.message },
+      { ok: false, model, code: e.code, message: e.message },
       { status: e.status, headers: { "Cache-Control": "no-store" } },
     );
-  }
+  } finally { await transport?.close().catch(() => {}); }
 }

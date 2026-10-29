@@ -33,6 +33,8 @@ try {
     await page.screenshot({path:new URL(`home-${width}.png`,output).pathname,fullPage:true,animations:'disabled'});
   }
   await page.locator('.sidebar').getByRole('button',{name:'原文库',exact:true}).click();
+  await expect(page.locator('.document-card').first()).toBeVisible({timeout:30000});
+  await page.screenshot({path:new URL('desktop-library.png',output).pathname,fullPage:true,animations:'disabled'});
   const bookSearch=page.waitForResponse(r=>r.url().includes('/api/library?')&&new URL(r.url()).searchParams.get('q')===book.title&&r.status()===200);
   await page.getByLabel('搜索书籍、任务或关键词…').fill(book.title);
   await bookSearch;
@@ -40,7 +42,9 @@ try {
   const documentResponse=page.waitForResponse(r=>r.url().includes('/api/documents/')&&r.status()===200);
   await page.locator('.document-card').first().click();
   const document=await (await documentResponse).json();
-  await expect.poll(async()=>(await page.locator('.reading-text p').allTextContents()).join('\n')).toBe(document.document.text);
+  await page.getByRole('button',{name:'原始文本',exact:true}).click();
+  await expect.poll(()=>page.locator('.reading-text').textContent()).toBe(document.document.text);
+  await page.getByRole('button',{name:'阅读排版',exact:true}).click();
   report.checks.push({name:'live-library-and-original-reading',documentId:document.document.id,title:document.document.title,source:document.document.source});
   await page.screenshot({path:new URL('desktop-reading.png',output).pathname,fullPage:true,animations:'disabled'});
   await page.locator('.source-mini').first().click();
@@ -48,6 +52,7 @@ try {
   await expect(page.locator('.source-drawer')).toContainText(document.sources[0].path);
   await page.screenshot({path:new URL('desktop-source.png',output).pathname,animations:'disabled'});
   await page.locator('.source-drawer').getByRole('button',{name:'关闭',exact:true}).click();
+  await page.locator('.library-filters').getByRole('button',{name:'其他',exact:true}).click();
   const orphanSearch=page.waitForResponse(r=>r.url().includes('/api/library?')&&new URL(r.url()).searchParams.get('q')===probe.groundingQuote&&r.status()===200);
   await page.getByLabel('搜索书籍、任务或关键词…').fill(probe.groundingQuote);
   const orphanResults=await (await orphanSearch).json();
@@ -55,7 +60,7 @@ try {
   if(!expectedOrphan) throw new Error('Expected unmapped record missing from literal search');
   await expect(page.locator('.document-card').first()).toBeVisible({timeout:30000});
   const orphanResponse=page.waitForResponse(r=>r.url().includes('/api/documents/')&&r.status()===200);
-  await page.locator('.document-card').filter({has:page.getByRole('heading',{name:expectedOrphan.title,exact:true})}).click();
+  await page.locator(`[data-document-id="${probe.expectedDocumentId}"]`).click();
   const orphan=await (await orphanResponse).json();
   if(orphan.document.id!==probe.expectedDocumentId || orphan.document.metadata.contextUnknown!==true) throw new Error('Unknown-context probe mismatch');
   await expect(page.locator('.library-content')).toContainText('尚未关联到角色或任务');

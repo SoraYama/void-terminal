@@ -4,7 +4,7 @@
 
 ![void-terminal 实际首页](docs/screenshots/home.png)
 
-[原文阅读截图](docs/screenshots/reading.png) · [手机首页](docs/screenshots/mobile-home.png) · [手机来源面板](docs/screenshots/mobile-source.png)。这些是实际页面截图；阅读页连接本地真实语料，不是设计概念图。
+[原文库截图](docs/screenshots/library.png) · [原文阅读截图](docs/screenshots/reading.png) · [手机首页](docs/screenshots/mobile-home.png) · [手机来源面板](docs/screenshots/mobile-source.png)。这些是实际页面截图；阅读页连接本地真实语料，不是设计概念图。
 
 **仓库不附带完整游戏数据库。** 空库会明确显示未就绪；测试夹具不代表真实语料覆盖。首次使用前需要导入真实来源。已发现、已导入、缺少文本与未解析的数量以 `/api/status` 的 `coverage` 为准；源仓库提交和游戏版本是两回事，未知游戏版本保持为空。知识检索失败时不会补造游戏资料。
 
@@ -28,6 +28,8 @@ bash scripts/dev.sh
 `.env` 由开发脚本读取；单独运行 Python CLI 时，需要自己导出需要的环境变量。不要提交 `.env`、浏览器密钥、数据库、下载语料或模型权重。
 
 ## 生产部署
+
+单台服务器的快捷 HTTPS 方案、现有语料迁移与 Key 隐私说明见 [快速部署指南](docs/deploy-fast.md)。
 
 ```sh
 cp .env.example .env
@@ -100,11 +102,13 @@ docker compose --profile ingest run --rm --no-deps ingest prepare-embeddings --r
 
 ## Key 设置与共享模式
 
-在页面 Key 设置中输入兼容模型服务密钥并测试连接。密钥只保存在当前页面内存，刷新后需要重新输入。BYOK 通过 `X-Model-Api-Key` 请求头发送，服务器代理模型调用；不要把密钥放到 URL、聊天正文、截图或问题反馈里。请只在自己信任的 HTTPS 实例输入密钥。接口地址与模型由服务端 `DEEPSEEK_BASE_URL`、`DEEPSEEK_MODEL` 设置；默认值并不保证账户已经获得对应模型权限。
+在页面 Key 设置中输入兼容模型服务密钥并测试连接。密钥只保存在当前页面内存，刷新后需要重新输入。BYOK 通过 `X-Model-Api-Key` 请求头发送，服务器代理模型调用；不要把密钥放到 URL、聊天正文、截图或问题反馈里。请只在自己信任的 HTTPS 实例输入密钥。设置中可填写自己的 **Base URL** 和 **Model name**，留空的字段使用站点默认值。更换地址会清空当前 Key；模型需支持 OpenAI 兼容的 Chat Completions、流式输出和工具调用。模型列表连接测试不产生生成请求，也不代表工具调用能力已验证。本站运营者技术上能够接触转发的 Key；所选供应商还会收到问题、历史对话和相关原文。
 
 共享模式默认关闭，日预算为零。开启时必须同时设置 `SHARED_MODE_ENABLED=true`、服务器 `DEEPSEEK_API_KEY`、至少 32 字符的随机 `SESSION_SECRET`、正整数 `SHARED_DAILY_TOKEN_BUDGET`、生产 HTTPS 的 `PUBLIC_APP_ORIGIN`，并配置外层访问和频率控制。预算按请求预留、结算；异常和取消可能保留最坏额度，不能把本地预算当成供应商账单或硬性消费上限。对外开放前设置供应商侧限额。
 
-自定义兼容服务必须由运营者配置并信任，不能由浏览器任意指定。除默认 `https://api.deepseek.com` 外，需同时设置 `DEEPSEEK_BASE_URL` 与 `DEEPSEEK_ALLOWED_BASE_URLS`。后者为逗号分隔的精确 HTTPS origin（不含路径或末尾斜杠）；例如 `DEEPSEEK_BASE_URL=https://models.example.com/v1` 对应 `DEEPSEEK_ALLOWED_BASE_URLS=https://models.example.com`。接口路径仅支持根路径或 `/v1`，不支持 URL 中的账号密码、查询参数和 fragment。重新创建 Web 容器后生效。
+访客在 BYOK 模式可指定公网 HTTPS 模型接口及模型 ID；服务器验证所有 DNS 结果，并将实际 TLS 连接固定到已验证的地址，拒绝内网、环回、云元数据和重定向。接口可包含供应商需要的 `/v1` 等前缀，不可携带 Key、账号密码、查询参数或 fragment。Base URL 和模型名可保存在本机，Key 不进入偏好或历史。共享模式不接受访客模型覆盖，服务器共享 Key 始终只发送给管理员配置的地址。
+
+管理员设置站点默认接口时，仍使用 `DEEPSEEK_BASE_URL`、`DEEPSEEK_MODEL` 与精确 origin 允许清单。除默认 `https://api.deepseek.com` 外，需同时设置 `DEEPSEEK_BASE_URL` 与 `DEEPSEEK_ALLOWED_BASE_URLS`。后者为逗号分隔的精确 HTTPS origin（不含路径或末尾斜杠）；例如 `DEEPSEEK_BASE_URL=https://models.example.com/v1` 对应 `DEEPSEEK_ALLOWED_BASE_URLS=https://models.example.com`。接口路径仅支持根路径或 `/v1`，不支持 URL 中的账号密码、查询参数和 fragment。重新创建 Web 容器后生效。
 
 ## 更新、激活与回滚
 

@@ -328,7 +328,14 @@ class CatalogStore:
             clause = ' AND '.join(where)
             params = from_args + args
             total = self._execute(db, 'SELECT COUNT(*) AS n FROM ' + from_sql + ' WHERE ' + clause, params).fetchone()['n']
-            rows = self._execute(db, 'SELECT d.data FROM ' + from_sql + ' WHERE ' + clause + ' ORDER BY d.title,d.id LIMIT ? OFFSET ?', params + [page_size, (page - 1) * page_size]).fetchall()
+            # Keep explicitly labelled test books discoverable, but do not make
+            # them the opening shelf. This is a presentation order, not a
+            # verdict on release/canon status. Other categories keep index order.
+            order = 'd.title,d.id'
+            if type == 'book':
+                unresolved_title = "(d.data::jsonb->'metadata'->>'titleUnresolved')='true'" if self.postgres else "json_extract(d.data,'$.metadata.titleUnresolved')=1"
+                order = "CASE WHEN LOWER(d.title)='test' OR SUBSTR(LOWER(d.title),1,6)='(test)' THEN 2 WHEN " + unresolved_title + " OR SUBSTR(LOWER(d.title),1,14)='book document:' THEN 1 ELSE 0 END,d.title,d.id"
+            rows = self._execute(db, 'SELECT d.data FROM ' + from_sql + ' WHERE ' + clause + ' ORDER BY ' + order + ' LIMIT ? OFFSET ?', params + [page_size, (page - 1) * page_size]).fetchall()
             return {'items': [self._summary(json.loads(r['data']), sid) for r in rows], 'total': total, 'page': page, 'pageSize': page_size, 'snapshotId': sid}
 
     def get_document(self, id, snapshot_id=None):

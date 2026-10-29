@@ -240,10 +240,12 @@ async function fixtureHandler(request, response) {
       ),
     );
     assert.equal(payload.stream, true);
-    assert.equal(payload.thinking.type, "disabled");
+    assert.equal(payload.thinking, undefined, "Generic providers must not receive DeepSeek-only fields");
+    assert.equal(payload.reasoning_effort, undefined);
     assert(
       payload.messages[0].content.includes("orphan_textmap") &&
-        payload.messages[0].content.includes("unknown context"),
+        payload.messages[0].content.includes("contextUnknown=true") &&
+        payload.messages[0].content.includes("cannot establish a confirmed plot"),
       "The production build must preserve unmapped-source uncertainty instructions",
     );
     assert(
@@ -682,12 +684,7 @@ try {
   assert.equal(response.status, 200);
   const consume = (async () => {
     try {
-      for await (const event of browserEvents(response.body)) {
-        if (event.event === "text_delta") {
-          controller.abort();
-          break;
-        }
-      }
+      for await (const event of browserEvents(response.body)) void event;
     } catch (error) {
       if (!controller.signal.aborted) throw error;
     }
@@ -697,10 +694,13 @@ try {
     15000,
     "Cancellation fixture was not contacted",
   );
-  await consume;
+  // Tool-enabled rounds hold narration until its role is known. Cancellation
+  // must still stop an active provider stream before visible answer content.
+  controller.abort();
+  await withTimeout(consume, 8000, "Browser cancellation did not end its stream");
   assert(
     controller.signal.aborted,
-    "Browser must abort after receiving the fixture text delta",
+    "Browser must abort after the fixture HTTPS stream starts",
   );
   await withTimeout(
     upstreamClosed.promise,

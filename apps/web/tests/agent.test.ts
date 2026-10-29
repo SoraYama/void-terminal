@@ -1321,6 +1321,22 @@ describe('empty synthesis protection',()=>{
 });
 
 describe('regional quest overview grounding',()=>{
+ it('can research a turning point after loading the outline, before the final narrated answer',async()=>{
+  vi.unstubAllEnvs();const bodies:any[]=[];
+  vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
+   if(String(url).includes('/v1/quest-outline?'))return search([{...source(),text:'花神诞祭的任务摘要',metadata:{outline:{chapterId:1302,role:'quest-summary'}}}]);
+   if(String(url).includes('/v1/search'))return search([{...source('detail'),text:'经过调查，旅行者确认了循环的线索。'}]);
+   if(String(url).includes('/v1/sources/'))return Response.json({source:source(),context:[],related:[]});
+   const body=JSON.parse(String(init?.body));bodies.push(body);
+   if(bodies.length===1)return upstream([{choices:[{delta:{tool_calls:[{index:0,id:'turning-point',type:'function',function:{name:'search_corpus',arguments:JSON.stringify({query:'花神诞祭 循环',types:['quest']})}}]},finish_reason:'tool_calls'}]}]);
+   return upstream([textChunk('祭典起初看似平常。调查让旅行者发现事情另有隐情。[1]','stop')]);
+  }));
+  const events=await collect({...request,messages:[{role:'user',content:'梳理须弥魔神任务的主要脉络'}]});
+  expect(bodies[0].tools?.length).toBeGreaterThan(0);
+  expect(bodies.at(-1).tools).toBeUndefined();
+  expect(bodies.at(-1).messages[0].content).toContain('循环的线索');
+  expect(events.at(-1)).toMatchObject({event:'done'});
+ });
  it('starts an overview from declared chapter membership before broad keyword matches',async()=>{
   vi.unstubAllEnvs();const paths:string[]=[];let prompt='';
   vi.stubGlobal('fetch',vi.fn(async(url,init)=>{

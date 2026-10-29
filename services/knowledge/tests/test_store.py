@@ -256,3 +256,16 @@ def test_default_library_page_uses_order_index_with_bounded_database_work(store,
     assert result['items'][0]['title'] == 'Archive 0001'
     assert result['items'][-1]['title'] == 'Archive 0024'
     assert work[0] < 15000
+def test_book_browsing_places_explicit_test_titles_after_other_books(tmp_path):
+    store = CatalogStore('sqlite:///' + str(tmp_path / 'books.sqlite'))
+    store.import_snapshot(snapshot('books'), [
+        document('test-book', title='(Test)测试书目', type='book'),
+        document('unnamed-book', title='Weapon11431_2', type='book', metadata={'titleUnresolved': True}),
+        document('fallback-book', title='book Document:121117', type='book'),
+        document('plain-test', title='test', type='book'),
+        document('book', title='提瓦特游览指南', type='book'),
+    ], [])
+    result = store.list_documents('', 'book', 'zh-CN', 1, 24, 'books')
+    assert result['total'] == 5
+    assert [item['id'] for item in result['items']] == ['book', 'unnamed-book', 'fallback-book', 'test-book', 'plain-test']
+    assert store.list_documents('(Test)', 'book', 'zh-CN', 1, 24, 'books')['items'][0]['title'] == '(Test)测试书目'
