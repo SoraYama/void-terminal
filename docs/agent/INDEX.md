@@ -1,4 +1,4 @@
-> **Last updated**: 2026-10-28 (用户批准官方须弥素材 v2，前后端与数据管线已实现，真实语料已导入，本地验证完成；公网与真实模型联调待环境)
+> **Last updated**: 2026-10-28 (chat errors: one composer alert, runtime i18n and history compatibility)
 
 # Agent Notes
 
@@ -17,6 +17,14 @@
 
 ## Bug Fixes
 
+| Note | Summary |
+| --- | --- |
+| [2026-10-28-chat-errors](bugfix/2026-10-28-chat-errors.md) | terminal.tsx duplicates HTTP/SSE failures in message and composer; retain errorCode, localize at render time and restore old history in one bottom alert |
+
 ## Optimizations
+
+| Note | Summary |
+| --- | --- |
+| [2026-10-28-lore-answers](optimize/2026-10-28-lore-answers.md) | agent.ts / lore-policy.ts: mechanical gap-heavy answers, alias and typed retrieval, exact document discovery, context headroom, research/answer separation and citation compatibility |
 
 ## Misc

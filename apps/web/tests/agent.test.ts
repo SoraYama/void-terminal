@@ -834,6 +834,7 @@ describe("retrieval-first bounded agent", () => {
               ? search([{ ...source("nahida"), title: "纳西妲" }])
               : search([]);
           }
+          if (String(url).includes("/v1/sources/")) return Response.json({source: {...source("nahida"), title: "纳西妲"}, context: [], related: []});
           modelCalls++;
           return upstream([textChunk("有来源的追问回答[1]", "stop")]);
         }),
@@ -851,7 +852,7 @@ describe("retrieval-first bounded agent", () => {
       expect(query).toContain("纳西妲是谁");
       expect(query).toContain(followup);
       expect(query).not.toContain("ASSISTANT_UNSUPPORTED_CLAIM");
-      expect(modelCalls).toBe(1);
+      expect(modelCalls).toBe(['那后来发生什么？','What happened next?','那她为什么这样？'].includes(followup) ? 2 : 1);
       expect(events.at(-1)).toMatchObject({
         event: "done",
         data: { finishReason: "stop", snapshotId: "s1" },
@@ -1068,4 +1069,285 @@ describe("retrieval-first bounded agent", () => {
     );
     expect(JSON.stringify(await collect())).not.toContain("private thoughts");
   });
+});
+
+describe('lore explanation evidence preparation', () => {
+  beforeEach(() => { vi.unstubAllEnvs(); vi.stubEnv('DEEPSEEK_BASE_URL', 'https://api.deepseek.com'); });
+  const toolRound = (args: Record<string, unknown>) => upstream([{
+    choices: [{delta: {tool_calls: [{index: 0, id: 'search', function: {name: 'search_corpus', arguments: JSON.stringify(args)}}]}, finish_reason: 'tool_calls'}],
+    usage: {prompt_tokens: 10, completion_tokens: 3},
+  }]);
+  it('finds reviewed nicknames without treating the nickname as proof of identity', async () => {
+    let query = '';
+    vi.stubGlobal('fetch', vi.fn(async (url, init) => {
+      if (String(url).includes('/v1/search')) {
+        query = JSON.parse(String(init?.body)).query;
+        return query.includes('炽烈的炎之魔女') ? search() : search([]);
+      }
+      return upstream([textChunk('相关套装原文[1]', 'stop')]);
+    }));
+    const events = await collect({...request, messages: [{role: 'user', content: '魔女套'}]});
+    expect(query).toContain('魔女套');
+    expect(events.at(-1)).toMatchObject({event: 'done', data: {finishReason: 'stop'}});
+  });
+  it('reads mapped narrative context before generation, once per document and at most two documents', async () => {
+    const paths: string[] = []; let modelBody: any; let searchBody: any;
+    vi.stubGlobal('fetch', vi.fn(async (url, init) => {
+      paths.push(String(url));
+      if (String(url).includes('/v1/search')) {
+        searchBody = JSON.parse(String(init?.body));
+        return search([source('a'), source('duplicate-document'), {...source('b'), documentId:'doc2'}, {...source('c'), documentId:'doc3'}]);
+      }
+      if (String(url).includes('/v1/sources/')) {
+        const id = String(url).includes('/a?') ? 'a' : 'b';
+        return Response.json({source: {...source(id), documentId: id === 'a' ? 'doc' : 'doc2'}, context: [{...source('context-'+id), text:'有分支条件的上下文', metadata:{contextRelation:{kind:'next',condition:'quest == 3'}}}], related:[]});
+      }
+      modelBody=JSON.parse(String(init?.body));return upstream([textChunk('故事解释[1]', 'stop')]);
+    }));
+    await collect({...request, messages:[{role:'user',content:'请梳理须弥魔神任务的剧情脉络'}]});
+    expect(searchBody.types).toEqual(['quest','dialogue']);
+    expect(paths.filter(p=>p.includes('/v1/sources/'))).toHaveLength(2);
+    expect(paths.at(-1)).toContain('/chat/completions');
+    expect(JSON.stringify(modelBody.messages)).toContain('有分支条件的上下文');
+    expect(JSON.stringify(modelBody.messages)).toContain('quest == 3');
+    expect(paths.filter(p=>p.includes('/v1/sources/')).every(p=>p.includes('snapshotId=s1'))).toBe(true);
+  });
+  it('does not prefetch unmapped text as narrative context', async () => {
+    const paths: string[]=[];
+    vi.stubGlobal('fetch',vi.fn(async url=>{
+      paths.push(String(url));
+      return String(url).includes('/v1/search') ? search([{...source(),metadata:{contextUnknown:true,kind:'orphan_textmap'}}]) : upstream([textChunk('无法确认上下文[1]','stop')]);
+    }));
+    await collect({...request,messages:[{role:'user',content:'讲讲这个故事'}]});
+    expect(paths.some(p=>p.includes('/v1/sources/'))).toBe(false);
+  });
+  it('rejects a context read from another snapshot before generation', async () => {
+    let modelCalls=0;
+    vi.stubGlobal('fetch',vi.fn(async url=>{
+      if(String(url).includes('/v1/search'))return search();
+      if(String(url).includes('/v1/sources/'))return Response.json({source:source('a','zh-CN','wrong-snapshot'),context:[],related:[]});
+      modelCalls++;return upstream([textChunk('bad','stop')]);
+    }));
+    const events=await collect({...request,messages:[{role:'user',content:'讲讲旅行者的故事'}]});
+    expect(events.at(-1)).toMatchObject({event:'error',data:{code:'INVALID_EVIDENCE'}});
+    expect(modelCalls).toBe(0);
+  });
+  it.each([{types:['dialogue'],allowed:true},{types:['book'],allowed:false}])('tool search respects selected content filters: $types',async ({types,allowed})=>{
+    const queries:any[]=[];let round=0;let lastBody:any;
+    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
+      if(String(url).includes('/v1/search')){queries.push(JSON.parse(String(init?.body)));return search([{...source(),type:'dialogue'}]);}
+      lastBody=JSON.parse(String(init?.body));round++;
+      return round===1?toolRound({query:'相关对白',types}):upstream([textChunk('解释[1]','stop')]);
+    }));
+    await collect({...request,types:['quest','dialogue']});
+    if(allowed){
+      expect(queries).toHaveLength(2);expect(queries[1].types).toEqual(['dialogue']);
+    }else{
+      expect(queries).toHaveLength(1);expect(lastBody.messages.at(-1).content).toContain('TOOL_NOT_ALLOWED');
+    }
+  });
+  it('reports matched evidence omitted by the citation budget instead of claiming the corpus has no results',async()=>{
+    let searches=0,round=0,lastBody:any;
+    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
+      if(String(url).includes('/v1/search')){
+        searches++;return search(Array.from({length:10},(_,i)=>source(`batch-${searches}-${i}`)));
+      }
+      round++;lastBody=JSON.parse(String(init?.body));
+      return round<=4?toolRound({query:`more ${round}`}):upstream([textChunk('已有资料[1]','stop')]);
+    }));
+    await collect();
+    const selections=JSON.parse(lastBody.messages[0].content.split('Research selections:\n')[1].split('\nContext preparation:')[0]);
+    expect(selections.at(-1)).toMatchObject({matchedSources:10,includedSources:0,truncated:true});
+    expect(lastBody.tools).toBeUndefined();
+    expect(lastBody.messages.some((m:any)=>m.role==='tool')).toBe(false);
+    const evidence=JSON.parse(lastBody.messages[0].content.split('Initial evidence:\n')[1]);
+    expect(evidence.sources).toHaveLength(40);
+  });
+});
+
+describe('inferred lore search scope',()=>{
+  it('falls back within the pinned snapshot when the inferred narrative category is empty',async()=>{
+    vi.unstubAllEnvs();const queries:any[]=[];
+    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
+      if(String(url).includes('/v1/search')){
+        const query=JSON.parse(String(init?.body));queries.push(query);
+        return query.types?search([]):search([{...source(),type:'other',metadata:{contextUnknown:true}}]);
+      }
+      return upstream([textChunk('找到的原文[1]','stop')]);
+    }));
+    const events=await collect({...request,messages:[{role:'user',content:'魔女套的故事'}]});
+    expect(queries).toHaveLength(2);expect(queries[0].types).toEqual(['artifact']);
+    expect(queries[1].types).toBeUndefined();expect(queries[1].snapshotId).toBe('s1');
+    expect(events.at(-1)).toMatchObject({event:'done',data:{finishReason:'stop'}});
+  });
+});
+
+describe('research and answer separation',()=>{
+  it('discards tool-round narration and its citation labels from the final answer',async()=>{
+    vi.unstubAllEnvs();let round=0;
+    vi.stubGlobal('fetch',vi.fn(async(url)=>{
+      if(String(url).includes('/v1/search'))return search();
+      round++;
+      return round===1?upstream([textChunk('我先补几次检索。[999]'),{choices:[{delta:{tool_calls:[{index:0,id:'lookup',function:{name:'search_corpus',arguments:'{"query":"旅行者"}'}}]},finish_reason:'tool_calls'}],usage:{prompt_tokens:10,completion_tokens:3}}]):upstream([textChunk('旅行者的故事[1]','stop')]);
+    }));
+    const events=await collect();
+    expect(events.filter(e=>e.event==='text_delta').map(e=>e.data.text).join('')).toBe('旅行者的故事[1]');
+    expect(events.at(-1)?.data).not.toHaveProperty('citationWarnings');
+  });
+  it('leaves evidence headroom after large automatic context reads and reports omitted context',async()=>{
+    vi.unstubAllEnvs();let searches=0,round=0,lastBody:any;
+    const large=(id:string)=>({...source(id),documentId:id,text:'x'.repeat(1000)});
+    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
+      if(String(url).includes('/v1/search')){
+        searches++;return search(searches===1?Array.from({length:10},(_,i)=>large('initial-'+i)):[large('focused')]);
+      }
+      if(String(url).includes('/v1/sources/')){
+        const id=String(url).includes('initial-0?')?'initial-0':'initial-1';
+        return Response.json({source:large(id),context:Array.from({length:20},(_,i)=>large(id+'-context-'+i)),related:[]});
+      }
+      round++;lastBody=JSON.parse(String(init?.body));
+      return round===1?upstream([{choices:[{delta:{tool_calls:[{index:0,id:'focused',function:{name:'search_corpus',arguments:'{"query":"更具体的剧情"}'}}]},finish_reason:'tool_calls'}],usage:{prompt_tokens:10,completion_tokens:3}}]):upstream([textChunk('解释[1]','stop')]);
+    }));
+    await collect({...request,messages:[{role:'user',content:'梳理这个故事'}]});
+    const finalEvidence=JSON.parse(lastBody.messages[0].content.split('Initial evidence:\n')[1]);
+    expect(finalEvidence.sources.some((source:any)=>source.id==='focused')).toBe(true);
+    const preparation=JSON.parse(lastBody.messages[0].content.split('Context preparation:\n')[1].split('\nInitial evidence:')[0]);
+    expect(preparation.every((r:any)=>r.selection.truncated)).toBe(true);
+  });
+});
+
+describe('final synthesis coverage metadata',()=>{
+  it('retains read_document truncation after discarding research tool transcripts',async()=>{
+    vi.unstubAllEnvs();let round=0,lastBody:any;
+    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
+      if(String(url).includes('/v1/search'))return search();
+      if(String(url).includes('/v1/documents/'))return Response.json({document:{id:'doc',language:'zh-CN'},snapshotId:'s1',sources:Array.from({length:101},(_,i)=>({...source(i===0?'a':'chunk-'+i),text:'x'.repeat(1000)}))});
+      round++;lastBody=JSON.parse(String(init?.body));
+      const call=round===1?{name:'read_document',arguments:'{"documentId":"doc"}'}:{name:'search_corpus',arguments:'{"query":"another aspect"}'};
+      return round<=4?upstream([{choices:[{delta:{tool_calls:[{index:0,id:'call-'+round,function:call}]},finish_reason:'tool_calls'}],usage:{prompt_tokens:10,completion_tokens:3}}]):upstream([textChunk('有来源的讲解[1]','stop')]);
+    }));
+    await collect();
+    const reads=JSON.parse(lastBody.messages[0].content.split('Context preparation:\n')[1].split('\nInitial evidence:')[0]);
+    expect(reads).toContainEqual(expect.objectContaining({operation:'read_document',documentId:'doc',selection:expect.objectContaining({totalSources:101,truncated:true})}));
+    expect(lastBody.messages.some((m:any)=>m.role==='tool')).toBe(false);
+  });
+});
+
+describe('partial search evidence',()=>{
+  it('marks text clipped by the context allowance as truncated even when every result has a citation',async()=>{
+    vi.unstubAllEnvs();let searches=0,round=0,lastBody:any;
+    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
+      if(String(url).includes('/v1/search')){
+        searches++;return search(searches===1?Array.from({length:10},(_,i)=>({...source('initial-'+i),text:'x'.repeat(2300)})):[{...source('partial'),text:'y'.repeat(2000)}]);
+      }
+      round++;lastBody=JSON.parse(String(init?.body));
+      return round===1?upstream([{choices:[{delta:{tool_calls:[{index:0,id:'partial',function:{name:'search_corpus',arguments:'{"query":"focused passage"}'}}]},finish_reason:'tool_calls'}],usage:{prompt_tokens:10,completion_tokens:3}}]):upstream([textChunk('解释[1]','stop')]);
+    }));
+    await collect();
+    const result=JSON.parse(lastBody.messages.at(-1).content);
+    expect(result.sources[0].text).toHaveLength(1000);
+    expect(result.selection).toMatchObject({matchedSources:1,includedSources:1,truncated:true});
+  });
+});
+
+describe('literal document discovery',()=>{
+  it('discovers exact-phrase documents inside the selected scope and permits reading the discovered document',async()=>{
+    vi.unstubAllEnvs();let round=0;const paths:string[]=[];
+    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
+      paths.push(String(url));
+      if(String(url).includes('/v1/search'))return search();
+      if(String(url).includes('/v1/documents?'))return Response.json({snapshotId:'s1',items:[{id:'chapter',title:'目标章节',type:'quest',language:'zh-CN',excerpt:'章节正文',snapshotId:'s1'}],total:1,page:1,pageSize:8});
+      if(String(url).includes('/v1/documents/chapter?'))return Response.json({document:{id:'chapter',language:'zh-CN'},sources:[{...source('chapter-source'),documentId:'chapter',text:'目标章节的原文'}],snapshotId:'s1'});
+      round++;
+      const call=round===1?{name:'find_documents',arguments:'{"query":"目标章节","type":"quest"}'}:{name:'read_document',arguments:'{"documentId":"chapter"}'};
+      return round<3?upstream([{choices:[{delta:{tool_calls:[{index:0,id:'find-'+round,function:call}]},finish_reason:'tool_calls'}],usage:{prompt_tokens:10,completion_tokens:3}}]):upstream([textChunk('讲解[2]','stop')]);
+    }));
+    const events=await collect({...request,types:['quest'],snapshotId:'s1'});
+    const path=new URL(paths.find(p=>p.includes('/v1/documents?'))!);
+    expect(path.searchParams.get('q')).toBe('目标章节');expect(path.searchParams.get('language')).toBe('zh-CN');expect(path.searchParams.get('snapshotId')).toBe('s1');expect(path.searchParams.get('type')).toBe('quest');
+    expect(events.filter(e=>e.event==='sources').at(-1)?.data.sources.some(s=>s.text==='目标章节的原文')).toBe(true);
+  });
+  it('does not treat full-width numeric citations as missing citations',async()=>{
+    vi.unstubAllEnvs();vi.stubGlobal('fetch',vi.fn(async url=>String(url).includes('/v1/search')?search():upstream([textChunk('知识讲解［1］','stop')])));
+    const events=await collect();expect(events.at(-1)?.data).not.toHaveProperty('citationWarnings');
+  });
+});
+
+describe('bounded oversized research batches',()=>{
+  it('executes at most four calls from an oversized valid batch and still produces an answer',async()=>{
+    vi.unstubAllEnvs();let searches=0,round=0,lastBody:any;
+    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
+      if(String(url).includes('/v1/search')){searches++;return search();}
+      round++;lastBody=JSON.parse(String(init?.body));
+      return round===1?upstream([{choices:[{delta:{tool_calls:Array.from({length:5},(_,index)=>({index,id:'lookup-'+index,function:{name:'search_corpus',arguments:JSON.stringify({query:'topic '+index})}}))},finish_reason:'tool_calls'}],usage:{prompt_tokens:10,completion_tokens:3}}]):upstream([textChunk('回答[1]','stop')]);
+    }));
+    const events=await collect();
+    expect(searches).toBe(5);
+    expect(lastBody.messages.at(-1).content).toContain('TOOL_BATCH_LIMIT');
+    expect(events.at(-1)).toMatchObject({event:'done'});
+  });
+});
+
+describe('deliberate narrative synthesis',()=>{
+ it('synthesizes a narrative answer without tools or research chatter and never exposes reasoning',async()=>{
+  vi.unstubAllEnvs();const bodies:any[]=[];
+  vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
+   if(String(url).includes('/v1/search'))return search();
+   if(String(url).includes('/v1/sources/'))return Response.json({source:source(),context:[],related:[]});
+   const body=JSON.parse(String(init?.body));bodies.push(body);
+   return bodies.length===1?upstream([textChunk('暂定整理草稿[1]','stop')]):upstream([{choices:[{delta:{reasoning_content:'private synthesis'},finish_reason:null}]},textChunk('完整讲解[1]','stop')]);
+  }));
+  const events=await collect({...request,messages:[{role:'user',content:'讲讲旅行者的故事'}]});
+  expect(bodies).toHaveLength(2);expect(bodies[0].thinking).toEqual({type:'disabled'});
+  expect(bodies[1].thinking).toEqual({type:'enabled'});expect(bodies[1].tools).toBeUndefined();
+  expect(JSON.stringify(bodies[1])).not.toContain('暂定整理草稿');
+  expect(events.filter(e=>e.event==='text_delta').map(e=>e.data.text).join('')).toBe('完整讲解[1]');
+  expect(JSON.stringify(events)).not.toContain('private synthesis');
+ });
+});
+
+describe('empty synthesis protection',()=>{
+ it('reports an explicit retryable error when thinking exhausts the budget without producing an answer',async()=>{
+  vi.unstubAllEnvs();let round=0;
+  vi.stubGlobal('fetch',vi.fn(async url=>{
+   if(String(url).includes('/v1/search'))return search();
+   if(String(url).includes('/v1/sources/'))return Response.json({source:source(),context:[],related:[]});
+   round++;return round===1?upstream([textChunk('暂定草稿[1]','stop')]):upstream([{choices:[{delta:{reasoning_content:'private thoughts'},finish_reason:'length'}],usage:{prompt_tokens:10,completion_tokens:4096}}]);
+  }));
+  const events=await collect({...request,messages:[{role:'user',content:'解释这段故事'}]});
+  expect(events.at(-1)).toMatchObject({event:'error',data:{code:'EMPTY_MODEL_ANSWER',retryable:true}});
+  expect(events.some(e=>e.event==='done')).toBe(false);
+ });
+});
+
+describe('regional quest overview grounding',()=>{
+ it('starts an overview from declared chapter membership before broad keyword matches',async()=>{
+  vi.unstubAllEnvs();const paths:string[]=[];let prompt='';
+  vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
+   paths.push(String(url));
+   if(String(url).includes('/v1/quest-outline?'))return search([{...source('act-one'),text:'第一幕的实际任务摘要',metadata:{outline:{chapterId:1301,role:'quest-summary'}}},{...source('act-five'),documentId:'act-five',text:'第五幕的实际任务摘要',metadata:{outline:{chapterId:1305,role:'quest-summary'}}}]);
+   if(String(url).includes('/v1/sources/')){const id=String(url).includes('act-one')?'act-one':'act-five';return Response.json({source:{...source(id),documentId:id==='act-one'?'doc':'act-five'},context:[],related:[]});}
+   prompt=JSON.parse(String(init?.body)).messages[0].content;return upstream([textChunk('有章节依据的梳理[1]','stop')]);
+  }));
+  const events=await collect({...request,types:['quest'],messages:[{role:'user',content:'梳理须弥魔神任务主线'}]});
+  expect(paths[0]).toContain('/v1/quest-outline?');expect(new URL(paths[0]).searchParams.get('includeChapters')).toBe('false');
+  expect(paths.some(p=>p.includes('/v1/search'))).toBe(false);
+  expect(prompt).toContain('第一幕的实际任务摘要');expect(prompt).toContain('第五幕的实际任务摘要');
+  expect(events.at(-1)).toMatchObject({event:'done'});
+ });
+});
+
+describe('outline chapter coverage under context limits',()=>{
+ it('keeps a grounded excerpt for every chapter rather than filling the budget from the first acts',async()=>{
+  vi.unstubAllEnvs();const items=Array.from({length:16},(_,i)=>({...source('outline-'+i),documentId:'outline-'+i,text:'x'.repeat(1000),metadata:{outline:{chapterId:Math.floor(i/2)+1,role:'quest-summary'}}}));
+  vi.stubGlobal('fetch',vi.fn(async url=>{
+   if(String(url).includes('/v1/quest-outline?'))return search(items);
+   if(String(url).includes('/v1/sources/')){const id=decodeURIComponent(String(url).split('/v1/sources/')[1].split('?')[0]);return Response.json({source:items.find(s=>s.id===id),context:[],related:[]});}
+   return upstream([textChunk('章节梳理[1]','stop')]);
+  }));
+  const events=await collect({...request,types:['quest'],messages:[{role:'user',content:'梳理须弥魔神任务主线'}]});
+  const citations=events.filter(e=>e.event==='sources').at(-1)!.data.sources;
+  expect(new Set(citations.map(s=>(s.metadata?.outline as any).chapterId)).size).toBe(8);
+  expect(citations.reduce((n,s)=>n+s.text.length,0)).toBeLessThanOrEqual(8000);
+ });
 });

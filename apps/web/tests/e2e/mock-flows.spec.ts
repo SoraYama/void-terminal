@@ -14,9 +14,29 @@ async function setup(page:Page){
  await page.goto('/');
 }
 async function settings(page:Page){const menu=page.getByRole('button',{name:'Menu',exact:true});if(await menu.isVisible())await menu.click();await page.getByRole('button',{name:/^(设置|Settings)$/}).click();return page.getByRole('dialog')}
-async function configure(page:Page){const dialog=await settings(page);await dialog.getByLabel('模型 API Key').fill('browser-test-key');await dialog.getByRole('button',{name:'测试连接'}).click();await expect(dialog.getByText(/Mock connection successful/)).toBeVisible();await dialog.getByRole('button',{name:'关闭',exact:true}).click()}
+async function configure(page:Page){const dialog=await settings(page);await dialog.getByLabel('模型 API Key').fill('browser-test-key');await dialog.getByRole('button',{name:'测试连接'}).click();await expect(dialog.getByRole('status')).toContainText('连接成功');await dialog.getByRole('button',{name:'关闭',exact:true}).click()}
 async function library(page:Page){const menu=page.getByRole('button',{name:'Menu',exact:true});if(await menu.isVisible())await menu.click();await page.getByRole('button',{name:'原文库',exact:true}).click()}
 async function saveScreenshot(page:Page,name:string,project:string){await page.screenshot({path:path.join(screenshotDir,`${project}-${name}.png`),fullPage:true,scale:'css',style:'nextjs-portal{visibility:hidden}',animations:'disabled'})}
+test('mock: connection feedback follows interface language, including failures',async({page},testInfo)=>{
+ await setup(page);const dialog=await settings(page);
+ await dialog.getByLabel('模型 API Key').fill('browser-test-key');
+ await dialog.getByRole('button',{name:'测试连接',exact:true}).click();
+ const result=dialog.getByRole('status');
+ await expect(result).toContainText('连接成功');await expect(result).toContainText('未请求生成内容');
+ await dialog.getByRole('combobox',{name:'界面语言',exact:true}).selectOption('en');
+ await expect(result).toContainText('Connected.');await expect(result).toContainText('no generation was requested');
+ await saveScreenshot(page,'settings-connection-en',testInfo.project.name);
+ await dialog.getByRole('combobox',{name:'Interface language',exact:true}).selectOption('zh-CN');
+ await saveScreenshot(page,'settings-connection-zh',testInfo.project.name);
+ await page.route('**/api/models/test',r=>r.fulfill({status:401,json:{ok:false,model:'fixture-model',message:'The model API key was not accepted.'}}));
+ await dialog.getByRole('button',{name:'测试连接',exact:true}).click();
+ await expect(result).toContainText('密钥未被接受');await expect(result).not.toContainText('HTTP');
+ await dialog.getByRole('combobox',{name:'界面语言',exact:true}).selectOption('en');
+ await expect(result).toContainText('API key was not accepted');
+ await page.route('**/api/models/test',r=>r.abort('failed'));
+ await dialog.getByRole('button',{name:'Test connection',exact:true}).click();
+ await expect(result).toContainText('Check your network');
+});
 test('mock: visual home, persisted preferences, key memory only, corpus status',async({page},testInfo)=>{
  await setup(page);await expect(page.getByRole('heading',{name:'从一个问题， 走进提瓦特'})).toBeVisible();await saveScreenshot(page,'home-light',testInfo.project.name);
  await configure(page);
@@ -40,7 +60,7 @@ test('mock: loading cancellation and provider errors remain explicit',async({pag
  await setup(page);await configure(page);let requestStarted=false,release:()=>void=()=>{};
  await page.route('**/api/chat',async r=>{requestStarted=true;await new Promise<void>(resolve=>{release=resolve});try{await r.fulfill({contentType:'text/event-stream',body:frame('done',{snapshotId:'fixture-snapshot',finishReason:'stop'})})}catch{}});
  await page.getByRole('textbox',{name:'向虚空提问…'}).fill('取消测试');await page.getByRole('button',{name:'发送',exact:true}).click();await expect.poll(()=>requestStarted).toBe(true);await expect(page.getByRole('button',{name:'停止生成'})).toBeVisible();await page.getByRole('button',{name:'停止生成'}).click();await expect(page.getByText('已停止生成',{exact:true}).first()).toBeVisible();release();
- await page.unroute('**/api/chat');await page.route('**/api/chat',r=>r.fulfill({status:503,json:{error:{code:'UPSTREAM_UNAVAILABLE',message:'Mock provider is unavailable'}}}));await page.getByRole('button',{name:'重新生成',exact:true}).click();await expect(page.getByText('Mock provider is unavailable',{exact:true}).first()).toBeVisible();
+ await page.unroute('**/api/chat');await page.route('**/api/chat',r=>r.fulfill({status:503,json:{error:{code:'UPSTREAM_UNAVAILABLE',message:'Mock provider is unavailable'}}}));await page.getByRole('button',{name:'重新生成',exact:true}).click();await expect(page.locator('.chat-bottom').getByRole('alert')).toHaveText('模型服务暂时不可用，请稍后重试。');
 });
 test('mock: library filtering, document reading and selected-passage question',async({page},testInfo)=>{
  await setup(page);await library(page);await expect(page.getByRole('heading',{name:source.title})).toBeVisible();await saveScreenshot(page,'library-light',testInfo.project.name);await page.getByRole('textbox',{name:'搜索书籍、任务或关键词…'}).fill('absent');await expect(page.getByRole('heading',{name:'暂无匹配的原文'})).toBeVisible();await page.getByRole('textbox',{name:'搜索书籍、任务或关键词…'}).fill('');await page.getByRole('button',{name:/Browser fixture · 原文/}).click();await expect(page.locator('.reading-text')).toContainText(source.text);
@@ -89,3 +109,27 @@ test('mock: English UI answers remain separate from Chinese source language',asy
  await page.route('**/api/chat',r=>{payload=r.request().postDataJSON();return r.fulfill({contentType:'text/event-stream',body:frame('text_delta',{text:'English fixture interpretation, not official localization.'})+frame('done',{snapshotId:'fixture-snapshot',finishReason:'stop'})})});
  await page.getByRole('textbox',{name:'Ask the Akasha…'}).fill('Explain this Chinese source in English');await page.getByRole('button',{name:'Send',exact:true}).click();await expect(page.getByText('English fixture interpretation, not official localization.',{exact:true})).toBeVisible();expect(payload.language).toBe('zh-CN');expect(payload.answerLanguage).toBe('en');
 });
+
+for(const failureMode of ['http','stream'] as const){
+ test(`mock: ${failureMode} chat error appears only above composer and follows interface language`,async({page},testInfo)=>{
+  await setup(page);await configure(page);
+  const failure={code:'NOT_FOUND',message:'The requested evidence was not found.',retryable:true};
+  await page.route('**/api/chat',r=>failureMode==='http'?r.fulfill({status:404,json:{error:failure}}):r.fulfill({contentType:'text/event-stream',body:frame('text_delta',{text:'已经生成的部分回答。'})+frame('error',failure)}));
+  await page.getByRole('textbox',{name:'向虚空提问…'}).fill('错误显示测试');await page.getByRole('button',{name:'发送',exact:true}).click();
+  const alert=page.locator('.chat-bottom').getByRole('alert');
+  await expect(alert).toHaveText('未找到请求的原文，请重新检索或重试。');
+  await expect(page.locator('.message.assistant .inline-error')).toHaveCount(0);
+  await expect(page.getByRole('main').getByRole('alert')).toHaveCount(1);
+  if(failureMode==='stream'){
+   await expect(page.locator('.markdown')).toContainText('已经生成的部分回答。');
+   await saveScreenshot(page,'chat-error-zh',testInfo.project.name);
+  }
+  const dialog=await settings(page);await dialog.getByRole('combobox',{name:'界面语言',exact:true}).selectOption('en');await dialog.getByRole('button',{name:'Close',exact:true}).click();
+  await expect(alert).toHaveText('The requested source could not be found. Search again or retry.');
+  if(failureMode==='stream')await saveScreenshot(page,'chat-error-en',testInfo.project.name);
+  await page.reload();const menu=page.getByRole('button',{name:'Menu',exact:true});if(await menu.isVisible())await menu.click();
+  await page.getByRole('button',{name:'错误显示测试',exact:true}).click();
+  await expect(alert).toHaveText('The requested source could not be found. Search again or retry.');
+  await expect(page.locator('.message.assistant .inline-error')).toHaveCount(0);
+ });
+}

@@ -112,7 +112,7 @@ export function credentials(mode: "byok" | "shared", request: Request) {
     );
   return key;
 }
-export function outputLimit(depth: "standard" | "deep") {
+export function outputLimit(depth: "standard" | "deep", synthesis = false) {
   const configured = Number(
     process.env[
       depth === "deep" ? "AGENT_DEEP_MAX_TOKENS" : "AGENT_STANDARD_MAX_TOKENS"
@@ -120,7 +120,7 @@ export function outputLimit(depth: "standard" | "deep") {
   );
   return Number.isInteger(configured) && configured > 0
     ? Math.min(configured, depth === "deep" ? 8192 : 4096)
-    : depth === "deep"
+    : depth === "deep" || synthesis
       ? 8192
       : 4096;
 }
@@ -134,6 +134,7 @@ export function requestByteLimit(input: ChatRequest) {
 /** UTF-8 byte count conservatively bounds input tokens; every possible round is reserved. */
 export function worstCaseTokens(input: ChatRequest) {
   return (
-    (MAX_TOOL_ROUNDS + 1) * (requestByteLimit(input) + outputLimit(input.depth))
+    MAX_TOOL_ROUNDS * (requestByteLimit(input) + outputLimit(input.depth)) +
+    requestByteLimit(input) + outputLimit(input.depth, true)
   );
 }

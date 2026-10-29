@@ -1,5 +1,5 @@
 import type {Citation} from './contracts';
-export interface Message {role:'user'|'assistant';content:string;sources?:Citation[];snapshotId?:string;error?:string}
+export interface Message {role:'user'|'assistant';content:string;sources?:Citation[];snapshotId?:string;error?:string;errorCode?:string}
 export interface Conversation {id:string;parentId?:string;snapshotId?:string;title:string;updatedAt:number;messages:Message[]}
 export function branchConversation(c:Conversation,index:number,content:string):Conversation{return {id:crypto.randomUUID(),parentId:c.id,snapshotId:conversationSnapshot(c),title:content.slice(0,45),updatedAt:Date.now(),messages:[...c.messages.slice(0,index),{role:'user',content}]}}
 function database():Promise<IDBDatabase>{return new Promise((resolve,reject)=>{const r=indexedDB.open('void-terminal',1);r.onupgradeneeded=()=>r.result.createObjectStore('conversations',{keyPath:'id'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}

@@ -56,3 +56,11 @@ describe('frontend durable and transport behavior',()=>{
  expect(safePreferences({theme:'dark',locale:'en',sourceLanguage:'zh-CN',apiKey:'secret',mode:'shared'})).toEqual({theme:'dark',locale:'en',sourceLanguage:'zh-CN',mode:'shared'});
  });
 });
+
+describe('localized citation punctuation',()=>{
+ it('opens full-width numeric references as citations while keeping quoted code unchanged',()=>{
+  const tree={type:'root',children:[{type:'paragraph',children:[{type:'text',value:'原文解释［2］。'},{type:'inlineCode',value:'［3］'}]}]};
+  remarkCitations()(tree);
+  expect(tree.children[0].children).toEqual([{type:'text',value:'原文解释'},{type:'link',url:'#citation-2',children:[{type:'text',value:'［2］'}]},{type:'text',value:'。'},{type:'inlineCode',value:'［3］'}]);
+ });
+});

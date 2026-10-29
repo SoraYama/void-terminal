@@ -67,6 +67,11 @@ def create_app(store=None, api_token=None):
     def search(body: SearchRequest, db=Depends(catalog)):
         return db.search(body.query, body.language, body.types, body.snapshotId, body.limit)
 
+    @api.get('/v1/quest-outline', dependencies=guards)
+    def quest_outline(region: str = Query(min_length=1, max_length=80), language: Locale = 'zh-CN',
+                      snapshotId: str | None = Query(None, max_length=200), includeChapters: bool = True, db=Depends(catalog)):
+        return db.quest_outline(region, language, snapshotId, includeChapters)
+
     @api.get('/v1/documents', dependencies=guards)
     def documents(q: str = Query('', max_length=2000), type: ContentType | None = None,
                   language: Locale | None = None, page: int = Query(1, ge=1, le=1000000),

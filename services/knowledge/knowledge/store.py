@@ -380,6 +380,55 @@ class CatalogStore:
                             context_ids.add(neighbor['id'])
             return {'source': self._source(db, row), 'context': context, 'related': related}
 
+    def quest_outline(self, region, language='zh-CN', snapshot_id=None, include_chapters=True):
+        """Read declared Chapter -> MainQuest membership, not lexical co-occurrence.
+
+        Sampling by text length selects informative summaries; neither row IDs
+        nor this output order are asserted to be narrative chronology.
+        """
+        with self._tx() as db:
+            sid = self._resolve(db, snapshot_id)
+            empty = {'sources': [], 'snapshotId': sid, 'mode': 'lexical', 'total': 0}
+            if not sid:
+                return empty
+            table = "(d.data::jsonb->'metadata'->>'table')" if self.postgres else "json_extract(d.data,'$.metadata.table')"
+            chapter_id = "(d.data::jsonb->'metadata'->'raw'->>'chapterId')" if self.postgres else "CAST(json_extract(d.data,'$.metadata.raw.chapterId') AS TEXT)"
+            rows = self._execute(db, "SELECT d.data FROM documents d WHERE d.snapshot_id=? AND d.language=? AND d.title=? AND d.type='other' AND " + table + "='Chapter' LIMIT 30", [sid, language, region]).fetchall()
+            chapters = []
+            for row in rows:
+                doc = json.loads(row['data'])
+                key = doc['metadata'].get('raw', {}).get('id')
+                if isinstance(key, int) and not isinstance(key, bool):
+                    chapters.append((key, doc))
+            chapters.sort(key=lambda item: item[0])
+            selected = chapters[:8]
+            if not selected:
+                return empty
+            ids = [str(key) for key, _ in selected]
+            placeholders = ','.join('?' for _ in ids)
+            quests = self._execute(db, "SELECT d.data FROM documents d WHERE d.snapshot_id=? AND d.language=? AND d.type='quest' AND " + table + "='MainQuest' AND " + chapter_id + " IN (" + placeholders + ') LIMIT 600', [sid, language, *ids]).fetchall()
+            grouped = {key: [] for key, _ in selected}
+            for row in quests:
+                doc = json.loads(row['data'])
+                key = doc['metadata'].get('raw', {}).get('chapterId')
+                if key in grouped:
+                    grouped[key].append(doc)
+            sources = []
+            for key, chapter in selected:
+                summaries = sorted(grouped[key], key=lambda doc: (-len(doc['text']), doc['id']))[:(2 if len(selected) <= 6 else 1)]
+                records = ([chapter] if include_chapters else []) + summaries
+                for doc in records:
+                    # Chapter title and act number may belong to different
+                    # TextMap fields; preserve both physical citation spans.
+                    chunk_limit = 2 if doc is chapter else 1
+                    chunks = self._execute(db, 'SELECT * FROM chunks WHERE snapshot_id=? AND document_id=? ORDER BY ordinal LIMIT ?', [sid, doc['id'], chunk_limit]).fetchall()
+                    for chunk in chunks:
+                        item = self._source(db, chunk)
+                        item['metadata']['outline'] = {'chapterId': key, 'chapterLabel': chapter['text'][:300], 'role': 'chapter-index' if doc is chapter else 'quest-summary', 'sampled': True}
+                        sources.append(item)
+            return {'sources': sources, 'snapshotId': sid, 'mode': 'lexical', 'total': len(sources),
+                    'selection': {'chaptersMatched': len(chapters), 'chaptersIncluded': len(selected), 'truncated': len(chapters) > len(selected), 'sampledSummaries': True}}
+
     def search(self, query, language='zh-CN', types=None, snapshot_id=None, limit=10):
         if not query or not query.strip() or len(query) > 2000 or not 1 <= limit <= 50:
             raise StoreError('INVALID_QUERY', 'Invalid query or limit')
