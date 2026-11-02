@@ -26,6 +26,29 @@ describe("public API bounds and credential handling", () => {
     resetRateLimits();
   });
   afterEach(() => vi.unstubAllGlobals());
+  it.each(['', '   ', '\n\t'])("accepts a follow-up after a blank failed assistant (%j)", async empty => {
+    const fetcher = vi.fn(async () => Response.json({sources: [], snapshotId: 's1', mode: 'lexical', total: 0}));
+    vi.stubGlobal('fetch', fetcher);
+    const response = await chat(req({...body, messages: [
+      {role: 'user', content: 'Summarize the story.'},
+      {role: 'assistant', content: empty},
+      {role: 'user', content: 'Who is Anastasia?'},
+      {role: 'assistant', content: ''},
+      {role: 'user', content: 'Continue.'},
+    ]}));
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('event: done');
+    expect(fetcher).toHaveBeenCalled();
+  });
+  it('still rejects blank users or assistant-only input after removing empty placeholders', async () => {
+    const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
+    for (const messages of [
+      [{role:'user',content:'  '},{role:'assistant',content:''},{role:'user',content:'next'}],
+      [{role:'assistant',content:''}],
+      [{role:'user',content:'next'},{role:'assistant',content:''}],
+    ]) expect((await chat(req({...body,messages}))).status).toBe(400);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
   it.each([
     { ...body, messages: Array(25).fill({ role: "user", content: "x" }) },
     { ...body, messages: [{ role: "user", content: "x".repeat(12001) }] },

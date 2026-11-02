@@ -2,6 +2,10 @@ import {describe,it,expect} from 'vitest';
 import {ChatRequestError,chatFailure,chatErrorText} from '../src/lib/chat-errors';
 
 describe('localized chat errors',()=>{
+ it('explains invalid requests rather than displaying the generic failure',()=>{
+  expect(chatErrorText({code:'INVALID_REQUEST',message:'The request is invalid or exceeds the allowed limits.'},'zh-CN')).toContain('请求内容无效');
+  expect(chatErrorText({code:'INVALID_REQUEST',message:''},'en')).toContain('request is invalid');
+ });
  it('translates error codes without depending on server message wording',()=>{
   const failure=chatFailure(new ChatRequestError('Different server wording','NOT_FOUND'));
   expect(chatErrorText(failure,'zh-CN')).toBe('未找到请求的原文，请重新检索或重试。');

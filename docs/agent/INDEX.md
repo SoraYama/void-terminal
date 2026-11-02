@@ -1,4 +1,4 @@
-> **Last updated**: 2026-11-02 (Vultr SSH/DNS/HTTPS and standalone full-corpus SQLite deployment)
+> **Last updated**: 2026-11-02 (failed-history recovery, bounded synthesis, diagnostic export and regression verification)
 
 # Agent Notes
 
@@ -22,6 +22,7 @@
 
 | Note | Summary |
 | --- | --- |
+| [2026-11-02-chat-failures](bugfix/2026-11-02-chat-failures.md) | Empty failed assistants cause INVALID_REQUEST: normalize history; metadata/tool context exceeds 128KB: compact and synthesize within budget; preserve normalized chapter/node/part metadata and export error codes; 222 unit / 38 browser tests |
 | [2026-10-28-chat-errors](bugfix/2026-10-28-chat-errors.md) | terminal.tsx duplicates HTTP/SSE failures in message and composer; retain errorCode, localize at render time and restore old history in one bottom alert |
 | [2026-10-29-depth-toggle](bugfix/2026-10-29-depth-toggle.md) | `.depth:hover,.depth.chosen` share colors: use aria-pressed filled blue/check icon so enabled state persists after hover |
 

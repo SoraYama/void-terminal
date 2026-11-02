@@ -5,6 +5,7 @@ import {
   type ModelProvider,
 } from "../contracts";
 import { AppError } from "./errors";
+import { chatMessages } from "../history";
 export const invalid = () =>
   new AppError(
     "INVALID_REQUEST",
@@ -93,13 +94,13 @@ export function parseChat(value: unknown): ChatRequest {
   )
     throw invalid();
   let total = 0;
-  const messages = value.messages.map((item) => {
+  const validated = value.messages.map((item) => {
     if (!record(item)) throw invalid();
     exactKeys(item, ["role", "content"]);
     if (
       (item.role !== "user" && item.role !== "assistant") ||
       typeof item.content !== "string" ||
-      !item.content.trim() ||
+      (item.role === 'user' && !item.content.trim()) ||
       item.content.length > 12000
     )
       throw invalid();
@@ -111,7 +112,7 @@ export function parseChat(value: unknown): ChatRequest {
   });
   if (
     total > 48000 ||
-    messages.at(-1)!.role !== "user" ||
+    validated.at(-1)!.role !== "user" ||
     typeof value.language !== "string" ||
     !["zh-CN", "en"].includes(value.language) ||
     typeof value.depth !== "string" ||
@@ -139,7 +140,7 @@ export function parseChat(value: unknown): ChatRequest {
   )
     throw invalid();
   return {
-    messages,
+    messages: chatMessages(validated),
     mode,
     ...(provider ? { provider } : {}),
     language: value.language as ChatRequest["language"],

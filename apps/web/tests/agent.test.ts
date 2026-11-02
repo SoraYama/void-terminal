@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runAgent } from "../src/lib/server/agent";
+import {requestByteLimit} from '../src/lib/server/config';
 import type { ChatEvent, ChatRequest, Source } from "../src/lib/contracts";
 
 const source = (id = "a", language = "zh-CN", snapshotId = "s1") =>
@@ -58,6 +59,106 @@ const collect = async (input = request) => {
   });
   return events;
 };
+
+describe('context-budget recovery',()=>{
+  beforeEach(()=>{vi.unstubAllEnvs();vi.stubEnv('DEEPSEEK_BASE_URL','https://api.deepseek.com');});
+  it('preserves chapter membership, graph identity and multipart book order from normalized records',async()=>{
+    const items=[
+      {...source('quest'),metadata:{table:'MainQuest',sourceId:'13001',raw:{id:13001,chapterId:1302,mainId:13000,avatarId:10000001,bookSuitId:5,irrelevantRaw:'INCIDENTAL_RAW_FIELD'}}},
+      {...source('dialogue'),type:'dialogue',metadata:{talkId:'talk-7',nodeId:41,nextIds:[42],speakerRole:'ROLE_NPC',conditions:{quest:13001}}},
+      {...source('book'),type:'book',metadata:{documentGroupId:'book-12',partIndex:2,partCount:3,series:'故事集',volume:1}},
+    ] as Source[];
+    let body:any;
+    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
+      if(String(url).includes('/v1/search'))return search(items);
+      body=JSON.parse(String(init?.body));return upstream([textChunk('分属相应章节、节点与卷册。[1][2][3]','stop')]);
+    }));
+    const events=await collect();expect(events.at(-1)).toMatchObject({event:'done'});
+    const sources=JSON.parse(body.messages[0].content.split('Initial evidence:\n')[1]).sources;
+    expect(sources[0].metadata).toMatchObject({table:'MainQuest',sourceId:'13001',chapterId:1302,mainId:13000,avatarId:10000001,bookSuitId:5});
+    expect(sources[1].metadata).toMatchObject({talkId:'talk-7',nodeId:41,nextIds:[42],speakerRole:'ROLE_NPC',conditions:{quest:13001}});
+    expect(sources[2].metadata).toMatchObject({documentGroupId:'book-12',partIndex:2,partCount:3,series:'故事集',volume:1});
+    expect(JSON.stringify(body)).not.toContain('INCIDENTAL_RAW_FIELD');
+  });
+  it('answers after repeated long research, omitting incidental provenance while preserving sources and history',async()=>{
+    const input:ChatRequest={...request,messages:[{role:'user',content:'之前的问题'},{role:'assistant',content:'旧'.repeat(6000)},...request.messages]};
+    const items=Array.from({length:10},(_,i)=>({...source('large-'+i),documentId:'doc-'+i,text:'剧情'.repeat(1100),metadata:{
+      raw:'INCIDENTAL_PROVENANCE_'+ '噪'.repeat(1850),resolvedFields:'噪'.repeat(1900),
+      contextUnknown:true,testState:'unknown',contextRelation:{kind:'next',condition:'choice A only'},
+    }}));
+    const bodies:any[]=[];
+    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
+      if(String(url).includes('/v1/search'))return search(items);
+      const body=JSON.parse(String(init?.body));bodies.push(body);
+      if(!body.tools)return upstream([textChunk('根据现有原文继续说明。[1][10]','stop')]);
+      return upstream([{choices:[{delta:{tool_calls:Array.from({length:4},(_,index)=>({index,id:'repeat-'+bodies.length+'-'+index,function:{name:'search_corpus',arguments:'{"query":"更多剧情"}'}}))},finish_reason:'tool_calls'}],usage:{prompt_tokens:12,completion_tokens:6}}]);
+    }));
+    const events=await collect(input);
+    expect(events.at(-1)).toMatchObject({event:'done'});
+    expect(events.filter(e=>e.event==='text_delta').map(e=>e.data.text).join('')).toBe('根据现有原文继续说明。[1][10]');
+    expect(bodies.length).toBeLessThanOrEqual(5);expect(bodies.at(-1).tools).toBeUndefined();
+    for(const body of bodies){
+      expect(Buffer.byteLength(JSON.stringify(body),'utf8')).toBeLessThanOrEqual(requestByteLimit(input));
+      expect(body.messages).toEqual(expect.arrayContaining(input.messages));
+      expect(JSON.stringify(body)).not.toContain('INCIDENTAL_PROVENANCE_');
+    }
+    const finalEvidence=JSON.parse(bodies.at(-1).messages[0].content.split('Initial evidence:\n')[1]);
+    expect(finalEvidence.sources.map((s:any)=>s.citation)).toEqual([1,2,3,4,5,6,7,8,9,10]);
+    expect(finalEvidence.sources[0].metadata).toMatchObject({contextUnknown:true,testState:'unknown',contextRelation:{condition:'choice A only'}});
+    expect(events.filter(e=>e.event==='sources').at(-1)!.data.sources[0].metadata).toHaveProperty('raw');
+  });
+  it('fits oversized critical context without dropping branch conditions from included evidence or renumbering citations',async()=>{
+    const items=Array.from({length:40},(_,i)=>({...source('critical-'+i),documentId:'doc-'+i,text:'文'.repeat(600),metadata:{
+      contextUnknown:true,conditions:'条件'.repeat(900),schemaState:'unmapped',
+    }}));
+    let body:any;
+    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
+      if(String(url).includes('/v1/search'))return search(items);
+      body=JSON.parse(String(init?.body));return upstream([textChunk('在本次可读取的片段范围内说明。[1]','stop')]);
+    }));
+    const events=await collect();
+    expect(events.at(-1)).toMatchObject({event:'done'});
+    expect(body.tools).toBeUndefined();
+    expect(Buffer.byteLength(JSON.stringify(body),'utf8')).toBeLessThanOrEqual(requestByteLimit(request));
+    const evidence=JSON.parse(body.messages[0].content.split('Initial evidence:\n')[1]);
+    expect(evidence.selection).toMatchObject({truncated:true,availableSources:40});
+    expect(evidence.sources.length).toBeGreaterThan(0);expect(evidence.sources.length).toBeLessThan(40);
+    for(const item of evidence.sources){expect(item.metadata.conditions).toBe('条件'.repeat(900));expect(item.metadata.contextUnknown).toBe(true);}
+    expect(evidence.sources.map((s:any)=>s.citation)).toEqual(Array.from({length:evidence.sources.length},(_,i)=>i+1));
+  });
+  it('accounts for both research and forced synthesis usage after a byte-budget fallback',async()=>{
+    let providerCalls=0;const events:ChatEvent[]=[];
+    const items=Array.from({length:10},(_,i)=>({...source('long-'+i),text:'文'.repeat(2400)}));
+    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
+      if(String(url).includes('/v1/search'))return search(items);
+      providerCalls++;const body=JSON.parse(String(init?.body));
+      return body.tools?upstream([{choices:[{delta:{tool_calls:Array.from({length:4},(_,index)=>({index,id:'lookup-'+providerCalls+'-'+index,function:{name:'search_corpus',arguments:'{"query":"继续研究"}'}}))},finish_reason:'tool_calls'}],usage:{prompt_tokens:10,completion_tokens:3}}]):upstream([textChunk('已有原文足以说明。[1]','stop')]);
+    }));
+    const result=await runAgent(request,{key:'private-test-key',signal:new AbortController().signal,emit:e=>events.push(e)});
+    expect(events.at(-1)).toMatchObject({event:'done',data:{usage:{inputTokens:22,outputTokens:9}}});
+    expect(result.usedTokens).toBe(31);expect(providerCalls).toBe(2);
+  });
+  it('does not accept a citation omitted from the final bounded context as supported',async()=>{
+    const items=Array.from({length:40},(_,i)=>({...source('omitted-'+i),text:'文'.repeat(600),metadata:{conditions:'条件'.repeat(900),contextUnknown:true}}));
+    vi.stubGlobal('fetch',vi.fn(async url=>String(url).includes('/v1/search')?search(items):upstream([textChunk('引用了未送入最终上下文的片段[40]','stop')])));
+    const events=await collect();
+    expect(events.at(-1)).toMatchObject({event:'done',data:{citationWarnings:['Unknown citation [40]']}});
+  });
+  it('cancels the forced synthesis request and keeps uncertain final billing unknown',async()=>{
+    const controller=new AbortController();const events:ChatEvent[]=[];let synthesisAborted=false;
+    const items=Array.from({length:10},(_,i)=>({...source('cancel-'+i),text:'文'.repeat(2400)}));
+    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
+      if(String(url).includes('/v1/search'))return search(items);
+      const body=JSON.parse(String(init?.body));
+      if(body.tools)return upstream([{choices:[{delta:{tool_calls:Array.from({length:4},(_,index)=>({index,id:'read-'+index,function:{name:'search_corpus',arguments:'{"query":"更多"}'}}))},finish_reason:'tool_calls'}],usage:{prompt_tokens:10,completion_tokens:3}}]);
+      init?.signal?.addEventListener('abort',()=>{synthesisAborted=true},{once:true});
+      controller.abort();throw new DOMException('aborted','AbortError');
+    }));
+    const result=await runAgent(request,{key:'private-test-key',signal:controller.signal,emit:e=>events.push(e)});
+    expect(synthesisAborted).toBe(true);expect(result.usedTokens).toBeNull();
+    expect(events.some(e=>e.event==='done'||e.event==='error')).toBe(false);
+  });
+});
 
 describe("retrieval-first bounded agent", () => {
   beforeEach(() => {

@@ -1,9 +1,37 @@
 import {describe,it,expect} from 'vitest';
 import {parseSSE,remarkCitations} from '../src/lib/stream';
-import {branchConversation,conversationSnapshot} from '../src/lib/history';
+import {branchConversation,conversationSnapshot,chatMessages,conversationMarkdown} from '../src/lib/history';
 import {contextWarning,branchContextNote} from '../src/lib/i18n';
 import {safePreferences,selectedProvider} from '../src/lib/preferences';
 describe('frontend durable and transport behavior',()=>{
+ it('omits failed and cancelled blank assistants from requests while keeping partial answers and local evidence',()=>{
+  const messages=[
+   {role:'user' as const,content:'first'},
+   {role:'assistant' as const,content:'',error:'Too long',errorCode:'CONTEXT_LIMIT',snapshotId:'s1'},
+   {role:'user' as const,content:'second'},
+   {role:'assistant' as const,content:' \n',errorCode:'CANCELLED'},
+   {role:'user' as const,content:'third'},
+   {role:'assistant' as const,content:'A partial answer',errorCode:'MODEL_STREAM_INCOMPLETE'},
+   {role:'user' as const,content:'continue'},
+  ];
+  expect(chatMessages(messages)).toEqual([
+   {role:'user',content:'first'},{role:'user',content:'second'},{role:'user',content:'third'},
+   {role:'assistant',content:'A partial answer'},{role:'user',content:'continue'},
+  ]);
+  expect(messages).toHaveLength(7);expect(messages[1].errorCode).toBe('CONTEXT_LIMIT');
+  expect(conversationSnapshot({id:'c',title:'first',updatedAt:1,messages})).toBe('s1');
+ });
+ it('exports diagnostic errors with localized text, codes and partial answers',()=>{
+  const conversation={id:'c',title:'first',updatedAt:1,messages:[
+   {role:'user' as const,content:'first'},
+   {role:'assistant' as const,content:'',error:'Unrecognized internal wording',errorCode:'INVALID_REQUEST'},
+   {role:'assistant' as const,content:'Partial answer [1]',error:'Cancelled',errorCode:'CANCELLED'},
+  ]};
+  const zh=conversationMarkdown(conversation,'zh-CN'),en=conversationMarkdown(conversation,'en');
+  expect(zh).toContain('INVALID_REQUEST');expect(zh).toContain('请求内容无效');
+  expect(en).toContain('request is invalid');expect(en).toContain('Generation stopped');
+  expect(zh).toContain('Partial answer [1]');expect(zh).not.toContain('Unrecognized internal wording');
+ });
  it('decodes arbitrary UTF8 and SSE boundaries and stops at done',async()=>{
  const bytes=new TextEncoder().encode('event: text_delta\r\ndata: {"text":"须弥"}\r\n\r\nevent: done\ndata: {"snapshotId":"s","finishReason":"stop"}\n\nevent: text_delta\ndata: {"text":"bad"}\n\n');
  const stream=new ReadableStream<Uint8Array>({start(c){for(const b of bytes)c.enqueue(new Uint8Array([b]));c.close()}});

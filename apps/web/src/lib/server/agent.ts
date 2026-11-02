@@ -354,8 +354,47 @@ function parseToolArgs(call: ToolCall): Record<string, unknown> | null {
 function toolError(code: string) {
   return JSON.stringify({ error: code });
 }
+const modelMetadataKeys = new Set([
+  'kind', 'outline', 'contextUnknown', 'schemaState', 'testState', 'sourceHash',
+  'contextRelation', 'relation', 'conditions', 'condition', 'conditionUnknown',
+  'nextIds', 'series', 'volume', 'speaker', 'branch', 'questId', 'chapterId',
+  'mainId', 'talkId', 'nodeId', 'speakerRole', 'documentGroupId', 'partIndex',
+  'partCount', 'table', 'sourceId', 'characterName', 'materialType', 'equipmentIds',
+  'avatarId', 'bookSuitId',
+]);
+/** Provenance stays in browser citations; the model needs text and interpretive constraints. */
+function modelMetadata(metadata: Source['metadata']) {
+  if (!metadata) return undefined;
+  const result = Object.fromEntries(Object.entries(metadata).filter(([key]) => modelMetadataKeys.has(key)));
+  // The normalizer retains declared quest membership in raw config rows.
+  // Lift only known semantic IDs, never the entire raw/provenance record.
+  if (record(metadata.raw)) {
+    for (const key of ['chapterId', 'mainId', 'questId', 'avatarId', 'bookSuitId']) {
+      const value = metadata.raw[key];
+      if (result[key] === undefined && (typeof value === 'string' || typeof value === 'number')) result[key] = value;
+    }
+  }
+  return result;
+}
+function modelSource(source: Citation, excerptChars = 2400) {
+  const {path: _path, locator: _locator, sourceUrl: _url, metadata, ...content} = source;
+  return {
+    ...content,
+    text: source.text.slice(0, excerptChars),
+    ...(source.text.length > excerptChars ? {textTruncated: true} : {}),
+    metadata: modelMetadata(metadata),
+  };
+}
+/** Apply the same projection to evidence in every tool result, including repeated hits. */
+function modelJson(value: unknown): string {
+  return JSON.stringify(value, (key, item) => {
+    if (key === 'sources' && Array.isArray(item)) return item.map(source => modelSource(source));
+    if (key === 'metadata') return modelMetadata(item);
+    return item;
+  });
+}
 function contextPayload(sources: Citation[]) {
-  return JSON.stringify({ snapshotId: sources[0]?.snapshotId, sources });
+  return modelJson({ snapshotId: sources[0]?.snapshotId, sources });
 }
 
 /** Conservative reference detection: explicit new subjects stay independent. */
@@ -583,37 +622,66 @@ ${contextPayload(evidence.sources)}`,
     // An outline establishes coverage, not enough detail to narrate the arc.
     // Keep the bounded research phase available for its important turns.
     let synthesize = false;
+    let answerSources: Citation[] | undefined;
     const deliberateAnswer = needsNarrativeContext(initialQuery) || input.depth === 'deep';
-    for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
-      const finalRound = synthesize || round === MAX_TOOL_ROUNDS;
-      if (signal.aborted) throw new DOMException("Aborted", "AbortError");
-      emit({ event: "status", data: { stage: "writing" } });
-      const payload = JSON.stringify({
+    const byteLimit = requestByteLimit(input);
+    const buildPayload = (finalRound: boolean, finalSources = evidence.sources, excerptChars = 2400) => {
+      const selected = finalSources.map(source => modelSource(source, excerptChars));
+      const truncated = finalSources.length < evidence.sources.length || selected.some(source => source.textTruncated);
+      return JSON.stringify({
         model: config.model,
         messages: finalRound ? [
-          { role: 'system', content: loreSystemPrompt(input) + `
+          {role:'system', content: loreSystemPrompt(input) + `
 Research is complete. Give the best supported answer to the user now. No more searches or tool calls are available. Do not output research narration or tool syntax.
+If selection.truncated is true, excerpts or sources were omitted to fit this request, not because the corpus lacks evidence. Only cite sources included below; keep all uncertainty and branch conditions.
 Research selections:
-${JSON.stringify(researchSelections)}
+${JSON.stringify(researchSelections.map(selection => ({...selection, query: selection.query.slice(0, 200)})))}
 Context preparation:
-${JSON.stringify(contextReads)}
+${JSON.stringify(contextReads.map(({related: _related, ...read}) => read))}
 Initial evidence:
-${contextPayload(evidence.sources)}` },
+${JSON.stringify({snapshotId: evidence.snapshotId, sources: selected, selection: {availableSources: evidence.sources.length, includedSources: selected.length, truncated}})}`},
           ...input.messages,
         ] : messages,
         stream: true,
-        stream_options: { include_usage: true },
-        ...(config.deepseekExtensions ? { thinking: { type: finalRound && deliberateAnswer ? 'enabled' : 'disabled' } } : {}),
-        ...(finalRound && deliberateAnswer && config.deepseekExtensions ? {reasoning_effort: input.depth === 'deep' ? 'high' : 'low'} : {}),
+        stream_options: {include_usage:true},
+        ...(config.deepseekExtensions ? {thinking:{type: finalRound && deliberateAnswer ? 'enabled' : 'disabled'}} : {}),
+        ...(finalRound && deliberateAnswer && config.deepseekExtensions ? {reasoning_effort:input.depth === 'deep' ? 'high' : 'low'} : {}),
         max_tokens: outputLimit(input.depth, finalRound && deliberateAnswer && config.deepseekExtensions),
-        ...(finalRound ? {} : { tools: toolDefinitions, tool_choice: "auto" }),
+        ...(finalRound ? {} : {tools:toolDefinitions,tool_choice:'auto'}),
       });
-      if (Buffer.byteLength(payload, "utf8") > requestByteLimit(input))
-        throw new AppError(
-          "CONTEXT_LIMIT",
-          "The evidence context reached the request limit. Please narrow your question.",
-          400,
-        );
+    };
+    const synthesisPayload = () => {
+      // Try all sources first, shortening only their excerpts. Never clip a
+      // branch condition or uncertainty field to make a source appear certain.
+      for (const excerptChars of [2400, 1200, 600, 300]) {
+        const payload = buildPayload(true, evidence.sources, excerptChars);
+        if (Buffer.byteLength(payload, 'utf8') <= byteLimit) {
+          answerSources = evidence.sources;
+          return payload;
+        }
+      }
+      // Pathological critical metadata can itself exceed the budget. Keep a
+      // cited subset with whole metadata and explicit omission accounting.
+      for (let count = evidence.sources.length - 1; count > 0; count--) {
+        const payload = buildPayload(true, evidence.sources.slice(0, count), 300);
+        if (Buffer.byteLength(payload, 'utf8') <= byteLimit) {
+          answerSources = evidence.sources.slice(0, count);
+          return payload;
+        }
+      }
+      throw new AppError('CONTEXT_LIMIT', 'The evidence context reached the request limit. Please narrow your question.', 400);
+    };
+    for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+      let finalRound = synthesize || round === MAX_TOOL_ROUNDS;
+      if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+      emit({ event: "status", data: { stage: "writing" } });
+      let payload = finalRound ? synthesisPayload() : buildPayload(false);
+      if (!finalRound && Buffer.byteLength(payload, 'utf8') > byteLimit) {
+        // Research transcripts are expendable; validated evidence is not.
+        // This replaces the next call, staying inside the five-call reservation.
+        finalRound = true;
+        payload = synthesisPayload();
+      }
       dispatched = true;
       unknownBilling = true;
       let response: Response;
@@ -847,7 +915,7 @@ ${contextPayload(evidence.sources)}` },
             args.query.trim() &&
             args.query.length <= 2000
           ) {
-            result = JSON.stringify(await search(args.query, args.types as ContentType[] | undefined));
+            result = modelJson(await search(args.query, args.types as ContentType[] | undefined));
           } else if (
             call.function.name === 'find_documents' &&
             Object.keys(args).every(k => k === 'query' || k === 'type') &&
@@ -863,7 +931,7 @@ ${contextPayload(evidence.sources)}` },
             const documents = evidence.related(detail.items);
             const selection = { query: args.query, ...(type ? { types: [type] } : {}), matchedSources: detail.total, includedSources: documents.length, truncated: documents.length < detail.total };
             researchSelections.push(selection);
-            result = JSON.stringify({ documents, selection, note: 'Document summaries are discovery leads. Read documents for citable evidence.' });
+            result = modelJson({ documents, selection, note: 'Document summaries are discovery leads. Read documents for citable evidence.' });
           } else if (
             call.function.name === "read_source" &&
             Object.keys(args).every((k) => k === "sourceId") &&
@@ -874,7 +942,7 @@ ${contextPayload(evidence.sources)}` },
             else {
               const detail = await readSource(known);
               contextReads.push({ operation: 'read_source', sourceId: known.id, status: 'read', selection: detail.selection });
-              result = JSON.stringify(detail);
+              result = modelJson(detail);
             }
           } else if (
             call.function.name === "read_document" &&
@@ -906,7 +974,7 @@ ${contextPayload(evidence.sources)}` },
               );
               emit(evidence.event());
               contextReads.push({ operation: 'read_document', documentId: known.documentId, status: 'read', selection: documentEvidence.selection });
-              result = JSON.stringify({
+              result = modelJson({
                 snapshotId: evidence.snapshotId,
                 ...documentEvidence,
               });
@@ -932,8 +1000,9 @@ ${contextPayload(evidence.sources)}` },
       const labels = [...aggregate.matchAll(/[\[［](\d+)[\]］]/g)].map((m) =>
         Number(m[1]),
       );
+      const providedCitations = new Set((answerSources ?? evidence.sources).map(source => source.citation));
       const warnings = [
-        ...new Set(labels.filter((n) => n < 1 || n > evidence.sources.length)),
+        ...new Set(labels.filter((n) => !providedCitations.has(n))),
       ].map((n) => `Unknown citation [${n}]`);
       if (evidence.sources.length && aggregate.trim() && !labels.length)
         warnings.push("The answer contains no source citations.");

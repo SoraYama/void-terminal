@@ -1,9 +1,35 @@
 import {test,expect,type Page,type Route} from '@playwright/test';
 import path from 'node:path';
+import {readFile} from 'node:fs/promises';
 const screenshotDir=path.resolve(process.cwd(),'../../artifacts/screenshots');
 const source={id:'s1',documentId:'book-1',title:'Browser fixture · 原文',type:'book',language:'zh-CN',text:'浏览器隔离测试原文：旅行者在须弥寻找知识。',path:'fixtures/book.json',locator:'paragraph:1',sourceUrl:'https://example.com/source',snapshotId:'fixture-snapshot',citation:1};
 const status={ready:true,activeSnapshot:{id:'fixture-snapshot',sourceRepo:'fixture',sourceCommit:'fixture-commit',gameVersion:null,createdAt:'2026-10-28T00:00:00Z',label:'Browser fixture (mock)',state:'ready'},documentCount:1,chunkCount:1,languages:['zh-CN','en'],retrieval:{lexical:true,semantic:false,model:null},coverage:[{type:'book',discovered:1,imported:1,missingText:0,unresolved:0,notes:[]}],provider:{model:'fixture-model',sharedEnabled:true,byok:true}};
 const frame=(event:string,data:unknown)=>`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+test('mock: blank failure recovers on follow-up, restored history and regeneration, and exports diagnostics',async({page})=>{
+ await setup(page);await configure(page);const requests:any[]=[];
+ await page.route('**/api/chat',async r=>{
+  const input=r.request().postDataJSON();requests.push(input);
+  if(requests.length===1)return r.fulfill({contentType:'text/event-stream',body:frame('sources',{sources:[source],snapshotId:'fixture-snapshot'})+frame('error',{code:'CONTEXT_LIMIT',message:'Evidence context reached its limit.',retryable:false})});
+  expect(input.messages.every((m:any)=>m.content.trim())).toBe(true);
+  expect(input.snapshotId).toBe('fixture-snapshot');
+  return r.fulfill({contentType:'text/event-stream',body:frame('text_delta',{text:'追问已正常完成。'})+frame('done',{snapshotId:'fixture-snapshot',finishReason:'stop'})});
+ });
+ await page.getByRole('textbox',{name:'向虚空提问…'}).fill('失败追问回归');await page.getByRole('button',{name:'发送',exact:true}).click();
+ await expect(page.locator('.chat-bottom').getByRole('alert')).toContainText('对话或资料过长');
+ await page.getByRole('textbox',{name:'继续追问…'}).fill('告诉我安娜斯塔夏是谁');await page.getByRole('button',{name:'发送',exact:true}).click();
+ await expect(page.locator('.markdown').last()).toHaveText('追问已正常完成。');
+ expect(requests[1].messages).toEqual([{role:'user',content:'失败追问回归'},{role:'user',content:'告诉我安娜斯塔夏是谁'}]);
+ await expect(page.locator('.message.assistant .citations')).toHaveCount(1);
+ await page.reload();await configure(page);const menu=page.getByRole('button',{name:'Menu',exact:true});if(await menu.isVisible())await menu.click();
+ await page.getByRole('button',{name:'失败追问回归',exact:true}).click();
+ await page.getByRole('textbox',{name:'继续追问…'}).fill('继续讲');await page.getByRole('button',{name:'发送',exact:true}).click();
+ await expect.poll(()=>requests.length).toBe(3);await expect(page.getByRole('button',{name:'停止生成',exact:true})).toHaveCount(0);
+ expect(requests[2].messages).toContainEqual({role:'assistant',content:'追问已正常完成。'});
+ const downloadEvent=page.waitForEvent('download');await page.getByRole('button',{name:'导出',exact:true}).click();const download=await downloadEvent;
+ const text=await readFile((await download.path())!,'utf8');expect(text).toContain('CONTEXT_LIMIT');expect(text).toContain('对话或资料过长');expect(text).toContain('Browser fixture · 原文');
+ await page.getByRole('button',{name:'重新生成',exact:true}).last().click();await expect.poll(()=>requests.length).toBe(4);
+ await expect(page.getByRole('button',{name:'停止生成',exact:true})).toHaveCount(0);
+});
 async function setup(page:Page){
  await page.route('**/api/status',r=>r.fulfill({json:status}));
  await page.route('**/api/models/test',async r=>{expect(r.request().headers()['x-model-api-key']).toBe('browser-test-key');await r.fulfill({json:{ok:true,model:'fixture-model',message:'Mock connection successful'}})});
@@ -132,6 +158,11 @@ test('mock: loading cancellation and provider errors remain explicit',async({pag
  await page.route('**/api/chat',async r=>{requestStarted=true;await new Promise<void>(resolve=>{release=resolve});try{await r.fulfill({contentType:'text/event-stream',body:frame('done',{snapshotId:'fixture-snapshot',finishReason:'stop'})})}catch{}});
  await page.getByRole('textbox',{name:'向虚空提问…'}).fill('取消测试');await page.getByRole('button',{name:'发送',exact:true}).click();await expect.poll(()=>requestStarted).toBe(true);await expect(page.getByRole('button',{name:'停止生成'})).toBeVisible();await page.getByRole('button',{name:'停止生成'}).click();await expect(page.getByText('已停止生成',{exact:true}).first()).toBeVisible();release();
  await page.unroute('**/api/chat');await page.route('**/api/chat',r=>r.fulfill({status:503,json:{error:{code:'UPSTREAM_UNAVAILABLE',message:'Mock provider is unavailable'}}}));await page.getByRole('button',{name:'重新生成',exact:true}).click();await expect(page.locator('.chat-bottom').getByRole('alert')).toHaveText('模型服务暂时不可用，请稍后重试。');
+ await page.unroute('**/api/chat');let followup:any;
+ await page.route('**/api/chat',r=>{followup=r.request().postDataJSON();return r.fulfill({contentType:'text/event-stream',body:frame('text_delta',{text:'停止之后也能继续追问。'})+frame('done',{snapshotId:'fixture-snapshot',finishReason:'stop'})})});
+ await page.getByRole('textbox',{name:'继续追问…'}).fill('停止后继续');await page.getByRole('button',{name:'发送',exact:true}).click();
+ await expect(page.locator('.markdown').last()).toHaveText('停止之后也能继续追问。');
+ expect(followup.messages.every((m:any)=>m.content.trim())).toBe(true);
 });
 test('mock: library filtering, document reading and selected-passage question',async({page},testInfo)=>{
  await setup(page);await library(page);await expect(page.getByRole('heading',{name:source.title})).toBeVisible();await saveScreenshot(page,'library-light',testInfo.project.name);await page.getByRole('textbox',{name:'搜索书籍、任务或关键词…'}).fill('absent');await expect(page.getByRole('heading',{name:'暂无匹配的原文'})).toBeVisible();await page.getByRole('textbox',{name:'搜索书籍、任务或关键词…'}).fill('');await page.getByRole('button',{name:/Browser fixture · 原文/}).click();await expect(page.locator('.reading-text')).toContainText(source.text);

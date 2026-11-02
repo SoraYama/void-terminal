@@ -8,6 +8,7 @@ export class ChatRequestError extends Error {
 // Display text is selected at render time so switching languages also updates
 // errors already received or restored from history.
 const messages:Record<string,[string,string]>={
+ INVALID_REQUEST:['请求内容无效或超过限制，请检查问题后重试。','The request is invalid or exceeds the allowed limits. Check your question and retry.'],
  INVALID_PROVIDER:['模型地址或名称无效，请检查设置。','The model endpoint or name is invalid. Check settings.'],
  PROVIDER_ADDRESS_BLOCKED:['仅支持公网 HTTPS 模型接口，不能访问本站内网或 localhost。','Use a public HTTPS model endpoint; private networks and localhost are unavailable.'],
  NOT_FOUND:['未找到请求的原文，请重新检索或重试。','The requested source could not be found. Search again or retry.'],
