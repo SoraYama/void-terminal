@@ -75,6 +75,7 @@ class CatalogStore:
             if self.postgres:
                 self._execute(db, 'ALTER TABLE chunks ADD COLUMN IF NOT EXISTS source_data TEXT')
                 self._execute(db, 'CREATE INDEX IF NOT EXISTS chunks_embedding_hnsw ON chunks USING hnsw (embedding vector_cosine_ops)')
+                self._execute(db, 'CREATE INDEX IF NOT EXISTS tokens_prefix_lookup ON chunk_tokens(snapshot_id,token text_pattern_ops,chunk_id)')
             elif 'source_data' not in {row['name'] for row in self._execute(db, 'PRAGMA table_info(chunks)').fetchall()}:
                 self._execute(db, 'ALTER TABLE chunks ADD COLUMN source_data TEXT')
 
@@ -301,8 +302,15 @@ class CatalogStore:
                     token_queries.append('SELECT chunk_id FROM ' + token_table + ' WHERE snapshot_id=? AND token IN (' + ','.join('?' for _ in exact) + ')')
                     token_args += [sid] + exact
                 if prefix:
-                    token_queries.append('SELECT chunk_id FROM ' + token_table + ' WHERE snapshot_id=? AND token>=? AND token<?')
-                    token_args += [sid, prefix, prefix + '\uffff']
+                    if self.postgres:
+                        # Locale collation can sort prefix+U+FFFF before its
+                        # extensions. LIKE + text_pattern_ops is prefix-safe
+                        # and indexable without changing database collation.
+                        token_queries.append('SELECT chunk_id FROM ' + token_table + " WHERE snapshot_id=? AND token LIKE ? ESCAPE '!'")
+                        token_args += [sid, prefix.replace('_', '!_') + '%']
+                    else:
+                        token_queries.append('SELECT chunk_id FROM ' + token_table + ' WHERE snapshot_id=? AND token>=? AND token<?')
+                        token_args += [sid, prefix, prefix + '\uffff']
                 if not token_queries:
                     return empty
                 # Sparse candidate IDs first, then verify the literal query only

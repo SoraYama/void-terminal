@@ -166,7 +166,9 @@ cd ../..
 npm run test:e2e
 ```
 
-GitHub Actions 配置了类型、单元、Python、构建和浏览器基础检查。CI 使用独立的 `pgvector/pgvector:pg17` 临时服务，通过 `TEST_POSTGRES_URL` 启用真实 PostgreSQL 快照导入、检索与来源读取测试；公开的 CI 密码只用于该临时数据库。本地未提供该变量时该测试会明确跳过，不以 SQLite 代替。该 CI 配置在首次推送运行前尚未执行，不能据配置声明通过。
+GitHub Actions 配置了类型、单元、Python、构建和浏览器基础检查。CI 使用独立的 `pgvector/pgvector:pg17` 临时服务，通过 `TEST_POSTGRES_URL` 启用真实 PostgreSQL 快照导入、检索、前缀索引与来源读取测试；公开的 CI 密码只用于该临时数据库。本地未提供该变量时 PostgreSQL 测试会明确跳过，不以 SQLite 代替。具体提交是否通过以 GitHub Actions 的实际运行结果为准。
+
+PostgreSQL 原文库的英文前缀检索使用 `LIKE` 与 `text_pattern_ops` 索引，兼容 `en_US.utf8` 等排序规则。升级时启动事务会为已有 `chunk_tokens` 创建 `tokens_prefix_lookup` 索引；大语料库需预留索引磁盘和首次建索引的维护时间。SQLite 不受此变更影响。
 
 测试不使用真实模型密钥，不等于真实数据全量导入、远程模型计费验证或生产验收。完整 Compose 部署、重启、导入与恢复仍需在有 Docker 的机器上演练；开发工作机没有 Docker 时不能声称容器部署已通过。
 

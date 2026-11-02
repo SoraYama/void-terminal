@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS chunks (id TEXT PRIMARY KEY, snapshot_id TEXT NOT NUL
 CREATE INDEX IF NOT EXISTS chunks_document ON chunks(snapshot_id,document_id,ordinal);
 CREATE TABLE IF NOT EXISTS chunk_tokens (snapshot_id TEXT NOT NULL, chunk_id TEXT NOT NULL REFERENCES chunks(id), token TEXT NOT NULL, PRIMARY KEY(snapshot_id,chunk_id,token));
 CREATE INDEX IF NOT EXISTS tokens_covering_lookup ON chunk_tokens(snapshot_id,token,chunk_id);
+CREATE INDEX IF NOT EXISTS tokens_prefix_lookup ON chunk_tokens(snapshot_id,token text_pattern_ops,chunk_id);
 CREATE TABLE IF NOT EXISTS budget_days (day TEXT PRIMARY KEY, charged BIGINT NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS budget_reservations (id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE, identity TEXT NOT NULL, day TEXT NOT NULL REFERENCES budget_days(day), tokens BIGINT NOT NULL, allowed INTEGER NOT NULL, remaining BIGINT NOT NULL, settled INTEGER NOT NULL DEFAULT 0, charged BIGINT NOT NULL);
 
