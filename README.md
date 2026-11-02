@@ -12,7 +12,7 @@
 
 要求 Node.js 24、Python 3.11、uv；Docker 部署另外需要 Docker Engine 与 Compose v2。根目录 npm workspaces 和单一 `package-lock.json` 负责前端依赖；Python 使用 `services/knowledge/uv.lock`。
 
-当前锁文件在 npm mirror 与清华 PyPI 镜像上生成，记录了具体下载地址和完整性哈希。安装机器需要能访问这些地址；切换源时应按组织流程重新生成并审查锁文件，不能仅修改命令行 registry 就假定锁定下载地址已改变。
+npm 锁文件记录了 npm mirror 的下载地址；Python 锁文件使用官方 PyPI / files.pythonhosted.org，并保留具体版本与文件哈希。安装机器需要能访问锁定地址；只修改命令行 registry 不会重写已有下载 URL。
 
 ```sh
 cp .env.example .env
@@ -23,13 +23,13 @@ cd ../..
 bash scripts/dev.sh
 ```
 
-打开 <http://127.0.0.1:3000>。开发脚本只监听 localhost，并启动 8000 端口的知识服务。默认 SQLite 文件为 `data/catalog.sqlite`，适合单机开发和小语料验证；生产使用 PostgreSQL + pgvector，不应把 SQLite 的结果当作生产并发、向量索引或配额事务验证。
+打开 <http://127.0.0.1:3000>。开发脚本只监听 localhost，并启动 8000 端口的知识服务。默认 SQLite 文件为 `data/catalog.sqlite`。低流量、访客自带 Key 的单机部署可使用 `compose.sqlite.yaml` 复用现有快照；需要共享额度、向量索引或更高并发时使用默认的 PostgreSQL + pgvector 配置。SQLite 验证不能代替 PostgreSQL 并发和配额事务验证。
 
 `.env` 由开发脚本读取；单独运行 Python CLI 时，需要自己导出需要的环境变量。不要提交 `.env`、浏览器密钥、数据库、下载语料或模型权重。
 
 ## 生产部署
 
-单台服务器的快捷 HTTPS 方案、现有语料迁移与 Key 隐私说明见 [快速部署指南](docs/deploy-fast.md)。
+单台服务器的快捷 HTTPS 方案、SQLite 完整快照迁移与 Key 隐私说明见 [快速部署指南](docs/deploy-fast.md)。`compose.sqlite.yaml` 独立运行 Web、知识服务和 Caddy，默认关闭共享付费模式与向量模型；下面的命令则使用 PostgreSQL。
 
 ```sh
 cp .env.example .env

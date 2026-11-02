@@ -1,4 +1,4 @@
-> **Last updated**: 2026-10-29 (custom BYOK model endpoints, privacy boundaries and single-server deployment)
+> **Last updated**: 2026-11-02 (Vultr SSH/DNS/HTTPS and standalone full-corpus SQLite deployment)
 
 # Agent Notes
 
@@ -6,12 +6,14 @@
 
 | Note | Summary |
 | --- | --- |
+| [2026-11-02-cloud-cost](research/2026-11-02-cloud-cost.md) | Azure B1ms + disk/IPv4 ~$28.31; OVH FR monthly ~€4.84 with mandatory backup; Hetzner CX23 €5.99 including IPv4; Vultr $10; SQLite 16.736 GiB and missing small-server Compose |
 | [2026-10-28-void-terminal-plan](research/2026-10-28-void-terminal-plan.md) | 原神百科 Agent：数据/RAG/deepseek-flash/双 Key；已选星海旅志 C 与 Docker，总体方案获同意；强视觉诉求要求高保真页面稿先于编码 |
 
 ## Features
 
 | Note | Summary |
 | --- | --- |
+| [2026-11-02-public-deploy](feature/2026-11-02-public-deploy.md) | Vultr SSH alias, Namecheap subdomain, Caddy HTTPS, private services, SQLite full snapshot and official PyPI lock URLs; runtime verification boundaries |
 | [2026-10-28-void-terminal](feature/2026-10-28-void-terminal.md) | 经批准的须弥视觉站点、流式 Agent、真实全量来源、双 Key、快照与 Docker；实施与验证边界 |
 | [2026-10-28-knowledge-service](feature/2026-10-28-knowledge-service.md) | 知识库、快照、中文检索、引用定位和共享额度事务；记录本地与生产验证边界 |
 | [2026-10-29-model-provider](feature/2026-10-29-model-provider.md) | Settings Base URL/model, BYOK-only overrides, pinned public DNS transport, shared-key isolation, memory-only Key, stale test protection and Caddy runtime-log filtering |

@@ -1,0 +1,79 @@
+# Low-traffic deployment using an existing, verified SQLite snapshot.
+# This is standalone: docker compose -f compose.sqlite.yaml ...
+name: void-terminal
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+services:
+  knowledge:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.knowledge
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: sqlite:////data/catalog.sqlite
+      KNOWLEDGE_API_TOKEN: ${KNOWLEDGE_API_TOKEN:?Set KNOWLEDGE_API_TOKEN in .env}
+      SHARED_DAILY_TOKEN_BUDGET: '0'
+      EMBEDDING_ENABLED: 'false'
+    volumes:
+      - type: bind
+        source: ${CATALOG_DATA_DIR:-./data}
+        target: /data
+        bind:
+          create_host_path: false
+    # Liveness only. Verify /api/status and actual retrieval before publishing;
+    # repeatedly counting the full corpus is too expensive for a health probe.
+    healthcheck:
+      test: [CMD, python, -c, 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/openapi.json",timeout=5)']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging: *logging
+    restart: unless-stopped
+  web:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.web
+    environment:
+      KNOWLEDGE_URL: http://knowledge:8000
+      KNOWLEDGE_API_TOKEN: ${KNOWLEDGE_API_TOKEN:?Set KNOWLEDGE_API_TOKEN in .env}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_ALLOWED_BASE_URLS: ${DEEPSEEK_ALLOWED_BASE_URLS:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-flash}
+      SHARED_MODE_ENABLED: 'false'
+      PUBLIC_APP_ORIGIN: https://${SITE_DOMAIN:?Set SITE_DOMAIN to a bare public hostname}
+      TRUST_PROXY: 'true'
+    depends_on:
+      knowledge:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, 'fetch("http://127.0.0.1:3000/").then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging: *logging
+    restart: unless-stopped
+  caddy:
+    image: caddy:2
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:?Set SITE_DOMAIN to a bare public hostname}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+    logging: *logging
+    restart: unless-stopped
+volumes:
+  caddy_data:
+  caddy_config:
