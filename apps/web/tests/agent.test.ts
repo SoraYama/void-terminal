@@ -1,6 +1,8 @@
+import { stubFetch } from "./helpers/model-fetch";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runAgent } from "../src/lib/server/agent";
-import {requestByteLimit} from '../src/lib/server/config';
+import * as dsh from "../src/lib/server/dsh-runtime";
+import { requestByteLimit } from "../src/lib/server/config";
 import type { ChatEvent, ChatRequest, Source } from "../src/lib/contracts";
 
 const source = (id = "a", language = "zh-CN", snapshotId = "s1") =>
@@ -60,103 +62,356 @@ const collect = async (input = request) => {
   return events;
 };
 
-describe('context-budget recovery',()=>{
-  beforeEach(()=>{vi.unstubAllEnvs();vi.stubEnv('DEEPSEEK_BASE_URL','https://api.deepseek.com');});
-  it('preserves chapter membership, graph identity and multipart book order from normalized records',async()=>{
-    const items=[
-      {...source('quest'),metadata:{table:'MainQuest',sourceId:'13001',raw:{id:13001,chapterId:1302,mainId:13000,avatarId:10000001,bookSuitId:5,irrelevantRaw:'INCIDENTAL_RAW_FIELD'}}},
-      {...source('dialogue'),type:'dialogue',metadata:{talkId:'talk-7',nodeId:41,nextIds:[42],speakerRole:'ROLE_NPC',conditions:{quest:13001}}},
-      {...source('book'),type:'book',metadata:{documentGroupId:'book-12',partIndex:2,partCount:3,series:'故事集',volume:1}},
-    ] as Source[];
-    let body:any;
-    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
-      if(String(url).includes('/v1/search'))return search(items);
-      body=JSON.parse(String(init?.body));return upstream([textChunk('分属相应章节、节点与卷册。[1][2][3]','stop')]);
-    }));
-    const events=await collect();expect(events.at(-1)).toMatchObject({event:'done'});
-    const sources=JSON.parse(body.messages[0].content.split('Initial evidence:\n')[1]).sources;
-    expect(sources[0].metadata).toMatchObject({table:'MainQuest',sourceId:'13001',chapterId:1302,mainId:13000,avatarId:10000001,bookSuitId:5});
-    expect(sources[1].metadata).toMatchObject({talkId:'talk-7',nodeId:41,nextIds:[42],speakerRole:'ROLE_NPC',conditions:{quest:13001}});
-    expect(sources[2].metadata).toMatchObject({documentGroupId:'book-12',partIndex:2,partCount:3,series:'故事集',volume:1});
-    expect(JSON.stringify(body)).not.toContain('INCIDENTAL_RAW_FIELD');
+describe("context-budget recovery", () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+    vi.stubEnv("DEEPSEEK_BASE_URL", "https://api.deepseek.com");
   });
-  it('answers after repeated long research, omitting incidental provenance while preserving sources and history',async()=>{
-    const input:ChatRequest={...request,messages:[{role:'user',content:'之前的问题'},{role:'assistant',content:'旧'.repeat(6000)},...request.messages]};
-    const items=Array.from({length:10},(_,i)=>({...source('large-'+i),documentId:'doc-'+i,text:'剧情'.repeat(1100),metadata:{
-      raw:'INCIDENTAL_PROVENANCE_'+ '噪'.repeat(1850),resolvedFields:'噪'.repeat(1900),
-      contextUnknown:true,testState:'unknown',contextRelation:{kind:'next',condition:'choice A only'},
-    }}));
-    const bodies:any[]=[];
-    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
-      if(String(url).includes('/v1/search'))return search(items);
-      const body=JSON.parse(String(init?.body));bodies.push(body);
-      if(!body.tools)return upstream([textChunk('根据现有原文继续说明。[1][10]','stop')]);
-      return upstream([{choices:[{delta:{tool_calls:Array.from({length:4},(_,index)=>({index,id:'repeat-'+bodies.length+'-'+index,function:{name:'search_corpus',arguments:'{"query":"更多剧情"}'}}))},finish_reason:'tool_calls'}],usage:{prompt_tokens:12,completion_tokens:6}}]);
-    }));
-    const events=await collect(input);
-    expect(events.at(-1)).toMatchObject({event:'done'});
-    expect(events.filter(e=>e.event==='text_delta').map(e=>e.data.text).join('')).toBe('根据现有原文继续说明。[1][10]');
-    expect(bodies.length).toBeLessThanOrEqual(5);expect(bodies.at(-1).tools).toBeUndefined();
-    for(const body of bodies){
-      expect(Buffer.byteLength(JSON.stringify(body),'utf8')).toBeLessThanOrEqual(requestByteLimit(input));
-      expect(body.messages).toEqual(expect.arrayContaining(input.messages));
-      expect(JSON.stringify(body)).not.toContain('INCIDENTAL_PROVENANCE_');
+  it("uses the official DSH runtime for an evidence-grounded answer", async () => {
+    const runtime = vi.spyOn(dsh, "runDshResearch");
+    stubFetch(
+      vi.fn(async (url) =>
+        String(url).includes("/v1/search")
+          ? search()
+          : upstream([textChunk("根据原文回答。[1]", "stop")]),
+      ),
+    );
+    try {
+      const events = await collect();
+      expect(events.at(-1)).toMatchObject({ event: "done" });
+      expect(runtime).toHaveBeenCalledOnce();
+    } finally {
+      runtime.mockRestore();
     }
-    const finalEvidence=JSON.parse(bodies.at(-1).messages[0].content.split('Initial evidence:\n')[1]);
-    expect(finalEvidence.sources.map((s:any)=>s.citation)).toEqual([1,2,3,4,5,6,7,8,9,10]);
-    expect(finalEvidence.sources[0].metadata).toMatchObject({contextUnknown:true,testState:'unknown',contextRelation:{condition:'choice A only'}});
-    expect(events.filter(e=>e.event==='sources').at(-1)!.data.sources[0].metadata).toHaveProperty('raw');
   });
-  it('fits oversized critical context without dropping branch conditions from included evidence or renumbering citations',async()=>{
-    const items=Array.from({length:40},(_,i)=>({...source('critical-'+i),documentId:'doc-'+i,text:'文'.repeat(600),metadata:{
-      contextUnknown:true,conditions:'条件'.repeat(900),schemaState:'unmapped',
-    }}));
-    let body:any;
-    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
-      if(String(url).includes('/v1/search'))return search(items);
-      body=JSON.parse(String(init?.body));return upstream([textChunk('在本次可读取的片段范围内说明。[1]','stop')]);
+  it("preserves chapter membership, graph identity and multipart book order from normalized records", async () => {
+    const items = [
+      {
+        ...source("quest"),
+        metadata: {
+          table: "MainQuest",
+          sourceId: "13001",
+          raw: {
+            id: 13001,
+            chapterId: 1302,
+            mainId: 13000,
+            avatarId: 10000001,
+            bookSuitId: 5,
+            irrelevantRaw: "INCIDENTAL_RAW_FIELD",
+          },
+        },
+      },
+      {
+        ...source("dialogue"),
+        type: "dialogue",
+        metadata: {
+          talkId: "talk-7",
+          nodeId: 41,
+          nextIds: [42],
+          speakerRole: "ROLE_NPC",
+          conditions: { quest: 13001 },
+        },
+      },
+      {
+        ...source("book"),
+        type: "book",
+        metadata: {
+          documentGroupId: "book-12",
+          partIndex: 2,
+          partCount: 3,
+          series: "故事集",
+          volume: 1,
+        },
+      },
+    ] as Source[];
+    let body: any;
+    stubFetch(
+      vi.fn(async (url, init) => {
+        if (String(url).includes("/v1/search")) return search(items);
+        body = JSON.parse(String(init?.body));
+        return upstream([
+          textChunk("分属相应章节、节点与卷册。[1][2][3]", "stop"),
+        ]);
+      }),
+    );
+    const events = await collect();
+    expect(events.at(-1)).toMatchObject({ event: "done" });
+    const sources = JSON.parse(
+      body.messages[0].content.split("Initial evidence:\n")[1],
+    ).sources;
+    expect(sources[0].metadata).toMatchObject({
+      table: "MainQuest",
+      sourceId: "13001",
+      chapterId: 1302,
+      mainId: 13000,
+      avatarId: 10000001,
+      bookSuitId: 5,
+    });
+    expect(sources[1].metadata).toMatchObject({
+      talkId: "talk-7",
+      nodeId: 41,
+      nextIds: [42],
+      speakerRole: "ROLE_NPC",
+      conditions: { quest: 13001 },
+    });
+    expect(sources[2].metadata).toMatchObject({
+      documentGroupId: "book-12",
+      partIndex: 2,
+      partCount: 3,
+      series: "故事集",
+      volume: 1,
+    });
+    expect(JSON.stringify(body)).not.toContain("INCIDENTAL_RAW_FIELD");
+  });
+  it("answers after repeated long research, omitting incidental provenance while preserving sources and history", async () => {
+    const input: ChatRequest = {
+      ...request,
+      messages: [
+        { role: "user", content: "之前的问题" },
+        { role: "assistant", content: "旧".repeat(6000) },
+        ...request.messages,
+      ],
+    };
+    const items = Array.from({ length: 10 }, (_, i) => ({
+      ...source("large-" + i),
+      documentId: "doc-" + i,
+      text: "剧情".repeat(1100),
+      metadata: {
+        raw: "INCIDENTAL_PROVENANCE_" + "噪".repeat(1850),
+        resolvedFields: "噪".repeat(1900),
+        contextUnknown: true,
+        testState: "unknown",
+        contextRelation: { kind: "next", condition: "choice A only" },
+      },
     }));
-    const events=await collect();
-    expect(events.at(-1)).toMatchObject({event:'done'});
+    const bodies: any[] = [];
+    stubFetch(
+      vi.fn(async (url, init) => {
+        if (String(url).includes("/v1/search")) return search(items);
+        const body = JSON.parse(String(init?.body));
+        bodies.push(body);
+        if (!body.tools)
+          return upstream([textChunk("根据现有原文继续说明。[1][10]", "stop")]);
+        return upstream([
+          {
+            choices: [
+              {
+                delta: {
+                  tool_calls: Array.from({ length: 4 }, (_, index) => ({
+                    index,
+                    id: "repeat-" + bodies.length + "-" + index,
+                    function: {
+                      name: "search_corpus",
+                      arguments: '{"query":"更多剧情"}',
+                    },
+                  })),
+                },
+                finish_reason: "tool_calls",
+              },
+            ],
+            usage: { prompt_tokens: 12, completion_tokens: 6 },
+          },
+        ]);
+      }),
+    );
+    const events = await collect(input);
+    expect(events.at(-1)).toMatchObject({ event: "done" });
+    expect(
+      events
+        .filter((e) => e.event === "text_delta")
+        .map((e) => e.data.text)
+        .join(""),
+    ).toBe("根据现有原文继续说明。[1][10]");
+    expect(bodies.length).toBeLessThanOrEqual(5);
+    expect(bodies.at(-1).tools).toBeUndefined();
+    for (const body of bodies) {
+      expect(
+        Buffer.byteLength(JSON.stringify(body), "utf8"),
+      ).toBeLessThanOrEqual(requestByteLimit(input));
+      expect(body.messages).toEqual(expect.arrayContaining(input.messages));
+      expect(JSON.stringify(body)).not.toContain("INCIDENTAL_PROVENANCE_");
+    }
+    const finalEvidence = JSON.parse(
+      bodies.at(-1).messages[0].content.split("Initial evidence:\n")[1],
+    );
+    expect(finalEvidence.sources.map((s: any) => s.citation)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+    ]);
+    expect(finalEvidence.sources[0].metadata).toMatchObject({
+      contextUnknown: true,
+      testState: "unknown",
+      contextRelation: { condition: "choice A only" },
+    });
+    expect(
+      events.filter((e) => e.event === "sources").at(-1)!.data.sources[0]
+        .metadata,
+    ).toHaveProperty("raw");
+  });
+  it("fits oversized critical context without dropping branch conditions from included evidence or renumbering citations", async () => {
+    const items = Array.from({ length: 40 }, (_, i) => ({
+      ...source("critical-" + i),
+      documentId: "doc-" + i,
+      text: "文".repeat(600),
+      metadata: {
+        contextUnknown: true,
+        conditions: "条件".repeat(900),
+        schemaState: "unmapped",
+      },
+    }));
+    let body: any;
+    stubFetch(
+      vi.fn(async (url, init) => {
+        if (String(url).includes("/v1/search")) return search(items);
+        body = JSON.parse(String(init?.body));
+        return upstream([
+          textChunk("在本次可读取的片段范围内说明。[1]", "stop"),
+        ]);
+      }),
+    );
+    const events = await collect();
+    expect(events.at(-1)).toMatchObject({ event: "done" });
     expect(body.tools).toBeUndefined();
-    expect(Buffer.byteLength(JSON.stringify(body),'utf8')).toBeLessThanOrEqual(requestByteLimit(request));
-    const evidence=JSON.parse(body.messages[0].content.split('Initial evidence:\n')[1]);
-    expect(evidence.selection).toMatchObject({truncated:true,availableSources:40});
-    expect(evidence.sources.length).toBeGreaterThan(0);expect(evidence.sources.length).toBeLessThan(40);
-    for(const item of evidence.sources){expect(item.metadata.conditions).toBe('条件'.repeat(900));expect(item.metadata.contextUnknown).toBe(true);}
-    expect(evidence.sources.map((s:any)=>s.citation)).toEqual(Array.from({length:evidence.sources.length},(_,i)=>i+1));
+    expect(Buffer.byteLength(JSON.stringify(body), "utf8")).toBeLessThanOrEqual(
+      requestByteLimit(request),
+    );
+    const evidence = JSON.parse(
+      body.messages[0].content.split("Initial evidence:\n")[1],
+    );
+    expect(evidence.selection).toMatchObject({
+      truncated: true,
+      availableSources: 40,
+    });
+    expect(evidence.sources.length).toBeGreaterThan(0);
+    expect(evidence.sources.length).toBeLessThan(40);
+    for (const item of evidence.sources) {
+      expect(item.metadata.conditions).toBe("条件".repeat(900));
+      expect(item.metadata.contextUnknown).toBe(true);
+    }
+    expect(evidence.sources.map((s: any) => s.citation)).toEqual(
+      Array.from({ length: evidence.sources.length }, (_, i) => i + 1),
+    );
   });
-  it('accounts for both research and forced synthesis usage after a byte-budget fallback',async()=>{
-    let providerCalls=0;const events:ChatEvent[]=[];
-    const items=Array.from({length:10},(_,i)=>({...source('long-'+i),text:'文'.repeat(2400)}));
-    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
-      if(String(url).includes('/v1/search'))return search(items);
-      providerCalls++;const body=JSON.parse(String(init?.body));
-      return body.tools?upstream([{choices:[{delta:{tool_calls:Array.from({length:4},(_,index)=>({index,id:'lookup-'+providerCalls+'-'+index,function:{name:'search_corpus',arguments:'{"query":"继续研究"}'}}))},finish_reason:'tool_calls'}],usage:{prompt_tokens:10,completion_tokens:3}}]):upstream([textChunk('已有原文足以说明。[1]','stop')]);
+  it("accounts for both research and forced synthesis usage after a byte-budget fallback", async () => {
+    let providerCalls = 0;
+    const events: ChatEvent[] = [];
+    const items = Array.from({ length: 10 }, (_, i) => ({
+      ...source("long-" + i),
+      text: "文".repeat(2400),
     }));
-    const result=await runAgent(request,{key:'private-test-key',signal:new AbortController().signal,emit:e=>events.push(e)});
-    expect(events.at(-1)).toMatchObject({event:'done',data:{usage:{inputTokens:22,outputTokens:9}}});
-    expect(result.usedTokens).toBe(31);expect(providerCalls).toBe(2);
+    stubFetch(
+      vi.fn(async (url, init) => {
+        if (String(url).includes("/v1/search")) return search(items);
+        providerCalls++;
+        const body = JSON.parse(String(init?.body));
+        return body.tools
+          ? upstream([
+              {
+                choices: [
+                  {
+                    delta: {
+                      tool_calls: Array.from({ length: 4 }, (_, index) => ({
+                        index,
+                        id: "lookup-" + providerCalls + "-" + index,
+                        function: {
+                          name: "search_corpus",
+                          arguments: '{"query":"继续研究"}',
+                        },
+                      })),
+                    },
+                    finish_reason: "tool_calls",
+                  },
+                ],
+                usage: { prompt_tokens: 10, completion_tokens: 3 },
+              },
+            ])
+          : upstream([textChunk("已有原文足以说明。[1]", "stop")]);
+      }),
+    );
+    const result = await runAgent(request, {
+      key: "private-test-key",
+      signal: new AbortController().signal,
+      emit: (e) => events.push(e),
+    });
+    expect(events.at(-1)).toMatchObject({
+      event: "done",
+      data: { usage: { inputTokens: 22, outputTokens: 9 } },
+    });
+    expect(result.usedTokens).toBe(31);
+    expect(providerCalls).toBe(2);
   });
-  it('does not accept a citation omitted from the final bounded context as supported',async()=>{
-    const items=Array.from({length:40},(_,i)=>({...source('omitted-'+i),text:'文'.repeat(600),metadata:{conditions:'条件'.repeat(900),contextUnknown:true}}));
-    vi.stubGlobal('fetch',vi.fn(async url=>String(url).includes('/v1/search')?search(items):upstream([textChunk('引用了未送入最终上下文的片段[40]','stop')])));
-    const events=await collect();
-    expect(events.at(-1)).toMatchObject({event:'done',data:{citationWarnings:['Unknown citation [40]']}});
-  });
-  it('cancels the forced synthesis request and keeps uncertain final billing unknown',async()=>{
-    const controller=new AbortController();const events:ChatEvent[]=[];let synthesisAborted=false;
-    const items=Array.from({length:10},(_,i)=>({...source('cancel-'+i),text:'文'.repeat(2400)}));
-    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
-      if(String(url).includes('/v1/search'))return search(items);
-      const body=JSON.parse(String(init?.body));
-      if(body.tools)return upstream([{choices:[{delta:{tool_calls:Array.from({length:4},(_,index)=>({index,id:'read-'+index,function:{name:'search_corpus',arguments:'{"query":"更多"}'}}))},finish_reason:'tool_calls'}],usage:{prompt_tokens:10,completion_tokens:3}}]);
-      init?.signal?.addEventListener('abort',()=>{synthesisAborted=true},{once:true});
-      controller.abort();throw new DOMException('aborted','AbortError');
+  it("does not accept a citation omitted from the final bounded context as supported", async () => {
+    const items = Array.from({ length: 40 }, (_, i) => ({
+      ...source("omitted-" + i),
+      text: "文".repeat(600),
+      metadata: { conditions: "条件".repeat(900), contextUnknown: true },
     }));
-    const result=await runAgent(request,{key:'private-test-key',signal:controller.signal,emit:e=>events.push(e)});
-    expect(synthesisAborted).toBe(true);expect(result.usedTokens).toBeNull();
-    expect(events.some(e=>e.event==='done'||e.event==='error')).toBe(false);
+    stubFetch(
+      vi.fn(async (url) =>
+        String(url).includes("/v1/search")
+          ? search(items)
+          : upstream([textChunk("引用了未送入最终上下文的片段[40]", "stop")]),
+      ),
+    );
+    const events = await collect();
+    expect(events.at(-1)).toMatchObject({
+      event: "done",
+      data: { citationWarnings: ["Unknown citation [40]"] },
+    });
+  });
+  it("cancels the forced synthesis request and keeps uncertain final billing unknown", async () => {
+    const controller = new AbortController();
+    const events: ChatEvent[] = [];
+    let synthesisAborted = false;
+    const items = Array.from({ length: 10 }, (_, i) => ({
+      ...source("cancel-" + i),
+      text: "文".repeat(2400),
+    }));
+    stubFetch(
+      vi.fn(async (url, init) => {
+        if (String(url).includes("/v1/search")) return search(items);
+        const body = JSON.parse(String(init?.body));
+        if (body.tools)
+          return upstream([
+            {
+              choices: [
+                {
+                  delta: {
+                    tool_calls: Array.from({ length: 4 }, (_, index) => ({
+                      index,
+                      id: "read-" + index,
+                      function: {
+                        name: "search_corpus",
+                        arguments: '{"query":"更多"}',
+                      },
+                    })),
+                  },
+                  finish_reason: "tool_calls",
+                },
+              ],
+              usage: { prompt_tokens: 10, completion_tokens: 3 },
+            },
+          ]);
+        init?.signal?.addEventListener(
+          "abort",
+          () => {
+            synthesisAborted = true;
+          },
+          { once: true },
+        );
+        controller.abort();
+        throw new DOMException("aborted", "AbortError");
+      }),
+    );
+    const result = await runAgent(request, {
+      key: "private-test-key",
+      signal: controller.signal,
+      emit: (e) => events.push(e),
+    });
+    expect(synthesisAborted).toBe(true);
+    expect(result.usedTokens).toBeNull();
+    expect(events.some((e) => e.event === "done" || e.event === "error")).toBe(
+      false,
+    );
   });
 });
 
@@ -167,8 +422,7 @@ describe("retrieval-first bounded agent", () => {
   });
   it("retrieves before provider, preserves UTF8, pins snapshot and emits safe cumulative citations", async () => {
     const requests: { url: string; body: any }[] = [];
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url, init) => {
         requests.push({
           url: String(url),
@@ -202,8 +456,7 @@ describe("retrieval-first bounded agent", () => {
   it("assembles multiple interleaved tool deltas and only reads known source ids", async () => {
     let calls = 0;
     const paths: string[] = [];
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url) => {
         paths.push(String(url));
         if (String(url).includes("/v1/search")) return search();
@@ -274,7 +527,7 @@ describe("retrieval-first bounded agent", () => {
   });
   it("does not call provider when retrieval is empty", async () => {
     const fetcher = vi.fn(async () => search([]));
-    vi.stubGlobal("fetch", fetcher);
+    stubFetch(fetcher);
     const events = await collect();
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(events.at(-1)).toMatchObject({
@@ -284,8 +537,7 @@ describe("retrieval-first bounded agent", () => {
     expect(events.some((e) => e.event === "text_delta")).toBe(true);
   });
   it("fails closed on an unavailable knowledge service and never leaks upstream errors or key", async () => {
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(
         async () =>
           new Response("private-test-key stack exception", { status: 503 }),
@@ -299,10 +551,7 @@ describe("retrieval-first bounded agent", () => {
     expect(JSON.stringify(events)).not.toContain("private-test-key");
   });
   it("rejects sources with a different requested language or snapshot", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => search([source("bad", "en")])),
-    );
+    stubFetch(vi.fn(async () => search([source("bad", "en")])));
     const events = await collect();
     expect(events.at(-1)).toMatchObject({
       event: "error",
@@ -311,8 +560,7 @@ describe("retrieval-first bounded agent", () => {
   });
   it("stops after four tool rounds plus one final provider call", async () => {
     let calls = 0;
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url) => {
         if (String(url).includes("/v1/search")) return search();
         calls++;
@@ -350,8 +598,7 @@ describe("retrieval-first bounded agent", () => {
   it("aborts provider consumption and reports unknown billing on cancellation", async () => {
     const controller = new AbortController();
     let aborted = false;
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url, init) => {
         if (String(url).includes("/v1/search")) return search();
         init?.signal?.addEventListener("abort", () => {
@@ -372,8 +619,7 @@ describe("retrieval-first bounded agent", () => {
     expect(events.some((e) => e.event === "done")).toBe(false);
   });
   it("reports unknown citation labels instead of presenting them as supported", async () => {
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url) =>
         String(url).includes("/v1/search")
           ? search()
@@ -388,8 +634,7 @@ describe("retrieval-first bounded agent", () => {
   });
   it("retains unknown billing from an earlier tool round even if the final round reports usage", async () => {
     let calls = 0;
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url) => {
         if (String(url).includes("/v1/search")) return search();
         calls++;
@@ -429,8 +674,7 @@ describe("retrieval-first bounded agent", () => {
   });
   it("preserves dialogue branch and book volume metadata in model evidence", async () => {
     let providerBody = "";
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url, init) => {
         if (String(url).includes("/v1/search"))
           return search([
@@ -454,8 +698,7 @@ describe("retrieval-first bounded agent", () => {
   });
   it("bounds initial retrieval query to the knowledge service maximum", async () => {
     let query = "";
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (_url, init) => {
         query = JSON.parse(String(init?.body)).query;
         return search([]);
@@ -471,8 +714,7 @@ describe("retrieval-first bounded agent", () => {
     let rounds = 0;
     let lastPayload = "";
     const ids: string[] = [];
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url, init) => {
         const path = String(url);
         if (path.includes("/v1/search")) return search();
@@ -540,8 +782,7 @@ describe("retrieval-first bounded agent", () => {
     let streamCancelled = false;
     let started!: () => void;
     const ready = new Promise<void>((resolve) => (started = resolve));
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url) => {
         if (String(url).includes("/v1/search")) return search();
         return new Response(
@@ -580,8 +821,7 @@ describe("retrieval-first bounded agent", () => {
   it("pins follow-up retrieval to the initial snapshot even when the active snapshot could change", async () => {
     let round = 0;
     const snapshots: string[] = [];
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url, init) => {
         if (String(url).includes("/v1/search")) {
           snapshots.push(JSON.parse(String(init?.body)).snapshotId);
@@ -618,8 +858,7 @@ describe("retrieval-first bounded agent", () => {
     expect(snapshots).toEqual([undefined, "s1"]);
   });
   it("treats an unterminated upstream stream as incomplete rather than successful", async () => {
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url) =>
         String(url).includes("/v1/search")
           ? search()
@@ -636,8 +875,7 @@ describe("retrieval-first bounded agent", () => {
     });
   });
   it("returns a masked authentication error for an invalid upstream key", async () => {
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url) =>
         String(url).includes("/v1/search")
           ? search()
@@ -654,8 +892,7 @@ describe("retrieval-first bounded agent", () => {
     expect(JSON.stringify(events)).not.toContain("private-test-key");
   });
   it("reports an explicitly unavailable corpus instead of fabricating sources", async () => {
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async () =>
         Response.json({
           sources: [],
@@ -672,10 +909,7 @@ describe("retrieval-first bounded agent", () => {
     });
   });
   it("enforces explicit snapshot matching on returned evidence", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => search([source("a", "zh-CN", "s2")])),
-    );
+    stubFetch(vi.fn(async () => search([source("a", "zh-CN", "s2")])));
     const events = await collect({ ...request, snapshotId: "s1" });
     expect(events.at(-1)).toMatchObject({
       event: "error",
@@ -685,8 +919,7 @@ describe("retrieval-first bounded agent", () => {
   it("returns already registered citations in a follow-up search result without renumbering", async () => {
     let round = 0;
     let lastBody: any;
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url, init) => {
         if (String(url).includes("/v1/search")) return search();
         round++;
@@ -731,8 +964,7 @@ describe("retrieval-first bounded agent", () => {
     }));
     let round = 0;
     let result: any;
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url, init) => {
         if (String(url).includes("/v1/search")) return search([chunks[80]]);
         if (String(url).includes("/v1/documents/"))
@@ -791,8 +1023,7 @@ describe("retrieval-first bounded agent", () => {
   });
   it("instructs the provider to preserve unknown context and canon state for unmapped TextMap evidence", async () => {
     let instruction = "";
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url, init) => {
         if (String(url).includes("/v1/search"))
           return search([
@@ -827,8 +1058,7 @@ describe("retrieval-first bounded agent", () => {
         "filler",
       ]),
     );
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url, init) => {
         if (String(url).includes("/v1/search"))
           return search([
@@ -871,8 +1101,7 @@ describe("retrieval-first bounded agent", () => {
   it("answers in the UI language while retrieving and quoting the selected source language", async () => {
     const queries: any[] = [];
     let prompt = "";
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url, init) => {
         if (String(url).includes("/v1/search")) {
           queries.push(JSON.parse(String(init?.body)));
@@ -895,8 +1124,7 @@ describe("retrieval-first bounded agent", () => {
   });
   it("uses answer language for no-evidence feedback without changing retrieval language", async () => {
     let retrievalLanguage = "";
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (_url, init) => {
         retrievalLanguage = JSON.parse(String(init?.body)).language;
         return search([]);
@@ -926,8 +1154,7 @@ describe("retrieval-first bounded agent", () => {
     async (followup) => {
       let query = "";
       let modelCalls = 0;
-      vi.stubGlobal(
-        "fetch",
+      stubFetch(
         vi.fn(async (url, init) => {
           if (String(url).includes("/v1/search")) {
             query = JSON.parse(String(init?.body)).query;
@@ -935,7 +1162,12 @@ describe("retrieval-first bounded agent", () => {
               ? search([{ ...source("nahida"), title: "纳西妲" }])
               : search([]);
           }
-          if (String(url).includes("/v1/sources/")) return Response.json({source: {...source("nahida"), title: "纳西妲"}, context: [], related: []});
+          if (String(url).includes("/v1/sources/"))
+            return Response.json({
+              source: { ...source("nahida"), title: "纳西妲" },
+              context: [],
+              related: [],
+            });
           modelCalls++;
           return upstream([textChunk("有来源的追问回答[1]", "stop")]);
         }),
@@ -953,7 +1185,15 @@ describe("retrieval-first bounded agent", () => {
       expect(query).toContain("纳西妲是谁");
       expect(query).toContain(followup);
       expect(query).not.toContain("ASSISTANT_UNSUPPORTED_CLAIM");
-      expect(modelCalls).toBe(['那后来发生什么？','What happened next?','那她为什么这样？'].includes(followup) ? 2 : 1);
+      expect(modelCalls).toBe(
+        [
+          "那后来发生什么？",
+          "What happened next?",
+          "那她为什么这样？",
+        ].includes(followup)
+          ? 2
+          : 1,
+      );
       expect(events.at(-1)).toMatchObject({
         event: "done",
         data: { finishReason: "stop", snapshotId: "s1" },
@@ -962,8 +1202,7 @@ describe("retrieval-first bounded agent", () => {
   );
   it("retains the nearest explicit topic through short follow-up chains and excludes older topics", async () => {
     let query = "";
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (_url, init) => {
         query = JSON.parse(String(init?.body)).query;
         return search([]);
@@ -990,8 +1229,7 @@ describe("retrieval-first bounded agent", () => {
     "keeps a self-contained new topic independent of earlier user questions: %s",
     async (topic) => {
       let query = "";
-      vi.stubGlobal(
-        "fetch",
+      stubFetch(
         vi.fn(async (_url, init) => {
           query = JSON.parse(String(init?.body)).query;
           return search([]);
@@ -1011,8 +1249,7 @@ describe("retrieval-first bounded agent", () => {
   it("does not dispatch a model when history-aware retrieval still has no actual evidence", async () => {
     const urls: string[] = [];
     let query = "";
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url, init) => {
         urls.push(String(url));
         query = JSON.parse(String(init?.body)).query;
@@ -1042,8 +1279,7 @@ describe("retrieval-first bounded agent", () => {
     const controller = new AbortController();
     let modelCalls = 0;
     let aborted = false;
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url, init) => {
         if (String(url).includes("/v1/search")) {
           expect(init?.signal).toBeInstanceOf(AbortSignal);
@@ -1102,8 +1338,7 @@ describe("retrieval-first bounded agent", () => {
     let body: any;
     let aborted = false;
     const followup = "她的经历" + "后来".repeat(190);
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (_url, init) => {
         body = JSON.parse(String(init?.body));
         init?.signal?.addEventListener("abort", () => {
@@ -1150,8 +1385,7 @@ describe("retrieval-first bounded agent", () => {
     expect(events.some((event) => event.event === "done")).toBe(false);
   });
   it("does not expose reasoning deltas", async () => {
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url) =>
         String(url).includes("/v1/search")
           ? search()
@@ -1172,299 +1406,888 @@ describe("retrieval-first bounded agent", () => {
   });
 });
 
-describe('lore explanation evidence preparation', () => {
-  beforeEach(() => { vi.unstubAllEnvs(); vi.stubEnv('DEEPSEEK_BASE_URL', 'https://api.deepseek.com'); });
-  const toolRound = (args: Record<string, unknown>) => upstream([{
-    choices: [{delta: {tool_calls: [{index: 0, id: 'search', function: {name: 'search_corpus', arguments: JSON.stringify(args)}}]}, finish_reason: 'tool_calls'}],
-    usage: {prompt_tokens: 10, completion_tokens: 3},
-  }]);
-  it('finds reviewed nicknames without treating the nickname as proof of identity', async () => {
-    let query = '';
-    vi.stubGlobal('fetch', vi.fn(async (url, init) => {
-      if (String(url).includes('/v1/search')) {
-        query = JSON.parse(String(init?.body)).query;
-        return query.includes('炽烈的炎之魔女') ? search() : search([]);
-      }
-      return upstream([textChunk('相关套装原文[1]', 'stop')]);
-    }));
-    const events = await collect({...request, messages: [{role: 'user', content: '魔女套'}]});
-    expect(query).toContain('魔女套');
-    expect(events.at(-1)).toMatchObject({event: 'done', data: {finishReason: 'stop'}});
+describe("lore explanation evidence preparation", () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+    vi.stubEnv("DEEPSEEK_BASE_URL", "https://api.deepseek.com");
   });
-  it('reads mapped narrative context before generation, once per document and at most two documents', async () => {
-    const paths: string[] = []; let modelBody: any; let searchBody: any;
-    vi.stubGlobal('fetch', vi.fn(async (url, init) => {
-      paths.push(String(url));
-      if (String(url).includes('/v1/search')) {
-        searchBody = JSON.parse(String(init?.body));
-        return search([source('a'), source('duplicate-document'), {...source('b'), documentId:'doc2'}, {...source('c'), documentId:'doc3'}]);
-      }
-      if (String(url).includes('/v1/sources/')) {
-        const id = String(url).includes('/a?') ? 'a' : 'b';
-        return Response.json({source: {...source(id), documentId: id === 'a' ? 'doc' : 'doc2'}, context: [{...source('context-'+id), text:'有分支条件的上下文', metadata:{contextRelation:{kind:'next',condition:'quest == 3'}}}], related:[]});
-      }
-      modelBody=JSON.parse(String(init?.body));return upstream([textChunk('故事解释[1]', 'stop')]);
-    }));
-    await collect({...request, messages:[{role:'user',content:'请梳理须弥魔神任务的剧情脉络'}]});
-    expect(searchBody.types).toEqual(['quest','dialogue']);
-    expect(paths.filter(p=>p.includes('/v1/sources/'))).toHaveLength(2);
-    expect(paths.at(-1)).toContain('/chat/completions');
-    expect(JSON.stringify(modelBody.messages)).toContain('有分支条件的上下文');
-    expect(JSON.stringify(modelBody.messages)).toContain('quest == 3');
-    expect(paths.filter(p=>p.includes('/v1/sources/')).every(p=>p.includes('snapshotId=s1'))).toBe(true);
+  const toolRound = (args: Record<string, unknown>) =>
+    upstream([
+      {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "search",
+                  function: {
+                    name: "search_corpus",
+                    arguments: JSON.stringify(args),
+                  },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+        usage: { prompt_tokens: 10, completion_tokens: 3 },
+      },
+    ]);
+  it("finds reviewed nicknames without treating the nickname as proof of identity", async () => {
+    let query = "";
+    stubFetch(
+      vi.fn(async (url, init) => {
+        if (String(url).includes("/v1/search")) {
+          query = JSON.parse(String(init?.body)).query;
+          return query.includes("炽烈的炎之魔女") ? search() : search([]);
+        }
+        return upstream([textChunk("相关套装原文[1]", "stop")]);
+      }),
+    );
+    const events = await collect({
+      ...request,
+      messages: [{ role: "user", content: "魔女套" }],
+    });
+    expect(query).toContain("魔女套");
+    expect(events.at(-1)).toMatchObject({
+      event: "done",
+      data: { finishReason: "stop" },
+    });
   });
-  it('does not prefetch unmapped text as narrative context', async () => {
-    const paths: string[]=[];
-    vi.stubGlobal('fetch',vi.fn(async url=>{
-      paths.push(String(url));
-      return String(url).includes('/v1/search') ? search([{...source(),metadata:{contextUnknown:true,kind:'orphan_textmap'}}]) : upstream([textChunk('无法确认上下文[1]','stop')]);
-    }));
-    await collect({...request,messages:[{role:'user',content:'讲讲这个故事'}]});
-    expect(paths.some(p=>p.includes('/v1/sources/'))).toBe(false);
+  it("reads mapped narrative context before generation, once per document and at most two documents", async () => {
+    const paths: string[] = [];
+    let modelBody: any;
+    let searchBody: any;
+    stubFetch(
+      vi.fn(async (url, init) => {
+        paths.push(String(url));
+        if (String(url).includes("/v1/search")) {
+          searchBody = JSON.parse(String(init?.body));
+          return search([
+            source("a"),
+            source("duplicate-document"),
+            { ...source("b"), documentId: "doc2" },
+            { ...source("c"), documentId: "doc3" },
+          ]);
+        }
+        if (String(url).includes("/v1/sources/")) {
+          const id = String(url).includes("/a?") ? "a" : "b";
+          return Response.json({
+            source: { ...source(id), documentId: id === "a" ? "doc" : "doc2" },
+            context: [
+              {
+                ...source("context-" + id),
+                text: "有分支条件的上下文",
+                metadata: {
+                  contextRelation: { kind: "next", condition: "quest == 3" },
+                },
+              },
+            ],
+            related: [],
+          });
+        }
+        modelBody = JSON.parse(String(init?.body));
+        return upstream([textChunk("故事解释[1]", "stop")]);
+      }),
+    );
+    await collect({
+      ...request,
+      messages: [{ role: "user", content: "请梳理须弥魔神任务的剧情脉络" }],
+    });
+    expect(searchBody.types).toEqual(["quest", "dialogue"]);
+    expect(paths.filter((p) => p.includes("/v1/sources/"))).toHaveLength(2);
+    expect(paths.at(-1)).toContain("/chat/completions");
+    expect(JSON.stringify(modelBody.messages)).toContain("有分支条件的上下文");
+    expect(JSON.stringify(modelBody.messages)).toContain("quest == 3");
+    expect(
+      paths
+        .filter((p) => p.includes("/v1/sources/"))
+        .every((p) => p.includes("snapshotId=s1")),
+    ).toBe(true);
   });
-  it('rejects a context read from another snapshot before generation', async () => {
-    let modelCalls=0;
-    vi.stubGlobal('fetch',vi.fn(async url=>{
-      if(String(url).includes('/v1/search'))return search();
-      if(String(url).includes('/v1/sources/'))return Response.json({source:source('a','zh-CN','wrong-snapshot'),context:[],related:[]});
-      modelCalls++;return upstream([textChunk('bad','stop')]);
-    }));
-    const events=await collect({...request,messages:[{role:'user',content:'讲讲旅行者的故事'}]});
-    expect(events.at(-1)).toMatchObject({event:'error',data:{code:'INVALID_EVIDENCE'}});
+  it("does not prefetch unmapped text as narrative context", async () => {
+    const paths: string[] = [];
+    stubFetch(
+      vi.fn(async (url) => {
+        paths.push(String(url));
+        return String(url).includes("/v1/search")
+          ? search([
+              {
+                ...source(),
+                metadata: { contextUnknown: true, kind: "orphan_textmap" },
+              },
+            ])
+          : upstream([textChunk("无法确认上下文[1]", "stop")]);
+      }),
+    );
+    await collect({
+      ...request,
+      messages: [{ role: "user", content: "讲讲这个故事" }],
+    });
+    expect(paths.some((p) => p.includes("/v1/sources/"))).toBe(false);
+  });
+  it("rejects a context read from another snapshot before generation", async () => {
+    let modelCalls = 0;
+    stubFetch(
+      vi.fn(async (url) => {
+        if (String(url).includes("/v1/search")) return search();
+        if (String(url).includes("/v1/sources/"))
+          return Response.json({
+            source: source("a", "zh-CN", "wrong-snapshot"),
+            context: [],
+            related: [],
+          });
+        modelCalls++;
+        return upstream([textChunk("bad", "stop")]);
+      }),
+    );
+    const events = await collect({
+      ...request,
+      messages: [{ role: "user", content: "讲讲旅行者的故事" }],
+    });
+    expect(events.at(-1)).toMatchObject({
+      event: "error",
+      data: { code: "INVALID_EVIDENCE" },
+    });
     expect(modelCalls).toBe(0);
   });
-  it.each([{types:['dialogue'],allowed:true},{types:['book'],allowed:false}])('tool search respects selected content filters: $types',async ({types,allowed})=>{
-    const queries:any[]=[];let round=0;let lastBody:any;
-    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
-      if(String(url).includes('/v1/search')){queries.push(JSON.parse(String(init?.body)));return search([{...source(),type:'dialogue'}]);}
-      lastBody=JSON.parse(String(init?.body));round++;
-      return round===1?toolRound({query:'相关对白',types}):upstream([textChunk('解释[1]','stop')]);
-    }));
-    await collect({...request,types:['quest','dialogue']});
-    if(allowed){
-      expect(queries).toHaveLength(2);expect(queries[1].types).toEqual(['dialogue']);
-    }else{
-      expect(queries).toHaveLength(1);expect(lastBody.messages.at(-1).content).toContain('TOOL_NOT_ALLOWED');
-    }
-  });
-  it('reports matched evidence omitted by the citation budget instead of claiming the corpus has no results',async()=>{
-    let searches=0,round=0,lastBody:any;
-    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
-      if(String(url).includes('/v1/search')){
-        searches++;return search(Array.from({length:10},(_,i)=>source(`batch-${searches}-${i}`)));
+  it.each([
+    { types: ["dialogue"], allowed: true },
+    { types: ["book"], allowed: false },
+  ])(
+    "tool search respects selected content filters: $types",
+    async ({ types, allowed }) => {
+      const queries: any[] = [];
+      let round = 0;
+      let lastBody: any;
+      stubFetch(
+        vi.fn(async (url, init) => {
+          if (String(url).includes("/v1/search")) {
+            queries.push(JSON.parse(String(init?.body)));
+            return search([{ ...source(), type: "dialogue" }]);
+          }
+          lastBody = JSON.parse(String(init?.body));
+          round++;
+          return round === 1
+            ? toolRound({ query: "相关对白", types })
+            : upstream([textChunk("解释[1]", "stop")]);
+        }),
+      );
+      await collect({ ...request, types: ["quest", "dialogue"] });
+      if (allowed) {
+        expect(queries).toHaveLength(2);
+        expect(queries[1].types).toEqual(["dialogue"]);
+      } else {
+        expect(queries).toHaveLength(1);
+        expect(lastBody.messages.at(-1).content).toContain("TOOL_NOT_ALLOWED");
       }
-      round++;lastBody=JSON.parse(String(init?.body));
-      return round<=4?toolRound({query:`more ${round}`}):upstream([textChunk('已有资料[1]','stop')]);
-    }));
+    },
+  );
+  it("reports matched evidence omitted by the citation budget instead of claiming the corpus has no results", async () => {
+    let searches = 0,
+      round = 0,
+      lastBody: any;
+    stubFetch(
+      vi.fn(async (url, init) => {
+        if (String(url).includes("/v1/search")) {
+          searches++;
+          return search(
+            Array.from({ length: 10 }, (_, i) =>
+              source(`batch-${searches}-${i}`),
+            ),
+          );
+        }
+        round++;
+        lastBody = JSON.parse(String(init?.body));
+        return round <= 4
+          ? toolRound({ query: `more ${round}` })
+          : upstream([textChunk("已有资料[1]", "stop")]);
+      }),
+    );
     await collect();
-    const selections=JSON.parse(lastBody.messages[0].content.split('Research selections:\n')[1].split('\nContext preparation:')[0]);
-    expect(selections.at(-1)).toMatchObject({matchedSources:10,includedSources:0,truncated:true});
+    const selections = JSON.parse(
+      lastBody.messages[0].content
+        .split("Research selections:\n")[1]
+        .split("\nContext preparation:")[0],
+    );
+    expect(selections.at(-1)).toMatchObject({
+      matchedSources: 10,
+      includedSources: 0,
+      truncated: true,
+    });
     expect(lastBody.tools).toBeUndefined();
-    expect(lastBody.messages.some((m:any)=>m.role==='tool')).toBe(false);
-    const evidence=JSON.parse(lastBody.messages[0].content.split('Initial evidence:\n')[1]);
+    expect(lastBody.messages.some((m: any) => m.role === "tool")).toBe(false);
+    const evidence = JSON.parse(
+      lastBody.messages[0].content.split("Initial evidence:\n")[1],
+    );
     expect(evidence.sources).toHaveLength(40);
   });
 });
 
-describe('inferred lore search scope',()=>{
-  it('falls back within the pinned snapshot when the inferred narrative category is empty',async()=>{
-    vi.unstubAllEnvs();const queries:any[]=[];
-    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
-      if(String(url).includes('/v1/search')){
-        const query=JSON.parse(String(init?.body));queries.push(query);
-        return query.types?search([]):search([{...source(),type:'other',metadata:{contextUnknown:true}}]);
-      }
-      return upstream([textChunk('找到的原文[1]','stop')]);
-    }));
-    const events=await collect({...request,messages:[{role:'user',content:'魔女套的故事'}]});
-    expect(queries).toHaveLength(2);expect(queries[0].types).toEqual(['artifact']);
-    expect(queries[1].types).toBeUndefined();expect(queries[1].snapshotId).toBe('s1');
-    expect(events.at(-1)).toMatchObject({event:'done',data:{finishReason:'stop'}});
+describe("inferred lore search scope", () => {
+  it("falls back within the pinned snapshot when the inferred narrative category is empty", async () => {
+    vi.unstubAllEnvs();
+    const queries: any[] = [];
+    stubFetch(
+      vi.fn(async (url, init) => {
+        if (String(url).includes("/v1/search")) {
+          const query = JSON.parse(String(init?.body));
+          queries.push(query);
+          return query.types
+            ? search([])
+            : search([
+                {
+                  ...source(),
+                  type: "other",
+                  metadata: { contextUnknown: true },
+                },
+              ]);
+        }
+        return upstream([textChunk("找到的原文[1]", "stop")]);
+      }),
+    );
+    const events = await collect({
+      ...request,
+      messages: [{ role: "user", content: "魔女套的故事" }],
+    });
+    expect(queries).toHaveLength(2);
+    expect(queries[0].types).toEqual(["artifact"]);
+    expect(queries[1].types).toBeUndefined();
+    expect(queries[1].snapshotId).toBe("s1");
+    expect(events.at(-1)).toMatchObject({
+      event: "done",
+      data: { finishReason: "stop" },
+    });
   });
 });
 
-describe('research and answer separation',()=>{
-  it('discards tool-round narration and its citation labels from the final answer',async()=>{
-    vi.unstubAllEnvs();let round=0;
-    vi.stubGlobal('fetch',vi.fn(async(url)=>{
-      if(String(url).includes('/v1/search'))return search();
-      round++;
-      return round===1?upstream([textChunk('我先补几次检索。[999]'),{choices:[{delta:{tool_calls:[{index:0,id:'lookup',function:{name:'search_corpus',arguments:'{"query":"旅行者"}'}}]},finish_reason:'tool_calls'}],usage:{prompt_tokens:10,completion_tokens:3}}]):upstream([textChunk('旅行者的故事[1]','stop')]);
-    }));
-    const events=await collect();
-    expect(events.filter(e=>e.event==='text_delta').map(e=>e.data.text).join('')).toBe('旅行者的故事[1]');
-    expect(events.at(-1)?.data).not.toHaveProperty('citationWarnings');
+describe("research and answer separation", () => {
+  it("discards tool-round narration and its citation labels from the final answer", async () => {
+    vi.unstubAllEnvs();
+    let round = 0;
+    stubFetch(
+      vi.fn(async (url) => {
+        if (String(url).includes("/v1/search")) return search();
+        round++;
+        return round === 1
+          ? upstream([
+              textChunk("我先补几次检索。[999]"),
+              {
+                choices: [
+                  {
+                    delta: {
+                      tool_calls: [
+                        {
+                          index: 0,
+                          id: "lookup",
+                          function: {
+                            name: "search_corpus",
+                            arguments: '{"query":"旅行者"}',
+                          },
+                        },
+                      ],
+                    },
+                    finish_reason: "tool_calls",
+                  },
+                ],
+                usage: { prompt_tokens: 10, completion_tokens: 3 },
+              },
+            ])
+          : upstream([textChunk("旅行者的故事[1]", "stop")]);
+      }),
+    );
+    const events = await collect();
+    expect(
+      events
+        .filter((e) => e.event === "text_delta")
+        .map((e) => e.data.text)
+        .join(""),
+    ).toBe("旅行者的故事[1]");
+    expect(events.at(-1)?.data).not.toHaveProperty("citationWarnings");
   });
-  it('leaves evidence headroom after large automatic context reads and reports omitted context',async()=>{
-    vi.unstubAllEnvs();let searches=0,round=0,lastBody:any;
-    const large=(id:string)=>({...source(id),documentId:id,text:'x'.repeat(1000)});
-    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
-      if(String(url).includes('/v1/search')){
-        searches++;return search(searches===1?Array.from({length:10},(_,i)=>large('initial-'+i)):[large('focused')]);
-      }
-      if(String(url).includes('/v1/sources/')){
-        const id=String(url).includes('initial-0?')?'initial-0':'initial-1';
-        return Response.json({source:large(id),context:Array.from({length:20},(_,i)=>large(id+'-context-'+i)),related:[]});
-      }
-      round++;lastBody=JSON.parse(String(init?.body));
-      return round===1?upstream([{choices:[{delta:{tool_calls:[{index:0,id:'focused',function:{name:'search_corpus',arguments:'{"query":"更具体的剧情"}'}}]},finish_reason:'tool_calls'}],usage:{prompt_tokens:10,completion_tokens:3}}]):upstream([textChunk('解释[1]','stop')]);
-    }));
-    await collect({...request,messages:[{role:'user',content:'梳理这个故事'}]});
-    const finalEvidence=JSON.parse(lastBody.messages[0].content.split('Initial evidence:\n')[1]);
-    expect(finalEvidence.sources.some((source:any)=>source.id==='focused')).toBe(true);
-    const preparation=JSON.parse(lastBody.messages[0].content.split('Context preparation:\n')[1].split('\nInitial evidence:')[0]);
-    expect(preparation.every((r:any)=>r.selection.truncated)).toBe(true);
+  it("leaves evidence headroom after large automatic context reads and reports omitted context", async () => {
+    vi.unstubAllEnvs();
+    let searches = 0,
+      round = 0,
+      lastBody: any;
+    const large = (id: string) => ({
+      ...source(id),
+      documentId: id,
+      text: "x".repeat(1000),
+    });
+    stubFetch(
+      vi.fn(async (url, init) => {
+        if (String(url).includes("/v1/search")) {
+          searches++;
+          return search(
+            searches === 1
+              ? Array.from({ length: 10 }, (_, i) => large("initial-" + i))
+              : [large("focused")],
+          );
+        }
+        if (String(url).includes("/v1/sources/")) {
+          const id = String(url).includes("initial-0?")
+            ? "initial-0"
+            : "initial-1";
+          return Response.json({
+            source: large(id),
+            context: Array.from({ length: 20 }, (_, i) =>
+              large(id + "-context-" + i),
+            ),
+            related: [],
+          });
+        }
+        round++;
+        lastBody = JSON.parse(String(init?.body));
+        return round === 1
+          ? upstream([
+              {
+                choices: [
+                  {
+                    delta: {
+                      tool_calls: [
+                        {
+                          index: 0,
+                          id: "focused",
+                          function: {
+                            name: "search_corpus",
+                            arguments: '{"query":"更具体的剧情"}',
+                          },
+                        },
+                      ],
+                    },
+                    finish_reason: "tool_calls",
+                  },
+                ],
+                usage: { prompt_tokens: 10, completion_tokens: 3 },
+              },
+            ])
+          : upstream([textChunk("解释[1]", "stop")]);
+      }),
+    );
+    await collect({
+      ...request,
+      messages: [{ role: "user", content: "梳理这个故事" }],
+    });
+    const finalEvidence = JSON.parse(
+      lastBody.messages[0].content.split("Initial evidence:\n")[1],
+    );
+    expect(
+      finalEvidence.sources.some((source: any) => source.id === "focused"),
+    ).toBe(true);
+    const preparation = JSON.parse(
+      lastBody.messages[0].content
+        .split("Context preparation:\n")[1]
+        .split("\nInitial evidence:")[0],
+    );
+    expect(preparation.every((r: any) => r.selection.truncated)).toBe(true);
   });
 });
 
-describe('final synthesis coverage metadata',()=>{
-  it('retains read_document truncation after discarding research tool transcripts',async()=>{
-    vi.unstubAllEnvs();let round=0,lastBody:any;
-    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
-      if(String(url).includes('/v1/search'))return search();
-      if(String(url).includes('/v1/documents/'))return Response.json({document:{id:'doc',language:'zh-CN'},snapshotId:'s1',sources:Array.from({length:101},(_,i)=>({...source(i===0?'a':'chunk-'+i),text:'x'.repeat(1000)}))});
-      round++;lastBody=JSON.parse(String(init?.body));
-      const call=round===1?{name:'read_document',arguments:'{"documentId":"doc"}'}:{name:'search_corpus',arguments:'{"query":"another aspect"}'};
-      return round<=4?upstream([{choices:[{delta:{tool_calls:[{index:0,id:'call-'+round,function:call}]},finish_reason:'tool_calls'}],usage:{prompt_tokens:10,completion_tokens:3}}]):upstream([textChunk('有来源的讲解[1]','stop')]);
-    }));
+describe("final synthesis coverage metadata", () => {
+  it("retains read_document truncation after discarding research tool transcripts", async () => {
+    vi.unstubAllEnvs();
+    let round = 0,
+      lastBody: any;
+    stubFetch(
+      vi.fn(async (url, init) => {
+        if (String(url).includes("/v1/search")) return search();
+        if (String(url).includes("/v1/documents/"))
+          return Response.json({
+            document: { id: "doc", language: "zh-CN" },
+            snapshotId: "s1",
+            sources: Array.from({ length: 101 }, (_, i) => ({
+              ...source(i === 0 ? "a" : "chunk-" + i),
+              text: "x".repeat(1000),
+            })),
+          });
+        round++;
+        lastBody = JSON.parse(String(init?.body));
+        const call =
+          round === 1
+            ? { name: "read_document", arguments: '{"documentId":"doc"}' }
+            : {
+                name: "search_corpus",
+                arguments: '{"query":"another aspect"}',
+              };
+        return round <= 4
+          ? upstream([
+              {
+                choices: [
+                  {
+                    delta: {
+                      tool_calls: [
+                        { index: 0, id: "call-" + round, function: call },
+                      ],
+                    },
+                    finish_reason: "tool_calls",
+                  },
+                ],
+                usage: { prompt_tokens: 10, completion_tokens: 3 },
+              },
+            ])
+          : upstream([textChunk("有来源的讲解[1]", "stop")]);
+      }),
+    );
     await collect();
-    const reads=JSON.parse(lastBody.messages[0].content.split('Context preparation:\n')[1].split('\nInitial evidence:')[0]);
-    expect(reads).toContainEqual(expect.objectContaining({operation:'read_document',documentId:'doc',selection:expect.objectContaining({totalSources:101,truncated:true})}));
-    expect(lastBody.messages.some((m:any)=>m.role==='tool')).toBe(false);
+    const reads = JSON.parse(
+      lastBody.messages[0].content
+        .split("Context preparation:\n")[1]
+        .split("\nInitial evidence:")[0],
+    );
+    expect(reads).toContainEqual(
+      expect.objectContaining({
+        operation: "read_document",
+        documentId: "doc",
+        selection: expect.objectContaining({
+          totalSources: 101,
+          truncated: true,
+        }),
+      }),
+    );
+    expect(lastBody.messages.some((m: any) => m.role === "tool")).toBe(false);
   });
 });
 
-describe('partial search evidence',()=>{
-  it('marks text clipped by the context allowance as truncated even when every result has a citation',async()=>{
-    vi.unstubAllEnvs();let searches=0,round=0,lastBody:any;
-    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
-      if(String(url).includes('/v1/search')){
-        searches++;return search(searches===1?Array.from({length:10},(_,i)=>({...source('initial-'+i),text:'x'.repeat(2300)})):[{...source('partial'),text:'y'.repeat(2000)}]);
-      }
-      round++;lastBody=JSON.parse(String(init?.body));
-      return round===1?upstream([{choices:[{delta:{tool_calls:[{index:0,id:'partial',function:{name:'search_corpus',arguments:'{"query":"focused passage"}'}}]},finish_reason:'tool_calls'}],usage:{prompt_tokens:10,completion_tokens:3}}]):upstream([textChunk('解释[1]','stop')]);
-    }));
+describe("partial search evidence", () => {
+  it("marks text clipped by the context allowance as truncated even when every result has a citation", async () => {
+    vi.unstubAllEnvs();
+    let searches = 0,
+      round = 0,
+      lastBody: any;
+    stubFetch(
+      vi.fn(async (url, init) => {
+        if (String(url).includes("/v1/search")) {
+          searches++;
+          return search(
+            searches === 1
+              ? Array.from({ length: 10 }, (_, i) => ({
+                  ...source("initial-" + i),
+                  text: "x".repeat(2300),
+                }))
+              : [{ ...source("partial"), text: "y".repeat(2000) }],
+          );
+        }
+        round++;
+        lastBody = JSON.parse(String(init?.body));
+        return round === 1
+          ? upstream([
+              {
+                choices: [
+                  {
+                    delta: {
+                      tool_calls: [
+                        {
+                          index: 0,
+                          id: "partial",
+                          function: {
+                            name: "search_corpus",
+                            arguments: '{"query":"focused passage"}',
+                          },
+                        },
+                      ],
+                    },
+                    finish_reason: "tool_calls",
+                  },
+                ],
+                usage: { prompt_tokens: 10, completion_tokens: 3 },
+              },
+            ])
+          : upstream([textChunk("解释[1]", "stop")]);
+      }),
+    );
     await collect();
-    const result=JSON.parse(lastBody.messages.at(-1).content);
+    const result = JSON.parse(lastBody.messages.at(-1).content);
     expect(result.sources[0].text).toHaveLength(1000);
-    expect(result.selection).toMatchObject({matchedSources:1,includedSources:1,truncated:true});
+    expect(result.selection).toMatchObject({
+      matchedSources: 1,
+      includedSources: 1,
+      truncated: true,
+    });
   });
 });
 
-describe('literal document discovery',()=>{
-  it('discovers exact-phrase documents inside the selected scope and permits reading the discovered document',async()=>{
-    vi.unstubAllEnvs();let round=0;const paths:string[]=[];
-    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
-      paths.push(String(url));
-      if(String(url).includes('/v1/search'))return search();
-      if(String(url).includes('/v1/documents?'))return Response.json({snapshotId:'s1',items:[{id:'chapter',title:'目标章节',type:'quest',language:'zh-CN',excerpt:'章节正文',snapshotId:'s1'}],total:1,page:1,pageSize:8});
-      if(String(url).includes('/v1/documents/chapter?'))return Response.json({document:{id:'chapter',language:'zh-CN'},sources:[{...source('chapter-source'),documentId:'chapter',text:'目标章节的原文'}],snapshotId:'s1'});
-      round++;
-      const call=round===1?{name:'find_documents',arguments:'{"query":"目标章节","type":"quest"}'}:{name:'read_document',arguments:'{"documentId":"chapter"}'};
-      return round<3?upstream([{choices:[{delta:{tool_calls:[{index:0,id:'find-'+round,function:call}]},finish_reason:'tool_calls'}],usage:{prompt_tokens:10,completion_tokens:3}}]):upstream([textChunk('讲解[2]','stop')]);
-    }));
-    const events=await collect({...request,types:['quest'],snapshotId:'s1'});
-    const path=new URL(paths.find(p=>p.includes('/v1/documents?'))!);
-    expect(path.searchParams.get('q')).toBe('目标章节');expect(path.searchParams.get('language')).toBe('zh-CN');expect(path.searchParams.get('snapshotId')).toBe('s1');expect(path.searchParams.get('type')).toBe('quest');
-    expect(events.filter(e=>e.event==='sources').at(-1)?.data.sources.some(s=>s.text==='目标章节的原文')).toBe(true);
+describe("literal document discovery", () => {
+  it("discovers exact-phrase documents inside the selected scope and permits reading the discovered document", async () => {
+    vi.unstubAllEnvs();
+    let round = 0;
+    const paths: string[] = [];
+    stubFetch(
+      vi.fn(async (url, init) => {
+        paths.push(String(url));
+        if (String(url).includes("/v1/search")) return search();
+        if (String(url).includes("/v1/documents?"))
+          return Response.json({
+            snapshotId: "s1",
+            items: [
+              {
+                id: "chapter",
+                title: "目标章节",
+                type: "quest",
+                language: "zh-CN",
+                excerpt: "章节正文",
+                snapshotId: "s1",
+              },
+            ],
+            total: 1,
+            page: 1,
+            pageSize: 8,
+          });
+        if (String(url).includes("/v1/documents/chapter?"))
+          return Response.json({
+            document: { id: "chapter", language: "zh-CN" },
+            sources: [
+              {
+                ...source("chapter-source"),
+                documentId: "chapter",
+                text: "目标章节的原文",
+              },
+            ],
+            snapshotId: "s1",
+          });
+        round++;
+        const call =
+          round === 1
+            ? {
+                name: "find_documents",
+                arguments: '{"query":"目标章节","type":"quest"}',
+              }
+            : { name: "read_document", arguments: '{"documentId":"chapter"}' };
+        return round < 3
+          ? upstream([
+              {
+                choices: [
+                  {
+                    delta: {
+                      tool_calls: [
+                        { index: 0, id: "find-" + round, function: call },
+                      ],
+                    },
+                    finish_reason: "tool_calls",
+                  },
+                ],
+                usage: { prompt_tokens: 10, completion_tokens: 3 },
+              },
+            ])
+          : upstream([textChunk("讲解[2]", "stop")]);
+      }),
+    );
+    const events = await collect({
+      ...request,
+      types: ["quest"],
+      snapshotId: "s1",
+    });
+    const path = new URL(paths.find((p) => p.includes("/v1/documents?"))!);
+    expect(path.searchParams.get("q")).toBe("目标章节");
+    expect(path.searchParams.get("language")).toBe("zh-CN");
+    expect(path.searchParams.get("snapshotId")).toBe("s1");
+    expect(path.searchParams.get("type")).toBe("quest");
+    expect(
+      events
+        .filter((e) => e.event === "sources")
+        .at(-1)
+        ?.data.sources.some((s) => s.text === "目标章节的原文"),
+    ).toBe(true);
   });
-  it('does not treat full-width numeric citations as missing citations',async()=>{
-    vi.unstubAllEnvs();vi.stubGlobal('fetch',vi.fn(async url=>String(url).includes('/v1/search')?search():upstream([textChunk('知识讲解［1］','stop')])));
-    const events=await collect();expect(events.at(-1)?.data).not.toHaveProperty('citationWarnings');
+  it("does not treat full-width numeric citations as missing citations", async () => {
+    vi.unstubAllEnvs();
+    stubFetch(
+      vi.fn(async (url) =>
+        String(url).includes("/v1/search")
+          ? search()
+          : upstream([textChunk("知识讲解［1］", "stop")]),
+      ),
+    );
+    const events = await collect();
+    expect(events.at(-1)?.data).not.toHaveProperty("citationWarnings");
   });
 });
 
-describe('bounded oversized research batches',()=>{
-  it('executes at most four calls from an oversized valid batch and still produces an answer',async()=>{
-    vi.unstubAllEnvs();let searches=0,round=0,lastBody:any;
-    vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
-      if(String(url).includes('/v1/search')){searches++;return search();}
-      round++;lastBody=JSON.parse(String(init?.body));
-      return round===1?upstream([{choices:[{delta:{tool_calls:Array.from({length:5},(_,index)=>({index,id:'lookup-'+index,function:{name:'search_corpus',arguments:JSON.stringify({query:'topic '+index})}}))},finish_reason:'tool_calls'}],usage:{prompt_tokens:10,completion_tokens:3}}]):upstream([textChunk('回答[1]','stop')]);
-    }));
-    const events=await collect();
+describe("bounded oversized research batches", () => {
+  it("executes at most four calls from an oversized valid batch and still produces an answer", async () => {
+    vi.unstubAllEnvs();
+    let searches = 0,
+      round = 0,
+      lastBody: any;
+    stubFetch(
+      vi.fn(async (url, init) => {
+        if (String(url).includes("/v1/search")) {
+          searches++;
+          return search();
+        }
+        round++;
+        lastBody = JSON.parse(String(init?.body));
+        return round === 1
+          ? upstream([
+              {
+                choices: [
+                  {
+                    delta: {
+                      tool_calls: Array.from({ length: 5 }, (_, index) => ({
+                        index,
+                        id: "lookup-" + index,
+                        function: {
+                          name: "search_corpus",
+                          arguments: JSON.stringify({
+                            query: "topic " + index,
+                          }),
+                        },
+                      })),
+                    },
+                    finish_reason: "tool_calls",
+                  },
+                ],
+                usage: { prompt_tokens: 10, completion_tokens: 3 },
+              },
+            ])
+          : upstream([textChunk("回答[1]", "stop")]);
+      }),
+    );
+    const events = await collect();
     expect(searches).toBe(5);
-    expect(lastBody.messages.at(-1).content).toContain('TOOL_BATCH_LIMIT');
-    expect(events.at(-1)).toMatchObject({event:'done'});
+    expect(lastBody.messages.at(-1).content).toContain("TOOL_BATCH_LIMIT");
+    expect(events.at(-1)).toMatchObject({ event: "done" });
   });
 });
 
-describe('deliberate narrative synthesis',()=>{
- it('synthesizes a narrative answer without tools or research chatter and never exposes reasoning',async()=>{
-  vi.unstubAllEnvs();const bodies:any[]=[];
-  vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
-   if(String(url).includes('/v1/search'))return search();
-   if(String(url).includes('/v1/sources/'))return Response.json({source:source(),context:[],related:[]});
-   const body=JSON.parse(String(init?.body));bodies.push(body);
-   return bodies.length===1?upstream([textChunk('暂定整理草稿[1]','stop')]):upstream([{choices:[{delta:{reasoning_content:'private synthesis'},finish_reason:null}]},textChunk('完整讲解[1]','stop')]);
-  }));
-  const events=await collect({...request,messages:[{role:'user',content:'讲讲旅行者的故事'}]});
-  expect(bodies).toHaveLength(2);expect(bodies[0].thinking).toEqual({type:'disabled'});
-  expect(bodies[1].thinking).toEqual({type:'enabled'});expect(bodies[1].tools).toBeUndefined();
-  expect(JSON.stringify(bodies[1])).not.toContain('暂定整理草稿');
-  expect(events.filter(e=>e.event==='text_delta').map(e=>e.data.text).join('')).toBe('完整讲解[1]');
-  expect(JSON.stringify(events)).not.toContain('private synthesis');
- });
+describe("deliberate narrative synthesis", () => {
+  it("synthesizes a narrative answer without tools or research chatter and never exposes reasoning", async () => {
+    vi.unstubAllEnvs();
+    const bodies: any[] = [];
+    stubFetch(
+      vi.fn(async (url, init) => {
+        if (String(url).includes("/v1/search")) return search();
+        if (String(url).includes("/v1/sources/"))
+          return Response.json({ source: source(), context: [], related: [] });
+        const body = JSON.parse(String(init?.body));
+        bodies.push(body);
+        return bodies.length === 1
+          ? upstream([textChunk("暂定整理草稿[1]", "stop")])
+          : upstream([
+              {
+                choices: [
+                  {
+                    delta: { reasoning_content: "private synthesis" },
+                    finish_reason: null,
+                  },
+                ],
+              },
+              textChunk("完整讲解[1]", "stop"),
+            ]);
+      }),
+    );
+    const events = await collect({
+      ...request,
+      messages: [{ role: "user", content: "讲讲旅行者的故事" }],
+    });
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0].thinking).toEqual({ type: "disabled" });
+    expect(bodies[1].thinking).toEqual({ type: "enabled" });
+    expect(bodies[1].tools).toBeUndefined();
+    expect(JSON.stringify(bodies[1])).not.toContain("暂定整理草稿");
+    expect(
+      events
+        .filter((e) => e.event === "text_delta")
+        .map((e) => e.data.text)
+        .join(""),
+    ).toBe("完整讲解[1]");
+    expect(JSON.stringify(events)).not.toContain("private synthesis");
+  });
 });
 
-describe('empty synthesis protection',()=>{
- it('reports an explicit retryable error when thinking exhausts the budget without producing an answer',async()=>{
-  vi.unstubAllEnvs();let round=0;
-  vi.stubGlobal('fetch',vi.fn(async url=>{
-   if(String(url).includes('/v1/search'))return search();
-   if(String(url).includes('/v1/sources/'))return Response.json({source:source(),context:[],related:[]});
-   round++;return round===1?upstream([textChunk('暂定草稿[1]','stop')]):upstream([{choices:[{delta:{reasoning_content:'private thoughts'},finish_reason:'length'}],usage:{prompt_tokens:10,completion_tokens:4096}}]);
-  }));
-  const events=await collect({...request,messages:[{role:'user',content:'解释这段故事'}]});
-  expect(events.at(-1)).toMatchObject({event:'error',data:{code:'EMPTY_MODEL_ANSWER',retryable:true}});
-  expect(events.some(e=>e.event==='done')).toBe(false);
- });
+describe("empty synthesis protection", () => {
+  it("reports an explicit retryable error when thinking exhausts the budget without producing an answer", async () => {
+    vi.unstubAllEnvs();
+    let round = 0;
+    stubFetch(
+      vi.fn(async (url) => {
+        if (String(url).includes("/v1/search")) return search();
+        if (String(url).includes("/v1/sources/"))
+          return Response.json({ source: source(), context: [], related: [] });
+        round++;
+        return round === 1
+          ? upstream([textChunk("暂定草稿[1]", "stop")])
+          : upstream([
+              {
+                choices: [
+                  {
+                    delta: { reasoning_content: "private thoughts" },
+                    finish_reason: "length",
+                  },
+                ],
+                usage: { prompt_tokens: 10, completion_tokens: 4096 },
+              },
+            ]);
+      }),
+    );
+    const events = await collect({
+      ...request,
+      messages: [{ role: "user", content: "解释这段故事" }],
+    });
+    expect(events.at(-1)).toMatchObject({
+      event: "error",
+      data: { code: "EMPTY_MODEL_ANSWER", retryable: true },
+    });
+    expect(events.some((e) => e.event === "done")).toBe(false);
+  });
 });
 
-describe('regional quest overview grounding',()=>{
- it('can research a turning point after loading the outline, before the final narrated answer',async()=>{
-  vi.unstubAllEnvs();const bodies:any[]=[];
-  vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
-   if(String(url).includes('/v1/quest-outline?'))return search([{...source(),text:'花神诞祭的任务摘要',metadata:{outline:{chapterId:1302,role:'quest-summary'}}}]);
-   if(String(url).includes('/v1/search'))return search([{...source('detail'),text:'经过调查，旅行者确认了循环的线索。'}]);
-   if(String(url).includes('/v1/sources/'))return Response.json({source:source(),context:[],related:[]});
-   const body=JSON.parse(String(init?.body));bodies.push(body);
-   if(bodies.length===1)return upstream([{choices:[{delta:{tool_calls:[{index:0,id:'turning-point',type:'function',function:{name:'search_corpus',arguments:JSON.stringify({query:'花神诞祭 循环',types:['quest']})}}]},finish_reason:'tool_calls'}]}]);
-   return upstream([textChunk('祭典起初看似平常。调查让旅行者发现事情另有隐情。[1]','stop')]);
-  }));
-  const events=await collect({...request,messages:[{role:'user',content:'梳理须弥魔神任务的主要脉络'}]});
-  expect(bodies[0].tools?.length).toBeGreaterThan(0);
-  expect(bodies.at(-1).tools).toBeUndefined();
-  expect(bodies.at(-1).messages[0].content).toContain('循环的线索');
-  expect(events.at(-1)).toMatchObject({event:'done'});
- });
- it('starts an overview from declared chapter membership before broad keyword matches',async()=>{
-  vi.unstubAllEnvs();const paths:string[]=[];let prompt='';
-  vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
-   paths.push(String(url));
-   if(String(url).includes('/v1/quest-outline?'))return search([{...source('act-one'),text:'第一幕的实际任务摘要',metadata:{outline:{chapterId:1301,role:'quest-summary'}}},{...source('act-five'),documentId:'act-five',text:'第五幕的实际任务摘要',metadata:{outline:{chapterId:1305,role:'quest-summary'}}}]);
-   if(String(url).includes('/v1/sources/')){const id=String(url).includes('act-one')?'act-one':'act-five';return Response.json({source:{...source(id),documentId:id==='act-one'?'doc':'act-five'},context:[],related:[]});}
-   prompt=JSON.parse(String(init?.body)).messages[0].content;return upstream([textChunk('有章节依据的梳理[1]','stop')]);
-  }));
-  const events=await collect({...request,types:['quest'],messages:[{role:'user',content:'梳理须弥魔神任务主线'}]});
-  expect(paths[0]).toContain('/v1/quest-outline?');expect(new URL(paths[0]).searchParams.get('includeChapters')).toBe('false');
-  expect(paths.some(p=>p.includes('/v1/search'))).toBe(false);
-  expect(prompt).toContain('第一幕的实际任务摘要');expect(prompt).toContain('第五幕的实际任务摘要');
-  expect(events.at(-1)).toMatchObject({event:'done'});
- });
+describe("regional quest overview grounding", () => {
+  it("can research a turning point after loading the outline, before the final narrated answer", async () => {
+    vi.unstubAllEnvs();
+    const bodies: any[] = [];
+    stubFetch(
+      vi.fn(async (url, init) => {
+        if (String(url).includes("/v1/quest-outline?"))
+          return search([
+            {
+              ...source(),
+              text: "花神诞祭的任务摘要",
+              metadata: { outline: { chapterId: 1302, role: "quest-summary" } },
+            },
+          ]);
+        if (String(url).includes("/v1/search"))
+          return search([
+            { ...source("detail"), text: "经过调查，旅行者确认了循环的线索。" },
+          ]);
+        if (String(url).includes("/v1/sources/"))
+          return Response.json({ source: source(), context: [], related: [] });
+        const body = JSON.parse(String(init?.body));
+        bodies.push(body);
+        if (bodies.length === 1)
+          return upstream([
+            {
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: "turning-point",
+                        type: "function",
+                        function: {
+                          name: "search_corpus",
+                          arguments: JSON.stringify({
+                            query: "花神诞祭 循环",
+                            types: ["quest"],
+                          }),
+                        },
+                      },
+                    ],
+                  },
+                  finish_reason: "tool_calls",
+                },
+              ],
+            },
+          ]);
+        return upstream([
+          textChunk(
+            "祭典起初看似平常。调查让旅行者发现事情另有隐情。[1]",
+            "stop",
+          ),
+        ]);
+      }),
+    );
+    const events = await collect({
+      ...request,
+      messages: [{ role: "user", content: "梳理须弥魔神任务的主要脉络" }],
+    });
+    expect(bodies[0].tools?.length).toBeGreaterThan(0);
+    expect(bodies.at(-1).tools).toBeUndefined();
+    expect(bodies.at(-1).messages[0].content).toContain("循环的线索");
+    expect(events.at(-1)).toMatchObject({ event: "done" });
+  });
+  it("starts an overview from declared chapter membership before broad keyword matches", async () => {
+    vi.unstubAllEnvs();
+    const paths: string[] = [];
+    let prompt = "";
+    stubFetch(
+      vi.fn(async (url, init) => {
+        paths.push(String(url));
+        if (String(url).includes("/v1/quest-outline?"))
+          return search([
+            {
+              ...source("act-one"),
+              text: "第一幕的实际任务摘要",
+              metadata: { outline: { chapterId: 1301, role: "quest-summary" } },
+            },
+            {
+              ...source("act-five"),
+              documentId: "act-five",
+              text: "第五幕的实际任务摘要",
+              metadata: { outline: { chapterId: 1305, role: "quest-summary" } },
+            },
+          ]);
+        if (String(url).includes("/v1/sources/")) {
+          const id = String(url).includes("act-one") ? "act-one" : "act-five";
+          return Response.json({
+            source: {
+              ...source(id),
+              documentId: id === "act-one" ? "doc" : "act-five",
+            },
+            context: [],
+            related: [],
+          });
+        }
+        prompt = JSON.parse(String(init?.body)).messages[0].content;
+        return upstream([textChunk("有章节依据的梳理[1]", "stop")]);
+      }),
+    );
+    const events = await collect({
+      ...request,
+      types: ["quest"],
+      messages: [{ role: "user", content: "梳理须弥魔神任务主线" }],
+    });
+    expect(paths[0]).toContain("/v1/quest-outline?");
+    expect(new URL(paths[0]).searchParams.get("includeChapters")).toBe("false");
+    expect(paths.some((p) => p.includes("/v1/search"))).toBe(false);
+    expect(prompt).toContain("第一幕的实际任务摘要");
+    expect(prompt).toContain("第五幕的实际任务摘要");
+    expect(events.at(-1)).toMatchObject({ event: "done" });
+  });
 });
 
-describe('outline chapter coverage under context limits',()=>{
- it('keeps a grounded excerpt for every chapter rather than filling the budget from the first acts',async()=>{
-  vi.unstubAllEnvs();const items=Array.from({length:16},(_,i)=>({...source('outline-'+i),documentId:'outline-'+i,text:'x'.repeat(1000),metadata:{outline:{chapterId:Math.floor(i/2)+1,role:'quest-summary'}}}));
-  vi.stubGlobal('fetch',vi.fn(async url=>{
-   if(String(url).includes('/v1/quest-outline?'))return search(items);
-   if(String(url).includes('/v1/sources/')){const id=decodeURIComponent(String(url).split('/v1/sources/')[1].split('?')[0]);return Response.json({source:items.find(s=>s.id===id),context:[],related:[]});}
-   return upstream([textChunk('章节梳理[1]','stop')]);
-  }));
-  const events=await collect({...request,types:['quest'],messages:[{role:'user',content:'梳理须弥魔神任务主线'}]});
-  const citations=events.filter(e=>e.event==='sources').at(-1)!.data.sources;
-  expect(new Set(citations.map(s=>(s.metadata?.outline as any).chapterId)).size).toBe(8);
-  expect(citations.reduce((n,s)=>n+s.text.length,0)).toBeLessThanOrEqual(8000);
- });
+describe("outline chapter coverage under context limits", () => {
+  it("keeps a grounded excerpt for every chapter rather than filling the budget from the first acts", async () => {
+    vi.unstubAllEnvs();
+    const items = Array.from({ length: 16 }, (_, i) => ({
+      ...source("outline-" + i),
+      documentId: "outline-" + i,
+      text: "x".repeat(1000),
+      metadata: {
+        outline: { chapterId: Math.floor(i / 2) + 1, role: "quest-summary" },
+      },
+    }));
+    stubFetch(
+      vi.fn(async (url) => {
+        if (String(url).includes("/v1/quest-outline?")) return search(items);
+        if (String(url).includes("/v1/sources/")) {
+          const id = decodeURIComponent(
+            String(url).split("/v1/sources/")[1].split("?")[0],
+          );
+          return Response.json({
+            source: items.find((s) => s.id === id),
+            context: [],
+            related: [],
+          });
+        }
+        return upstream([textChunk("章节梳理[1]", "stop")]);
+      }),
+    );
+    const events = await collect({
+      ...request,
+      types: ["quest"],
+      messages: [{ role: "user", content: "梳理须弥魔神任务主线" }],
+    });
+    const citations = events.filter((e) => e.event === "sources").at(-1)!.data
+      .sources;
+    expect(
+      new Set(citations.map((s) => (s.metadata?.outline as any).chapterId))
+        .size,
+    ).toBe(8);
+    expect(
+      citations.reduce((n, s) => n + s.text.length, 0),
+    ).toBeLessThanOrEqual(8000);
+  });
 });

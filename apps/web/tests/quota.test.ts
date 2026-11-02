@@ -1,9 +1,11 @@
+import { stubFetch } from "./helpers/model-fetch";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as testModel } from "../src/app/api/models/test/route";
 import { worstCaseTokens, sharedEnabled } from "../src/lib/server/config";
 import type { ChatRequest } from "../src/lib/contracts";
 import { POST as chat } from "../src/app/api/chat/route";
 import { issueIdentity, resetRateLimits } from "../src/lib/server/identity";
+
 const body = {
   messages: [{ role: "user", content: "test" }],
   language: "en",
@@ -37,8 +39,7 @@ describe("shared budget and identity", () => {
   });
   it("denies quota before any model generation", async () => {
     const calls: string[] = [];
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url) => {
         calls.push(String(url));
         return Response.json({
@@ -55,8 +56,7 @@ describe("shared budget and identity", () => {
   });
   it("settles zero when forced retrieval is empty and uses server key only in shared mode", async () => {
     const bodies: any[] = [];
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url, init) => {
         bodies.push({ url: String(url), body: JSON.parse(String(init?.body)) });
         if (String(url).endsWith("/reserve"))
@@ -84,8 +84,7 @@ describe("shared budget and identity", () => {
   });
   it("keeps worst-case quota reserved when provider billing is unknown", async () => {
     let settlement: any;
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url, init) => {
         if (String(url).endsWith("/reserve"))
           return Response.json({
@@ -146,7 +145,7 @@ describe("shared budget and identity", () => {
     const fetcher = vi.fn(async (_url: RequestInfo | URL) =>
       Response.json({ data: [{ id: "deepseek-flash" }] }),
     );
-    vi.stubGlobal("fetch", fetcher);
+    stubFetch(fetcher);
     const response = await testModel(
       new Request("https://0.0.0.0:3000/api/models/test", {
         method: "POST",
@@ -171,8 +170,7 @@ describe("shared budget and identity", () => {
     vi.stubEnv("PUBLIC_APP_ORIGIN", "https://void.example.com");
     vi.stubEnv("TRUST_PROXY", "true");
     const paths: string[] = [];
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url) => {
         paths.push(String(url));
         if (String(url).endsWith("/reserve"))
@@ -215,7 +213,7 @@ describe("shared budget and identity", () => {
     vi.stubEnv("PUBLIC_APP_ORIGIN", "https://void.example.com");
     vi.stubEnv("TRUST_PROXY", "true");
     const fetcher = vi.fn();
-    vi.stubGlobal("fetch", fetcher);
+    stubFetch(fetcher);
     const response = await testModel(
       new Request("https://0.0.0.0:3000/api/models/test", {
         method: "POST",
@@ -246,7 +244,7 @@ describe("shared budget and identity", () => {
       vi.stubEnv("PUBLIC_APP_ORIGIN", value);
       expect(sharedEnabled()).toBe(false);
       const fetcher = vi.fn();
-      vi.stubGlobal("fetch", fetcher);
+      stubFetch(fetcher);
       expect((await chat(req())).status).toBe(503);
       expect(fetcher).not.toHaveBeenCalled();
     },

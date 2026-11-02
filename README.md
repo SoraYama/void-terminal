@@ -1,6 +1,6 @@
 # void-terminal · 虚空终端
 
-面向原神文本考据的自托管问答与资料库。Next.js 页面通过内部 Python 知识服务检索有来源的文本，再向配置的 DeepSeek 兼容接口发起带引用的流式回答。支持中文与英文、来源回看、快照和本地密钥模式。
+面向原神文本考据的自托管问答与资料库。Next.js 页面通过内部 Python 知识服务检索有来源的文本，由官方 DeepSeek Harness（DSH）运行检索工具循环、会话和上下文压缩，再向配置的 OpenAI 兼容接口发起带引用的流式回答。支持中文与英文、来源回看、快照和本地密钥模式。
 
 ![void-terminal 实际首页](docs/screenshots/home.png)
 
@@ -109,6 +109,14 @@ docker compose --profile ingest run --rm --no-deps ingest prepare-embeddings --r
 访客在 BYOK 模式可指定公网 HTTPS 模型接口及模型 ID；服务器验证所有 DNS 结果，并将实际 TLS 连接固定到已验证的地址，拒绝内网、环回、云元数据和重定向。接口可包含供应商需要的 `/v1` 等前缀，不可携带 Key、账号密码、查询参数或 fragment。Base URL 和模型名可保存在本机，Key 不进入偏好或历史。共享模式不接受访客模型覆盖，服务器共享 Key 始终只发送给管理员配置的地址。
 
 管理员设置站点默认接口时，仍使用 `DEEPSEEK_BASE_URL`、`DEEPSEEK_MODEL` 与精确 origin 允许清单。除默认 `https://api.deepseek.com` 外，需同时设置 `DEEPSEEK_BASE_URL` 与 `DEEPSEEK_ALLOWED_BASE_URLS`。后者为逗号分隔的精确 HTTPS origin（不含路径或末尾斜杠）；例如 `DEEPSEEK_BASE_URL=https://models.example.com/v1` 对应 `DEEPSEEK_ALLOWED_BASE_URLS=https://models.example.com`。接口路径仅支持根路径或 `/v1`，不支持 URL 中的账号密码、查询参数和 fragment。重新创建 Web 容器后生效。
+
+## Agent runtime 与升级
+
+运行时使用官方 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的内核组件，全部固定为 `0.2.1-rc.5`。`apps/web/src/lib/server/dsh-runtime.ts` 是唯一框架适配层；`research.ts` 负责原神证据、快照和引用规则，`agent.ts` 负责回答策略和调用预算。每次请求创建独立内存会话，恢复浏览器历史，结束后关闭 Context 和私有模型传输桥。没有挂载 Shell、文件访问、持久凭证、磁盘会话日志或遥测插件。
+
+DSH 不会收到访客真实 Key；私有桥通过现有公网 HTTPS/DNS 固定传输转发模型请求。Key 仍会经过站点服务器，运营者的信任边界不变。工具研究、压缩和最终回答合计最多五次模型请求，禁用隐式重试。浏览器历史继续保存在本机；服务重启后不能恢复正在执行的服务端任务。
+
+DSH 的预览版本接口可能变化。升级时统一修改根 `package.json` 的 DSH 版本并更新锁文件，不能混用 master 的 alpha 接口与 npm 候选版。根包同时覆盖 Zod 至修复版本，避免 workspace 链接导致覆盖失效。执行 `npm ci`、`npm audit --omit=dev`、`npm test`、`npm run build` 与 `npm run test:e2e`，再按 [运行时维护记录](docs/agent/optimize/2026-11-02-dsh-runtime.md) 验证完整语料和独立生产产物。不要用 `npm audit fix --force` 单独升级 DSH 组件。
 
 ## 更新、激活与回滚
 

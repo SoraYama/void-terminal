@@ -1,3 +1,4 @@
+import { stubFetch } from "./helpers/model-fetch";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as chat } from "../src/app/api/chat/route";
 import { POST as testModel } from "../src/app/api/models/test/route";
@@ -26,27 +27,51 @@ describe("public API bounds and credential handling", () => {
     resetRateLimits();
   });
   afterEach(() => vi.unstubAllGlobals());
-  it.each(['', '   ', '\n\t'])("accepts a follow-up after a blank failed assistant (%j)", async empty => {
-    const fetcher = vi.fn(async () => Response.json({sources: [], snapshotId: 's1', mode: 'lexical', total: 0}));
-    vi.stubGlobal('fetch', fetcher);
-    const response = await chat(req({...body, messages: [
-      {role: 'user', content: 'Summarize the story.'},
-      {role: 'assistant', content: empty},
-      {role: 'user', content: 'Who is Anastasia?'},
-      {role: 'assistant', content: ''},
-      {role: 'user', content: 'Continue.'},
-    ]}));
-    expect(response.status).toBe(200);
-    expect(await response.text()).toContain('event: done');
-    expect(fetcher).toHaveBeenCalled();
-  });
-  it('still rejects blank users or assistant-only input after removing empty placeholders', async () => {
-    const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
+  it.each(["", "   ", "\n\t"])(
+    "accepts a follow-up after a blank failed assistant (%j)",
+    async (empty) => {
+      const fetcher = vi.fn(async () =>
+        Response.json({
+          sources: [],
+          snapshotId: "s1",
+          mode: "lexical",
+          total: 0,
+        }),
+      );
+      stubFetch(fetcher);
+      const response = await chat(
+        req({
+          ...body,
+          messages: [
+            { role: "user", content: "Summarize the story." },
+            { role: "assistant", content: empty },
+            { role: "user", content: "Who is Anastasia?" },
+            { role: "assistant", content: "" },
+            { role: "user", content: "Continue." },
+          ],
+        }),
+      );
+      expect(response.status).toBe(200);
+      expect(await response.text()).toContain("event: done");
+      expect(fetcher).toHaveBeenCalled();
+    },
+  );
+  it("still rejects blank users or assistant-only input after removing empty placeholders", async () => {
+    const fetcher = vi.fn();
+    stubFetch(fetcher);
     for (const messages of [
-      [{role:'user',content:'  '},{role:'assistant',content:''},{role:'user',content:'next'}],
-      [{role:'assistant',content:''}],
-      [{role:'user',content:'next'},{role:'assistant',content:''}],
-    ]) expect((await chat(req({...body,messages}))).status).toBe(400);
+      [
+        { role: "user", content: "  " },
+        { role: "assistant", content: "" },
+        { role: "user", content: "next" },
+      ],
+      [{ role: "assistant", content: "" }],
+      [
+        { role: "user", content: "next" },
+        { role: "assistant", content: "" },
+      ],
+    ])
+      expect((await chat(req({ ...body, messages }))).status).toBe(400);
     expect(fetcher).not.toHaveBeenCalled();
   });
   it.each([
@@ -62,7 +87,7 @@ describe("public API bounds and credential handling", () => {
     { ...body, mode: "auto" },
   ])("rejects invalid chat input before any upstream fetch", async (data) => {
     const fetcher = vi.fn();
-    vi.stubGlobal("fetch", fetcher);
+    stubFetch(fetcher);
     expect((await chat(req(data))).status).toBe(400);
     expect(fetcher).not.toHaveBeenCalled();
   });
@@ -82,7 +107,7 @@ describe("public API bounds and credential handling", () => {
       vi.stubEnv("DEEPSEEK_API_KEY", "server-secret");
       vi.stubEnv("SESSION_SECRET", "long-random-secret-for-enum-regression");
       const fetcher = vi.fn();
-      vi.stubGlobal("fetch", fetcher);
+      stubFetch(fetcher);
       expect(
         (await chat(req({ ...body, mode: "shared", [field]: value }, null)))
           .status,
@@ -100,7 +125,7 @@ describe("public API bounds and credential handling", () => {
     "rejects invalid answer-language values before upstream work",
     async ({ value }) => {
       const fetcher = vi.fn();
-      vi.stubGlobal("fetch", fetcher);
+      stubFetch(fetcher);
       expect((await chat(req({ ...body, answerLanguage: value }))).status).toBe(
         400,
       );
@@ -109,8 +134,7 @@ describe("public API bounds and credential handling", () => {
   );
   it("accepts an explicit answer language without changing source-language validation", async () => {
     let queryLanguage = "";
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (_url, init) => {
         queryLanguage = JSON.parse(String(init?.body)).language;
         return Response.json({
@@ -144,7 +168,7 @@ describe("public API bounds and credential handling", () => {
       async (_url: RequestInfo | URL) =>
         new Response("test-user-key SECRET stack", { status: 401 }),
     );
-    vi.stubGlobal("fetch", fetcher);
+    stubFetch(fetcher);
     const response = await testModel(req({ mode: "byok" }));
     const data = await response.json();
     expect(response.status).toBe(401);
@@ -156,8 +180,7 @@ describe("public API bounds and credential handling", () => {
   });
   it("confirms the configured model through GET models without generating a completion", async () => {
     const calls: string[] = [];
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url) => {
         calls.push(String(url));
         return Response.json({ data: [{ id: "deepseek-flash" }] });
@@ -171,37 +194,56 @@ describe("public API bounds and credential handling", () => {
     expect(calls).toEqual(["https://api.deepseek.com/models"]);
   });
   it("tests a BYOK model override at the configured endpoint without generation", async () => {
-    const fetcher = vi.fn(async () => Response.json({ data: [{ id: "my-model" }] }));
-    vi.stubGlobal("fetch", fetcher);
-    const response = await testModel(req({ mode: "byok", provider: { model: "my-model" } }));
+    const fetcher = vi.fn(async () =>
+      Response.json({ data: [{ id: "my-model" }] }),
+    );
+    stubFetch(fetcher);
+    const response = await testModel(
+      req({ mode: "byok", provider: { model: "my-model" } }),
+    );
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ ok: true, model: "my-model" });
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      model: "my-model",
+    });
     expect(fetcher.mock.calls).toHaveLength(1);
   });
-  it.each([{}, { model: "my-model" }, { baseUrl: "https://public.example/v1" }])(
-    "rejects shared provider overrides before keys, quota or network: %j", async provider => {
+  it.each([
+    {},
+    { model: "my-model" },
+    { baseUrl: "https://public.example/v1" },
+  ])(
+    "rejects shared provider overrides before keys, quota or network: %j",
+    async (provider) => {
       vi.stubEnv("DEEPSEEK_API_KEY", "server-secret");
       const fetcher = vi.fn();
-      vi.stubGlobal("fetch", fetcher);
-      const response = await chat(req({ ...body, mode: "shared", provider }, null));
+      stubFetch(fetcher);
+      const response = await chat(
+        req({ ...body, mode: "shared", provider }, null),
+      );
       expect(response.status).toBe(400);
-      expect(await response.json()).toMatchObject({ error: { code: "PROVIDER_BYOK_ONLY" } });
-      const testResponse = await testModel(req({ mode: "shared", provider }, null));
+      expect(await response.json()).toMatchObject({
+        error: { code: "PROVIDER_BYOK_ONLY" },
+      });
+      const testResponse = await testModel(
+        req({ mode: "shared", provider }, null),
+      );
       expect(testResponse.status).toBe(400);
-      expect(await testResponse.json()).toMatchObject({ code: "PROVIDER_BYOK_ONLY" });
+      expect(await testResponse.json()).toMatchObject({
+        code: "PROVIDER_BYOK_ONLY",
+      });
       expect(fetcher).not.toHaveBeenCalled();
     },
   );
   it("refuses an unallowlisted provider origin before sending a key", async () => {
     vi.stubEnv("DEEPSEEK_BASE_URL", "https://evil.example");
     const fetcher = vi.fn();
-    vi.stubGlobal("fetch", fetcher);
+    stubFetch(fetcher);
     expect((await chat(req())).status).toBe(503);
     expect(fetcher).not.toHaveBeenCalled();
   });
   it("returns provider configuration and explicit knowledge outage without invented corpus counts", async () => {
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async () => {
         throw new Error("SECRET");
       }),
@@ -231,8 +273,7 @@ describe("public API bounds and credential handling", () => {
   });
   it("sends BYOK credentials only to fixed upstream and never writes a cookie in BYOK", async () => {
     const calls: { url: string; key: string | null }[] = [];
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn(async (url, init) => {
         calls.push({
           url: String(url),
