@@ -13,7 +13,7 @@ async function start(page:Page,theme:'light'|'dark'){
     const emit=(event:string,data:unknown)=>c.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
     emit('sources',{sources:references,snapshotId:'reading-fixture'});
     emit('text_delta',{text:Array.from({length:32},(_,i)=>`### 旅途的第 ${i+1} 幕\n\n旅行者循着原文，回望须弥城中的人们。这是隔离的浏览器测试内容。[1]\n\n`).join('')});
-    timer=setInterval(()=>emit('text_delta',{text:'故事仍在继续，新的片段正在写入。\n\n'}),250);
+    timer=setInterval(()=>{if(!document.documentElement.hasAttribute('data-reading-paused'))emit('text_delta',{text:'故事仍在继续，新的片段正在写入。\n\n'})},250);
     init?.signal?.addEventListener('abort',()=>{clearInterval(timer);c.error(new DOMException('Aborted','AbortError'))},{once:true});
    },cancel(){clearInterval(timer)}});
    return new Response(body,{headers:{'Content-Type':'text/event-stream'}});
@@ -39,17 +39,16 @@ for(const theme of ['light','dark'] as const){
   const tail=page.locator('.answer-tail').last(),scroll=page.locator('.chat-scroll');
   await expect(tail).toBeInViewport();
   // Even a small upward gesture must suspend following, not just a full page jump.
+  // Hold fixture chunks only while measuring the native gesture, then resume
+  // delivery to prove the application preserves the user's reading position.
+  await page.evaluate(()=>document.documentElement.setAttribute('data-reading-paused',''));
   await scroll.hover();
-  // Streaming can advance while Playwright positions the pointer. Measure
-  // at wheel delivery, immediately before the browser's default scroll.
-  await scroll.evaluate(el=>el.addEventListener('wheel',()=>{
-   el.setAttribute('data-wheel-start',String(el.scrollTop));
-  },{capture:true,once:true}));
+  const originalTop=await scroll.evaluate(el=>new Promise<number>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(el.scrollTop)))));
   await page.mouse.wheel(0,-35);
-  await expect(scroll).toHaveAttribute('data-wheel-start',/\d/);
-  const originalTop=Number(await scroll.getAttribute('data-wheel-start'));
+  await expect(page.getByRole('button',{name:'回到最新回答 ↓',exact:true})).toBeVisible();
   await expect.poll(()=>scroll.evaluate(el=>el.scrollTop)).toBeLessThan(originalTop);
   const smallScroll=await scroll.evaluate(el=>el.scrollTop),before=await page.locator('.markdown p').count();
+  await page.evaluate(()=>document.documentElement.removeAttribute('data-reading-paused'));
   await expect.poll(()=>page.locator('.markdown p').count()).toBeGreaterThan(before+1);
   expect(await scroll.evaluate(el=>el.scrollTop)).toBe(smallScroll);
   await scroll.evaluate(el=>{el.scrollTop=0;el.dispatchEvent(new Event('scroll'))});
