@@ -29,3 +29,9 @@ Use PostgreSQL `LIKE` with an escaped literal prefix and a `text_pattern_ops` co
 - Test services use a dedicated Docker network, no published ports, separate temporary storage and no production corpus mounts. Remove the temporary containers/network after acceptance.
 
 The previously published `v1.0.0` initially points at `904e12b`. Do not silently move an already public tag when completing the later user-selected fix-first release path.
+
+## 5. Full CI browser follow-up
+
+The first fix commit passed Python, evaluation and build, then exposed a previously blocked E2E failure: dark desktop small-wheel scrolling compared the eventual position against a baseline captured before Playwright's hover action. The CI trace showed the baseline at 2,841 and the final position stable at 2,847 for the entire polling timeout, with the return-to-latest control visible. A 41px streamed paragraph and the 35px upward gesture overlapped; comparing across streaming updates produced a false failure despite following being suspended.
+
+The test now observes `scrollTop` in a one-shot capture listener at actual wheel delivery. It still sends a real 35px browser wheel event and asserts both upward movement and a stable position while more paragraphs arrive. It does not pause the stream, call production scroll handlers, increase timeouts, add retries or change product code. CI trace and failure artifacts are retained locally under `ci-browser-failure/`.

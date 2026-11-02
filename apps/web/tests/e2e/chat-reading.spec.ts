@@ -39,8 +39,15 @@ for(const theme of ['light','dark'] as const){
   const tail=page.locator('.answer-tail').last(),scroll=page.locator('.chat-scroll');
   await expect(tail).toBeInViewport();
   // Even a small upward gesture must suspend following, not just a full page jump.
-  const originalTop=await scroll.evaluate(el=>el.scrollTop);
-  await scroll.hover();await page.mouse.wheel(0,-35);
+  await scroll.hover();
+  // Streaming can advance while Playwright positions the pointer. Measure
+  // at wheel delivery, immediately before the browser's default scroll.
+  await scroll.evaluate(el=>el.addEventListener('wheel',()=>{
+   el.setAttribute('data-wheel-start',String(el.scrollTop));
+  },{capture:true,once:true}));
+  await page.mouse.wheel(0,-35);
+  await expect(scroll).toHaveAttribute('data-wheel-start',/\d/);
+  const originalTop=Number(await scroll.getAttribute('data-wheel-start'));
   await expect.poll(()=>scroll.evaluate(el=>el.scrollTop)).toBeLessThan(originalTop);
   const smallScroll=await scroll.evaluate(el=>el.scrollTop),before=await page.locator('.markdown p').count();
   await expect.poll(()=>page.locator('.markdown p').count()).toBeGreaterThan(before+1);
