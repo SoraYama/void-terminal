@@ -6,6 +6,7 @@ import LlmRuntime, {
   AssistantStreamAccumulator,
   LlmError,
   type ToolSchema,
+  type TokenUsage,
 } from "@deepseek-ai/dsh-llm";
 import SessionStore, {
   Session,
@@ -27,7 +28,7 @@ import { AppError } from "./errors";
 export type RuntimeEvent =
   | { type: "start" }
   | { type: "text"; text: string }
-  | { type: "usage"; inputTokens: number; outputTokens: number }
+  | ({ type: "usage"; complete?: boolean } & TokenUsage)
   | { type: "finish"; kind: string }
   | { type: "compaction" };
 export type ResearchTool = {
@@ -192,8 +193,7 @@ export async function runDshResearch(options: DshResearchOptions) {
       else if (chunk.type === "usage")
         publish({
           type: "usage",
-          inputTokens: chunk.usage.inputTokens,
-          outputTokens: chunk.usage.outputTokens,
+          ...chunk.usage,
         });
       else if (chunk.type === "finish") {
         finishReason = chunk.reason.kind;
@@ -205,8 +205,8 @@ export async function runDshResearch(options: DshResearchOptions) {
       else if (event.type === "compaction/summary" && event.data.usage)
         publish({
           type: "usage",
-          inputTokens: event.data.usage.inputTokens,
-          outputTokens: event.data.usage.outputTokens,
+          ...event.data.usage,
+          complete: true,
         });
     });
     ctx.on("agent/turn-stopping", ({ agent: subject }) => {

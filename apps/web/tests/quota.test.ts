@@ -123,6 +123,123 @@ describe("shared budget and identity", () => {
     expect(await response.text()).not.toContain("server-secret");
     expect(settlement).toEqual({ reservationId: "r1", usedTokens: null });
   });
+  it.each([
+    {
+      name: "DeepSeek cached input",
+      usage: {
+        prompt_tokens: 1000,
+        completion_tokens: 50,
+        prompt_cache_hit_tokens: 900,
+      },
+      complete: true,
+      expected: 1050,
+    },
+    {
+      name: "OpenAI cached reads and writes",
+      usage: {
+        prompt_tokens: 1000,
+        completion_tokens: 50,
+        prompt_tokens_details: { cached_tokens: 850, cache_write_tokens: 100 },
+      },
+      complete: true,
+      expected: 1050,
+    },
+    {
+      name: "positive usage followed by incomplete stream",
+      usage: { prompt_tokens: 1000, completion_tokens: 50 },
+      complete: false,
+      expected: null,
+    },
+    {
+      name: "missing input counter",
+      usage: { completion_tokens: 50 },
+      complete: true,
+      expected: null,
+    },
+    {
+      name: "missing output counter",
+      usage: { prompt_tokens: 1000 },
+      complete: true,
+      expected: null,
+    },
+    {
+      name: "ambiguous zero ordinary input",
+      usage: {
+        prompt_tokens: 1000,
+        completion_tokens: 50,
+        prompt_cache_hit_tokens: 1000,
+      },
+      complete: true,
+      expected: null,
+    },
+  ])(
+    "settles $name conservatively through the real DSH stream",
+    async ({ usage, complete, expected }) => {
+      let settlement: any;
+      stubFetch(
+        vi.fn(async (url, init) => {
+          if (String(url).endsWith("/reserve"))
+            return Response.json({
+              allowed: true,
+              reservationId: "usage-check",
+              remaining: 1000000,
+            });
+          if (String(url).endsWith("/settle")) {
+            settlement = JSON.parse(String(init?.body));
+            return Response.json({ settled: true });
+          }
+          if (String(url).includes("/v1/search"))
+            return Response.json({
+              snapshotId: "s",
+              mode: "lexical",
+              total: 1,
+              sources: [
+                {
+                  id: "a",
+                  documentId: "d",
+                  title: "Evidence",
+                  type: "book",
+                  language: "en",
+                  text: "Original evidence",
+                  path: "p",
+                  locator: "1",
+                  sourceUrl: "https://example.com",
+                  snapshotId: "s",
+                },
+              ],
+            });
+          const chunk = {
+            choices: [
+              {
+                index: 0,
+                delta: { content: "Answer[1]" },
+                finish_reason: complete ? "stop" : null,
+              },
+            ],
+            usage,
+          };
+          return new Response(
+            "data: " +
+              JSON.stringify(chunk) +
+              "\n\n" +
+              (complete ? "data: [DONE]\n\n" : ""),
+            { headers: { "content-type": "text/event-stream" } },
+          );
+        }),
+      );
+      const response = await chat(req());
+      const stream = await response.text();
+      expect(settlement).toEqual({
+        reservationId: "usage-check",
+        usedTokens: expected,
+      });
+      if (complete) {
+        expect(stream).toContain("event: done");
+        if (expected === null) expect(stream).not.toContain('"usage"');
+        else expect(stream).toContain('"inputTokens":1000');
+      } else expect(stream).toContain("MODEL_STREAM_INCOMPLETE");
+    },
+  );
   it("signs and verifies session cookies and ignores forged session ids", () => {
     const one = issueIdentity(req());
     const two = issueIdentity(req({ cookie: one.cookie!.split(";")[0] }));

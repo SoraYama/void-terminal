@@ -362,8 +362,16 @@ describe("DSH isolation and lifecycle regressions", () => {
       canCompact: () => calls.length < 3,
       dispatch: async (body, _signal, context) => {
         calls.push({ body, compaction: context.compaction });
-        if (context.compaction)
-          return completion("A compact summary of previous account.");
+        if (context.compaction) {
+          const summary = completion("A compact summary of previous account.");
+          return new Response(
+            (await summary.text()).replace(
+              '"prompt_tokens":12',
+              '"prompt_tokens":22,"prompt_tokens_details":{"cached_tokens":7,"cache_write_tokens":3}',
+            ),
+            { headers: summary.headers },
+          );
+        }
         if (calls.length === 1) {
           const first = completion("", true);
           return new Response(
@@ -389,6 +397,16 @@ describe("DSH isolation and lifecycle regressions", () => {
     ).toBe(true);
     expect(events.some((e) => e.type === "compaction")).toBe(true);
     expect(events.filter((e) => e.type === "usage")).toHaveLength(calls.length);
+    expect(
+      events.filter((e) => e.type === "usage" && e.complete),
+    ).toMatchObject([
+      {
+        inputTokens: 12,
+        outputTokens: 6,
+        cacheReadTokens: 7,
+        cacheWriteTokens: 3,
+      },
+    ]);
     expect(JSON.stringify(calls.at(-1)!.body)).toContain("compact summary");
     expect(JSON.stringify(calls.at(-1)!.body)).not.toContain(
       "OLD_CONTEXT_MARKER",

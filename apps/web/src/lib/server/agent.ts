@@ -55,6 +55,18 @@ export async function runAgent(
       synthesize = false,
       seenUsage = false;
     let answerSources: Citation[] | undefined;
+    let pendingUsage: Usage | undefined;
+    const confirmUsage = () => {
+      if (!pendingUsage || seenUsage) return;
+      usage = {
+        inputTokens: usage.inputTokens + pendingUsage.inputTokens,
+        outputTokens: usage.outputTokens + pendingUsage.outputTokens,
+      };
+      usedTokens += pendingUsage.inputTokens + pendingUsage.outputTokens;
+      seenUsage = true;
+      unknownBilling = false;
+      pendingUsage = undefined;
+    };
     const instructions =
       loreSystemPrompt(input) +
       `
@@ -193,6 +205,7 @@ ${JSON.stringify({ snapshotId: evidence.snapshotId, sources: selected, selection
         dispatched = true;
         unknownBilling = true;
         seenUsage = false;
+        pendingUsage = undefined;
         emit({ event: "status", data: { stage: "writing" } });
         let response: Response;
         try {
@@ -265,23 +278,36 @@ ${JSON.stringify({ snapshotId: evidence.snapshotId, sources: selected, selection
             emit({ event: "text_delta", data: { text: event.text } });
           }
         } else if (event.type === "usage") {
+          // DSH counters are disjoint: ordinary input plus cache reads/writes.
+          // The adapter normalizes absent counters to zero. For this nonempty
+          // text/tool workload zero ordinary input or output cannot establish
+          // complete billing, even when it may represent a fully cached prompt.
+          const counts = [
+            event.inputTokens,
+            event.cacheReadTokens ?? 0,
+            event.cacheWriteTokens ?? 0,
+            event.outputTokens,
+          ];
           if (
-            Number.isInteger(event.inputTokens) &&
-            Number.isInteger(event.outputTokens) &&
-            event.inputTokens >= 0 &&
-            event.outputTokens >= 0 &&
-            event.inputTokens + event.outputTokens > 0
+            counts.every((n) => Number.isSafeInteger(n) && n >= 0) &&
+            event.inputTokens > 0 &&
+            event.outputTokens > 0
           ) {
-            seenUsage = true;
-            unknownBilling = false;
-            usage = {
-              inputTokens: usage.inputTokens + event.inputTokens,
-              outputTokens: usage.outputTokens + event.outputTokens,
+            pendingUsage = {
+              inputTokens: counts[0] + counts[1] + counts[2],
+              outputTokens: event.outputTokens,
             };
-            usedTokens += event.inputTokens + event.outputTokens;
+            // A compaction summary event exists only after the official
+            // summarizer has accepted its completed output.
+            if (event.complete) confirmUsage();
           }
         } else if (event.type === "finish") {
-          if (!seenUsage) earlierUnknownBilling = true;
+          if (["stop", "tool-calls", "max-tokens"].includes(event.kind))
+            confirmUsage();
+          if (!seenUsage) {
+            unknownBilling = true;
+            earlierUnknownBilling = true;
+          }
           if (event.kind === "max-tokens")
             throw new AppError(
               roundText.trim() ? "OUTPUT_LIMIT" : "EMPTY_MODEL_ANSWER",

@@ -30,7 +30,7 @@
 
 | Note | Summary |
 | --- | --- |
-| [2026-11-02-dsh-runtime](optimize/2026-11-02-dsh-runtime.md) | Official DSH loop/session/pi-ai/compaction, request-scoped Key isolation, five-call cap, Zod override and standalone packaging; 233 unit regressions |
+| [2026-11-02-dsh-runtime](optimize/2026-11-02-dsh-runtime.md) | Official DSH loop/session/pi-ai/compaction, request-scoped Key isolation, five-call cap, Zod override and standalone packaging; 239 unit regressions |
 | [2026-10-28-lore-answers](optimize/2026-10-28-lore-answers.md) | agent.ts / lore-policy.ts: mechanical gap-heavy answers, alias and typed retrieval, exact document discovery, context headroom, research/answer separation and citation compatibility |
 | [2026-10-29-reading-story](optimize/2026-10-29-reading-story.md) | agent.ts outline skips turning-point research; library TextMap body becomes huge title: narrative paragraphs, display-only title/excerpt cleanup, exact raw-text switch, separate book/chat filters and tablet layout |
 | [2026-10-29-dropdowns](optimize/2026-10-29-dropdowns.md) | Native select popup ignores theme: themed-select.tsx uses shared Radix Select with theme tokens, keyboard/touch, collision handling and settings portals |
