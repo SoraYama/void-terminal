@@ -1,4 +1,4 @@
-> **Last updated**: 2026-11-02 (official DSH runtime migration, isolation, compaction and deployment verification)
+> **Last updated**: 2026-11-02 (chat reading, compact scenery header, source disclosure and real-model multi-turn acceptance)
 
 # Agent Notes
 
@@ -30,6 +30,7 @@
 
 | Note | Summary |
 | --- | --- |
+| [2026-11-02-chat-reading](optimize/2026-11-02-chat-reading.md) | Streaming follows answer-tail instead of citation tags; full-height scenery/title scroll, Motion compact header, dark/mobile composer; public real DeepSeek 41k-history and failed-placeholder follow-ups |
 | [2026-11-02-dsh-runtime](optimize/2026-11-02-dsh-runtime.md) | Official DSH loop/session/pi-ai/compaction, request-scoped Key isolation, five-call cap, Zod override and standalone packaging; 239 unit regressions |
 | [2026-10-28-lore-answers](optimize/2026-10-28-lore-answers.md) | agent.ts / lore-policy.ts: mechanical gap-heavy answers, alias and typed retrieval, exact document discovery, context headroom, research/answer separation and citation compatibility |
 | [2026-10-29-reading-story](optimize/2026-10-29-reading-story.md) | agent.ts outline skips turning-point research; library TextMap body becomes huge title: narrative paragraphs, display-only title/excerpt cleanup, exact raw-text switch, separate book/chat filters and tablet layout |
