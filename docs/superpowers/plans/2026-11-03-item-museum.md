@@ -46,13 +46,13 @@ List response: `{items:ItemSummary[],total,page,pageSize,snapshotId,ready,counts
 
 **Interfaces:** Produce `items.jsonl` and `item-coverage.json` next to the existing normalized output. `build_items(root:Path,supplementary:Path|None) -> tuple[list[dict],dict]` implements the shared contract for CHS+EN. `verify_images(items:list[dict],cache_path:Path,workers:int=12) -> list[dict]` verifies and returns updated records with a persistent check cache. CLI normalize hashes documents and items into snapshot identity. CLI `verify-images --normalized PATH --cache PATH --workers N` updates unpublished item output, coverage and snapshot digest. Extend do_import to pass items and item_coverage to CatalogStore.import_snapshot using the optional kwargs Task 2 defines; defer store import execution until Task 2 is merged.
 
-- [ ] Write failing representative tests: Homa 1/20-before/20-after/90 stats; no placeholder refinements; newest weapon survives older supplement; artifact +0/+20 and slot pools; single-piece set; task item missing description remains explicit; internal records hidden by state; dedup by physical artifact slot; image check cache and failed PNG response.
-- [ ] Run targeted tests and confirm missing behavior fails.
-- [ ] Update all main pins to `bd35e243fa436f141f015cf221a6e19d0c34b7ca`, tree `216b990b921ca71e3ffac08a270747f1f403600f`; use verified TextMap hashes in the feature note. Keep supplemental commit. Extend repeatable acquisition with verified image/stat/curve support (at least the eight already downloaded files) without claiming all 30 categories. Add bounded network retries for observed read timeouts.
-- [ ] Build typed items from primary numerical tables, join supplement by source IDs, use current main values over old supplement. Resolve primary descriptions/effects, linked Readable stories and material uses/recipes where source relationships are known; mark unresolved rather than guess. Use latest real icon IDs and verified official/Yatta resources. No AI-generated item images.
-- [ ] Preserve document normalization/citation source spans; expand supplementary weapon effect templates. Put a bounded structured `itemSummary` in equipment/material document metadata for Task 2's model allowlist. Never add massive growth arrays to model metadata.
-- [ ] Keep missing ID lists and field applicability in coverage. Image verification must GET a bounded PNG/WebP/JPEG header after HEAD and check actual dimensions/type, allow only fixed HTTPS providers, distinguish temporary failures, and never request URLs from browser input.
-- [ ] Run the knowledge test suite, self-review and commit only owned files. Report test evidence and numerical source decisions.
+- [x] Write failing representative tests: Homa 1/20-before/20-after/90 stats; no placeholder refinements; newest weapon survives older supplement; artifact +0/+20 and slot pools; single-piece set; task item missing description remains explicit; internal records hidden by state; dedup by physical artifact slot; image check cache and failed PNG response.
+- [x] Run targeted tests and confirm missing behavior fails.
+- [x] Update all main pins to `bd35e243fa436f141f015cf221a6e19d0c34b7ca`, tree `216b990b921ca71e3ffac08a270747f1f403600f`; use verified TextMap hashes in the feature note. Keep supplemental commit. Extend repeatable acquisition with verified image/stat/curve support (at least the eight already downloaded files) without claiming all 30 categories. Add bounded network retries for observed read timeouts.
+- [x] Build typed items from primary numerical tables, join supplement by source IDs, use current main values over old supplement. Resolve primary descriptions/effects, linked Readable stories and material uses/recipes where source relationships are known; mark unresolved rather than guess. Use latest real icon IDs and verified official/Yatta resources. No AI-generated item images.
+- [x] Preserve document normalization/citation source spans; expand supplementary weapon effect templates. Put a bounded structured `itemSummary` in equipment/material document metadata for Task 2's model allowlist. Never add massive growth arrays to model metadata.
+- [x] Keep missing ID lists and field applicability in coverage. Image verification must GET a bounded PNG/WebP/JPEG header after HEAD and check actual dimensions/type, allow only fixed HTTPS providers, distinguish temporary failures, and never request URLs from browser input.
+- [x] Run the knowledge test suite, self-review and commit only owned files. Report test evidence and numerical source decisions.
 
 ## Task 2: Atomic item catalog, API and research integration
 
@@ -60,10 +60,10 @@ List response: `{items:ItemSummary[],total,page,pageSize,snapshotId,ready,counts
 
 **Interfaces:** Extend `CatalogStore.import_snapshot(...,activate=True,items=None,item_coverage=None)` without breaking legacy calls. Add `list_items(q='',category=None,language='zh-CN',rarity=None,weapon_type=None,include_internal=False,sort='rarity',page=1,page_size=48,snapshot_id=None)`, `get_item(id,language='zh-CN',snapshot_id=None)`, `item_coverage(snapshot_id=None)`. Add authenticated GET `/v1/items`, `/v1/items/coverage`, `/v1/items/{id:path}`. Web proxies are `/api/items`, `/api/items/coverage`, `/api/items/{id}`. Query names: `q,category,language,rarity,weaponType,includeInternal,sort,page,pageSize,snapshotId`; only language/snapshotId apply to detail. Existing source language enum and error envelopes apply.
 
-- [ ] Write and run failing tests for atomic rollback on bad items, old snapshot without items, pinned reads after active pointer changes, literal %/_ search, page bounds, internal filter, valid stats, unauthorized API, duplicate/unknown proxy params.
-- [ ] Add indexed item and item-coverage tables keyed by snapshot/language/id. Validate incoming items and prevent cross-snapshot references; attach items inside the existing snapshot transaction. Paginate/filter in SQL; summaries exclude growth/story payloads.
-- [ ] Implement private API plus bounded validating server proxies; do not expose internal credentials or create a server image proxy. Add bounded itemSummary handling to research modelMetadata.
-- [ ] Run Python suite, frontend relevant proxy/unit suite and typecheck; self-review and commit owned files.
+- [x] Write and run failing tests for atomic rollback on bad items, old snapshot without items, pinned reads after active pointer changes, literal %/_ search, page bounds, internal filter, valid stats, unauthorized API, duplicate/unknown proxy params.
+- [x] Add indexed item and item-coverage tables keyed by snapshot/language/id. Validate incoming items and prevent cross-snapshot references; attach items inside the existing snapshot transaction. Paginate/filter in SQL; summaries exclude growth/story payloads.
+- [x] Implement private API plus bounded validating server proxies; do not expose internal credentials or create a server image proxy. Add bounded itemSummary handling to research modelMetadata.
+- [x] Run Python suite, frontend relevant proxy/unit suite and typecheck; self-review and commit owned files.
 
 ## Task 3: Game inventory interface
 
@@ -71,19 +71,19 @@ List response: `{items:ItemSummary[],total,page,pageSize,snapshotId,ready,counts
 
 **Interfaces:** Consume the shared contract and Task 2 APIs. `/museum` loads Terminal with museum view so the exact existing sidebar, preferences, settings, source drawer and history remain available. Add sidebar museum entry and URL-aware navigation without losing drafts. `MuseumWorkspace` receives locale, onOpenDocument(id,snapshotId), onAsk(itemName,itemId,snapshotId) and uses source-language preferences. Query params encode filters and selected `item`; request snapshots remain consistent. Define typed Item/ItemSummary/ItemListResult/ItemResult in lib/items.ts.
 
-- [ ] Add failing browser scenarios for entering museum, filtering, weapon boundary and refinement selection, artifact rules, quest item, mobile detail Back/Escape, stale response, image fallback and dark mode.
-- [ ] Implement paper/slate/gold game-like layout matching approved `docs/design/item-museum-concept.png` while using real item assets. Desktop independently scrolling grid/details; compact no-marketing header; responsive cards and type categories. Default weapon category and real first selection; no fake ownership counts.
-- [ ] Render type-specific details with legal weapon level/ascension/refinement options, stage and cumulative ascension cost labels, artifact rarity/level/slot pools and possible substat rolls, generic uses, story/source and original document links. Hide inapplicable tabs, show truthful missing states.
-- [ ] Implement server pagination, search debounce, abort and request identity guards, URL deep links and mobile modal with focus restoration. Reuse existing Radix controls, no new dependency.
-- [ ] Typecheck, unit suite and browser tests. Visually inspect screenshots at 1440/390 and dark mode, correct hierarchy/spacing/overflow, self-review and commit owned files.
+- [x] Add failing browser scenarios for entering museum, filtering, weapon boundary and refinement selection, artifact rules, quest item, mobile detail Back/Escape, stale response, image fallback and dark mode.
+- [x] Implement paper/slate/gold game-like layout matching approved `docs/design/item-museum-concept.png` while using real item assets. Desktop independently scrolling grid/details; compact no-marketing header; responsive cards and type categories. Default weapon category and real first selection; no fake ownership counts.
+- [x] Render type-specific details with legal weapon level/ascension/refinement options, stage and cumulative ascension cost labels, artifact rarity/level/slot pools and possible substat rolls, generic uses, story/source and original document links. Hide inapplicable tabs, show truthful missing states.
+- [x] Implement server pagination, search debounce, abort and request identity guards, URL deep links and mobile modal with focus restoration. Reuse existing Radix controls, no new dependency.
+- [x] Typecheck, unit suite and browser tests. Visually inspect screenshots at 1440/390 and dark mode, correct hierarchy/spacing/overflow, self-review and commit owned files.
 
 ## Task 4: Build, release and evidence (controller operations)
 
 **Files:** Update `docs/agent/feature/2026-11-03-item-museum.md`, INDEX, a repeatable data-update operations guide and release evidence under ignored artifacts. No production write until local verification passes.
 
-- [ ] Verify baseline archive and unpack a consistent old SQLite catalog; retain old snapshot for citations. Use old catalog only as an offline build base.
-- [ ] Normalize the latest complete main plus declared supplement scope, verify all item images into cache, finalize immutable ID/coverage and import into offline DB without activating until all checks pass. Record exact gaps, never claim all game records complete.
-- [ ] Run full relevant tests and fresh-context branch review; resolve material findings. Build web/knowledge images; exercise local real corpus, document search, item endpoints and browser screenshots.
-- [ ] Transfer verified compressed SQLite to staging on production. Before replacing, stop services, back up current SQLite including WAL safely, preserve budget state, confirm new database ownership/mode and promote staged ready snapshot. Use compose.sqlite.yaml, never the PostgreSQL default update script.
-- [ ] Verify public status/latest commit, item list/details and images, representative weapon/artifact/material/quest records, old snapshot references and SSE flow; revert code/database if failed. Save release evidence and exact future update/rollback commands.
-- [ ] Mark the agent note with actual deployment state and remaining upstream gaps; report shipped URL, coverage and verification.
+- [x] Verify baseline archive and unpack a consistent old SQLite catalog; retain old snapshot for citations. Use old catalog only as an offline build base.
+- [x] Normalize the latest complete main plus declared supplement scope, verify all item images into cache, finalize immutable ID/coverage and import into offline DB without activating until all checks pass. Record exact gaps, never claim all game records complete.
+- [x] Run full relevant tests and fresh-context branch review; resolve material findings. Build web/knowledge images; exercise local real corpus, document search, item endpoints and browser screenshots.
+- [x] Transfer verified compressed SQLite to staging on production. Before replacing, stop services, back up current SQLite including WAL safely, preserve budget state, confirm new database ownership/mode and promote staged ready snapshot. Use compose.sqlite.yaml, never the PostgreSQL default update script.
+- [x] Verify public status/latest commit, item list/details and images, representative weapon/artifact/material/quest records, old snapshot references and SSE flow; revert code/database if failed. Save release evidence and exact future update/rollback commands.
+- [x] Mark the agent note with actual deployment state and remaining upstream gaps; report shipped URL, coverage and verification.

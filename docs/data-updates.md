@@ -1,6 +1,6 @@
 # 数据更新与道具资料发布
 
-知识库与博览馆共用不可变快照。网页请求只读取活动快照；上游仓库有新提交不会自动覆盖线上。更新需要下载、构建、检查和发布。
+知识库与博览馆共用不可变快照。新请求默认读取活动快照，带 `snapshotId` 的历史引用继续读取对应旧快照；上游仓库有新提交不会自动覆盖线上。更新需要下载、构建、检查和发布。
 
 ## 1. 固定并校验上游版本
 
@@ -57,6 +57,34 @@ services/knowledge/.venv/bin/python -m knowledge.ingest snapshots
 
 ## 5. 回退
 
-验证失败时停止 web/knowledge，保留失败的新库及其 WAL/SHM 为同一组证据，恢复发布前的一致数据库和旧代码提交，再重新启动。验证 readiness、活动快照和旧引用。
+验证失败时停止 web/knowledge，保留失败的新库及其 WAL/SHM 为同一组证据，恢复发布前的一致数据库和旧代码提交，再重新启动。先从停服后的新库迁回最新预算状态；损坏库读取可能改变 WAL/SHM，因此先保留完整失败文件组，再通过只读主文件硬链接与独立 sidecar 副本读取，不能直接打开证据组做恢复。预算无法读取时保留证据并明确记录待核对状态。验证 readiness、活动快照和旧引用。
 
 若代码与数据库均正常，单纯选择以前的快照可以用 `python -m knowledge.ingest rollback <旧快照 ID>`；旧快照没有结构化物品时，博览馆会显示尚未构建，不能混用新快照的道具。
+
+## 6. 2026-11-03 发布基线
+
+- 功能提交：`94d9881e6fcc099a06e3521bafcdd4c9ea97101e`；后续仅文档提交不改变镜像内容。
+- 当前快照：`agd-bd35e243fa43-9f534ea4c12d`；保留快照：`agd-792978e5503e-1ac83cf28961`。
+- 发布目录：`/opt/void-terminal/releases/item-museum-20261103`，包含 `release-manifest.json`、`staging-verification.json`、`cutover-before.json`、`activation-result.json` 和已审查的操作脚本。
+- 原代码：`d10fd2510f6f47f3669a46d7fbf6d6fe8b45762e`；原数据库：该发布目录下 `catalog.before-museum.sqlite`。
+- 原镜像：`void-terminal-knowledge:before-item-museum-20261103` 与 `void-terminal-web:before-item-museum-20261103`。知识服务实际 ID 为 `sha256:31ffb49cc2fc673499bbb25c19439700e69e3d11cc8c0233214632c7c0ee4227`，Web 为 `sha256:a1b7f8bd01b890d872e017afe336728b9e62edc922d6f3ca7f62a2a5d0675ef3`；回退前核对实际 ID，不使用旧日志中的过期 latest 标签。
+
+在服务器上只读复验本次发布（SSE 使用无效密钥检查来源和预期鉴权错误，不发生付费生成）：
+
+```sh
+python3 /opt/void-terminal/releases/item-museum-20261103/verify-release.py \
+  --origin https://void-terminal.sorayama.moe \
+  --snapshot agd-bd35e243fa43-9f534ea4c12d --sse
+```
+
+如需完整版本回退，先按第 5 节停服、迁回预算和恢复一致旧库，再执行以下代码/镜像恢复命令；不能在新旧进程仍打开数据库时移动文件：
+
+```sh
+cd /opt/void-terminal/app
+git checkout --detach d10fd2510f6f47f3669a46d7fbf6d6fe8b45762e
+docker tag void-terminal-knowledge:before-item-museum-20261103 void-terminal-knowledge:latest
+docker tag void-terminal-web:before-item-museum-20261103 void-terminal-web:latest
+docker compose -f compose.sqlite.yaml up --no-build -d --wait --wait-timeout 240 knowledge web
+```
+
+本次 19:18:45（Asia/Shanghai）切换完成，公网 API/SSE 与桌面/手机真实资料验收通过。19:19:48 复查两个上游官方 Atom feed，分别仍为 `bd35e243fa436f141f015cf221a6e19d0c34b7ca` 和 `49a6544a6c6ae36089cb42fa591fc46f01de8bcf`。后续上游更新仍须执行上述获取、归一化、图片检查、离线构建和发布流程；不会自动改动线上。
