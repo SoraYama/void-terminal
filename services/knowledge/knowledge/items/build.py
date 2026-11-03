@@ -123,7 +123,10 @@ class ItemBuilder:
         description=self.text(row,'descTextMapHash',lang)
         subtype=self.text(row,'typeDescTextMapHash',lang) or plain(row.get('materialType') or row.get('surfaceType') or table)
         flags=any(row.get(k) is True for k in ('isInternal','isTest','isDeleted','isDeprecated'))
-        internal=flags or bool(re.search(r'(?:\b(?:test|unused|deprecated|placeholder)\b|测试|废弃|占位|未使用)',name,re.I))
+        # Only explicit developer labels/declarations in descriptions, not narrative keywords.
+        description_internal=bool(re.match(r'^(?:\(\s*(?:test|deprecated|unused|测试|废弃)\s*\)|\[\s*(?:test|deprecated|unused|测试|废弃)\s*\])',description,re.I)
+            or re.fullmatch(r'(?:deprecated|unused|此道具废弃|该道具已废弃|此道具已废弃)[.!。！]?',description,re.I))
+        internal=flags or description_internal or bool(re.search(r'(?:\b(?:test|unused|deprecated|placeholder)\b|测试|废弃|占位|未使用)',name,re.I))
         rarity=row.get('rankLevel');rarity=rarity if isinstance(rarity,int) and 1<=rarity<=5 else None
         icon=self.icon(row,{'weapon':'weapons','artifact':'artifacts','food':'foods'}.get(category,'materials'),supp,slot)
         item={'id':identity,'language':lang,'name':name or f'{table} {row["id"]}','category':category,
@@ -145,7 +148,12 @@ class ItemBuilder:
             if value:item['attributes'].append({'label':('Effect' if key.startswith('effect') else 'Details') if lang=='en' else ('效果' if key.startswith('effect') else '说明'),'value':value})
         for value in row.get('sourceTextList',[]):
             text=plain(self.maps[lang].get(str(value),''))
-            if text:item['acquisition'].append(text)
+            if text and text not in item['acquisition']:item['acquisition'].append(text)
+        if not item['acquisition'] and isinstance(supp[0].get('sources'),list):
+            for value in supp[0]['sources']:
+                if not isinstance(value,str):continue
+                text=plain(value)
+                if text and text not in item['acquisition']:item['acquisition'].append(text)
         item['coverage']['acquisition']='complete' if item['acquisition'] else 'upstream-missing'
         self.story(item,row,lang,supp[0].get(slot,{}) if slot else supp[0])
         return item

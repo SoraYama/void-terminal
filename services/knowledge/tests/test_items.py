@@ -102,6 +102,52 @@ class ItemBuildTests(unittest.TestCase):
             self.assertEqual(localized['material:102', language]['state'], 'source-record')
         self.assertEqual(localized['material:101', 'en']['name'], 'Wall1')
 
+    def test_matching_supplement_acquisition_fallback_and_primary_precedence(self):
+        from knowledge.ingest.normalize import SUPPLEMENT_COMMIT
+        from knowledge.items import build_items
+        path = self.supp/'src/data/English/materials/apple.json'
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps(dict(id=100001, name='Apple', sources=[
+            'Found in the wild', ' Found in the wild ', '', {'description': 'Unsupported'}, 42])))
+        self.table('Material', [dict(id=100001, nameTextMapHash=7), dict(id=100002, nameTextMapHash=7)])
+        items, coverage = build_items(self.root, self.supp)
+        localized = {(item['id'], item['language']): item for item in items}
+        apple = localized['material:100001', 'en']
+        self.assertEqual(apple['acquisition'], ['Found in the wild'])
+        self.assertEqual(apple['coverage']['acquisition'], 'complete')
+        self.assertTrue(any(s['path'] == 'src/data/English/materials/apple.json' and
+                            s['commit'] == SUPPLEMENT_COMMIT for s in apple['sources']))
+        self.assertIn('gdb:en:material:materials:100001', apple['documentIds'])
+        for key in [('material:100001', 'zh-CN'), ('material:100002', 'en')]:
+            self.assertEqual(localized[key]['acquisition'], [])
+            self.assertEqual(localized[key]['coverage']['acquisition'], 'upstream-missing')
+        self.write('TextMap/TextMapEN.json', {**self.texts, '11': 'Current primary location'})
+        self.table('Material', [dict(id=100001, nameTextMapHash=7, sourceTextList=[11, 11])])
+        items, _ = self.build()
+        self.assertEqual(items['material:100001']['acquisition'], ['Current primary location'])
+
+    def test_explicit_description_markers_are_bilingual_but_narrative_words_are_not(self):
+        from knowledge.items import build_items
+        markers = ['(test)此道具废弃', '(TEST)An old token', '[Deprecated] Old token',
+                   '此道具废弃', 'Deprecated.', '[测试]旧道具']
+        prose = ['A tool for testing the strength of discarded metal.',
+                 'A test of courage awaits the traveler.', '用于测试被废弃机器的零件。',
+                 'This deprecated technique survives in local stories.']
+        for marked_language in ('en', 'zh-CN'):
+            with self.subTest(marked_language=marked_language):
+                rows = [dict(id=200+i, nameTextMapHash=7, descTextMapHash=100+i)
+                        for i in range(len(markers+prose))]
+                for language, code in [('en', 'EN'), ('zh-CN', 'CHS')]:
+                    descriptions = markers+prose if language == marked_language else ['Ordinary token']*len(rows)
+                    self.write(f'TextMap/TextMap{code}.json', {**self.texts,
+                        **{str(100+i): text for i, text in enumerate(descriptions)}})
+                self.table('Material', rows)
+                items, _ = build_items(self.root, self.supp)
+                for item in items:
+                    if item['id'].startswith('material:'):
+                        index = int(item['rawIds'][0])-200
+                        self.assertEqual(item['state'], 'internal' if index < len(markers) else 'source-record', item)
+
     def test_readable_story_document_id_matches_only_resolved_physical_parts(self):
         weapons=json.loads((self.root/'ExcelBinOutput/WeaponExcelConfigData.json').read_text());weapons[0]['storyId']=193501;self.table('Weapon',weapons)
         self.table('Document',[dict(id=193501,PLOJOMIPJGH=[293501,999999])])

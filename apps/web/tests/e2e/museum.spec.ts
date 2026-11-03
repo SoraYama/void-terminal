@@ -59,6 +59,79 @@ test('museum: navigation preserves draft and ask pins a new unsent conversation'
  let sent=false;await page.route('**/api/chat',r=>{sent=true;expect(r.request().postDataJSON().snapshotId).toBe(snapshotId);return r.fulfill({contentType:'text/event-stream',body:`event: text_delta\ndata: {"text":"fixture reply"}\n\nevent: done\ndata: {"snapshotId":"${snapshotId}","usage":{},"finishReason":"stop"}\n\n`})});
  expect(sent).toBe(false);await page.getByRole('button',{name:'发送',exact:true}).click();await expect(page.locator('.markdown')).toContainText('fixture reply');expect(sent).toBe(true);
 });
+
+// Delay the real IndexedDB open success, before historyOperation creates its transaction.
+// UI, save(), send(), and the transaction itself remain the production implementation.
+async function delayHistory(page:Page){
+ await page.addInitScript(()=>{
+  const state={hold:false,pending:[] as Array<()=>void>};
+  Object.assign(window,{historyDelay:state});
+  const open=IDBFactory.prototype.open;
+  IDBFactory.prototype.open=function(...args:Parameters<IDBFactory['open']>){
+   const request=open.apply(this,args);
+   request.addEventListener('success',event=>{
+    if(state.hold){event.stopImmediatePropagation();state.pending.push(()=>request.onsuccess?.call(request,event))}
+   });
+   return request;
+  };
+ });
+}
+async function holdHistory(page:Page){await page.evaluate(()=>{(window as unknown as {historyDelay:{hold:boolean}}).historyDelay.hold=true})}
+async function releaseHistory(page:Page){
+ await page.evaluate(async()=>{
+  const state=(window as unknown as {historyDelay:{hold:boolean;pending:Array<()=>void>}}).historyDelay;
+  state.hold=false;state.pending.splice(0).forEach(release=>release());
+  // A subsequent transaction completes after the released save transaction.
+  await new Promise<void>((resolve,reject)=>{const r=indexedDB.open('void-terminal',1);r.onsuccess=()=>{const tx=r.result.transaction('conversations','readonly');tx.objectStore('conversations').getAll();tx.oncomplete=()=>{r.result.close();resolve()};tx.onerror=()=>reject(tx.error)}});
+  await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
+ });
+}
+async function awaitHeldHistory(page:Page){await expect.poll(()=>page.evaluate(()=>(window as unknown as {historyDelay:{pending:unknown[]}}).historyDelay.pending.length)).toBe(1)}
+async function enterMuseum(page:Page,mobile:boolean){if(mobile)await page.getByRole('button',{name:'Menu',exact:true}).click();await page.getByRole('button',{name:'道具博览馆',exact:true}).click();await selectHoma(page)}
+
+test('museum: Ask cancels a send waiting for initial history persistence',async({page},info)=>{
+ await fixture(page);await delayHistory(page);let requests:Array<Record<string,unknown>>=[];
+ await page.route('**/api/chat',r=>{requests.push(r.request().postDataJSON());return r.fulfill({contentType:'text/event-stream',body:'event: text_delta\ndata: {"text":"old response"}\n\nevent: done\ndata: {"snapshotId":"old-snapshot"}\n\n'})});
+ await page.goto('/');await page.locator('#question').fill('old question');await holdHistory(page);await page.getByRole('button',{name:'发送',exact:true}).click();await awaitHeldHistory(page);
+ await enterMuseum(page,info.project.name==='mobile');await page.getByRole('button',{name:'向终端询问此道具',exact:true}).click();
+ await expect(page.locator('#question')).toHaveValue(/护摩之杖/);await releaseHistory(page);
+ expect(requests).toHaveLength(0);await expect(page.locator('.message')).toHaveCount(0);await expect(page.locator('.stream-stage')).toHaveCount(0);await expect(page.locator('#question')).toHaveValue(/护摩之杖/);
+ await page.getByRole('button',{name:'发送',exact:true}).click();await expect.poll(()=>requests.length).toBe(1);expect(requests[0].snapshotId).toBe(snapshotId);
+});
+
+test('museum: Restore cancels a send waiting for initial history persistence',async({page},info)=>{
+ await fixture(page);await delayHistory(page);let requests=0;
+ await page.route('**/api/chat',r=>{requests++;return r.fulfill({contentType:'text/event-stream',body:'event: text_delta\ndata: {"text":"old response"}\n\nevent: done\ndata: {"snapshotId":"old-snapshot"}\n\n'})});
+ await page.goto('/');await page.locator('#question').fill('保留我的草稿');await enterMuseum(page,info.project.name==='mobile');await page.getByRole('button',{name:'向终端询问此道具',exact:true}).click();
+ await holdHistory(page);await page.getByRole('button',{name:'发送',exact:true}).click();await awaitHeldHistory(page);await page.getByRole('button',{name:'恢复之前的草稿',exact:true}).click();await releaseHistory(page);
+ expect(requests).toBe(0);await expect(page.locator('#question')).toHaveValue('保留我的草稿');await expect(page.locator('.main')).toHaveClass('main home');await expect(page.locator('.message')).toHaveCount(0);await expect(page.getByRole('button',{name:'发送',exact:true})).toBeEnabled();
+});
+
+test('museum: Stop cancels a send waiting for initial history persistence',async({page})=>{
+ await fixture(page);await delayHistory(page);let requests=0;
+ await page.route('**/api/chat',r=>{requests++;return r.fulfill({contentType:'text/event-stream',body:'event: done\ndata: {"snapshotId":"old-snapshot"}\n\n'})});
+ await page.goto('/');await page.locator('#question').fill('old question');await holdHistory(page);await page.getByRole('button',{name:'发送',exact:true}).click();await awaitHeldHistory(page);
+ await page.getByRole('button',{name:'停止生成',exact:true}).click();await releaseHistory(page);
+ expect(requests).toBe(0);await expect(page.locator('.stream-stage')).toHaveCount(0);await expect(page.getByRole('button',{name:'停止生成',exact:true})).toHaveCount(0);await expect(page.locator('.inline-error[role="alert"]')).toContainText('已停止');
+});
+
+test('museum: Ask cancels an already streaming answer without publishing late events',async({page},info)=>{
+ await fixture(page);
+ await page.addInitScript(()=>{
+  const originalFetch=window.fetch;
+  window.fetch=async(...args:Parameters<typeof fetch>)=>{
+   if(args[0]!=='/api/chat')return originalFetch(...args);
+   const encoder=new TextEncoder();
+   return new Response(new ReadableStream({start(controller){
+    controller.enqueue(encoder.encode('event: text_delta\ndata: {"text":"first fragment"}\n\n'));
+    Object.assign(window,{finishOldStream:()=>{controller.enqueue(encoder.encode('event: text_delta\ndata: {"text":"late old answer"}\n\nevent: done\ndata: {"snapshotId":"old-snapshot"}\n\n'));controller.close()}});
+   }}),{headers:{'Content-Type':'text/event-stream'}});
+  };
+ });
+ await page.goto('/');await page.locator('#question').fill('old question');await page.getByRole('button',{name:'发送',exact:true}).click();await expect(page.locator('.markdown')).toContainText('first fragment');
+ await enterMuseum(page,info.project.name==='mobile');await page.getByRole('button',{name:'向终端询问此道具',exact:true}).click();await page.evaluate(()=>(window as unknown as {finishOldStream:()=>void}).finishOldStream());
+ await expect(page.locator('.message')).toHaveCount(0);await expect(page.locator('#question')).toHaveValue(/护摩之杖/);await expect(page.locator('.stream-stage')).toHaveCount(0);await expect(page.getByRole('button',{name:'发送',exact:true})).toBeEnabled();
+});
 test('museum: variable artifact main stats exclude matching substats',async({page})=>{
  await fixture(page);await page.goto('/museum?category=artifact&item=artifact%3A15001%3Agoblet');await expect(page.locator('.museum-detail h2')).toHaveText(goblet.name);
  await expect(page.locator('.museum-substats')).not.toContainText('生命值百分比');await choose(page,'主属性','攻击力百分比');await expect(page.locator('.museum-substats')).not.toContainText('攻击力百分比');await expect(page.locator('.museum-substats')).toContainText('生命值百分比');
