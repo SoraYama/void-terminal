@@ -9,8 +9,9 @@ from fastapi import Depends, FastAPI, Header, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
+from pydantic import ValidationError
 from .config import require_production_token
-from .models import ContentType, Locale, ReserveRequest, SearchRequest, SettleRequest
+from .models import ContentType, ItemDetailQuery, ItemListQuery, Locale, ReserveRequest, SearchRequest, SettleRequest
 from .store import CatalogStore, StoreError
 
 logger = logging.getLogger('knowledge')
@@ -58,6 +59,36 @@ def create_app(store=None, api_token=None):
         return JSONResponse(status_code=503, content={'error': {'code': 'KNOWLEDGE_UNAVAILABLE', 'message': 'Knowledge service is unavailable'}})
 
     guards = [Depends(authenticate)]
+
+    def item_query(request, model, allowed=None):
+        query = request.query_params
+        if any(len(query.getlist(key)) != 1 for key in query):
+            raise StoreError('INVALID_REQUEST', 'Duplicate query fields are invalid')
+        values = dict(query)
+        if allowed is not None and set(values) - set(allowed):
+            raise StoreError('INVALID_REQUEST', 'Unknown query field')
+        values = {key: value for key, value in values.items()
+                  if value.strip() or key not in ('q', 'category', 'rarity', 'weaponType', 'snapshotId')}
+        try:
+            return model.model_validate(values)
+        except ValidationError as exc:
+            raise StoreError('INVALID_REQUEST', 'Request fields or bounds are invalid') from exc
+
+    @api.get('/v1/items', dependencies=guards)
+    def items(request: Request, db=Depends(catalog)):
+        query = item_query(request, ItemListQuery)
+        return db.list_items(query.q, query.category, query.language, query.rarity, query.weaponType,
+                             query.includeInternal, query.sort, query.page, query.pageSize, query.snapshotId)
+
+    @api.get('/v1/items/coverage', dependencies=guards)
+    def item_coverage(request: Request, db=Depends(catalog)):
+        query = item_query(request, ItemDetailQuery, ['snapshotId'])
+        return db.item_coverage(query.snapshotId)
+
+    @api.get('/v1/items/{id:path}', dependencies=guards)
+    def item(id: str, request: Request, db=Depends(catalog)):
+        query = item_query(request, ItemDetailQuery)
+        return db.get_item(id, query.language, query.snapshotId)
 
     @api.get('/v1/status', dependencies=guards)
     def status(db=Depends(catalog)):

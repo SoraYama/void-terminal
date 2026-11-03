@@ -1,9 +1,11 @@
 """Validated wire models. Field spelling follows the frozen camelCase contract."""
-from typing import Any, Literal
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing import Annotated, Any, Literal
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 ContentType = Literal['quest', 'dialogue', 'book', 'weapon', 'artifact', 'material', 'furniture', 'character', 'voice', 'enemy', 'food', 'achievement', 'tcg', 'other']
 Locale = Literal['zh-CN', 'en']
+ItemCategory = Literal['weapon', 'artifact', 'material', 'food', 'quest', 'gadget', 'other']
+CoverageState = Literal['complete', 'not-applicable', 'upstream-missing', 'unresolved', 'unreachable']
 
 class WireModel(BaseModel):
     model_config = ConfigDict(extra='forbid')
@@ -77,3 +79,161 @@ class ReserveRequest(WireModel):
 class SettleRequest(WireModel):
     reservationId: str = Field(min_length=1, max_length=200)
     usedTokens: int | None = Field(ge=0, le=10000000, strict=True)
+
+
+class ItemWire(WireModel):
+    model_config = ConfigDict(extra='forbid', strict=True, allow_inf_nan=False)
+
+
+Rarity = Annotated[int, Field(ge=1, le=5)]
+FiniteValue = Annotated[float, Field(allow_inf_nan=False)]
+
+
+class ItemIcon(ItemWire):
+    identifier: str
+    url: str | None
+    provider: str | None
+    status: Literal['verified', 'unverified', 'missing', 'unreachable']
+    checkedAt: float | None = Field(default=None, ge=0)
+    contentType: Literal['image/png', 'image/webp', 'image/jpeg'] | None = None
+    width: int | None = Field(default=None, ge=1, le=16384)
+    height: int | None = Field(default=None, ge=1, le=16384)
+    temporary: bool | None = None
+    reason: str | None = Field(default=None, max_length=1000)
+
+    @field_validator('url')
+    @classmethod
+    def safe_url(cls, value):
+        if value is not None:
+            from urllib.parse import urlsplit
+            parsed = urlsplit(value)
+            if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password:
+                raise ValueError('Image URLs must be public HTTPS URLs')
+        return value
+
+
+class ItemAttribute(ItemWire):
+    label: str
+    value: str
+
+
+class ItemStat(ItemWire):
+    key: str = Field(min_length=1)
+    label: str
+    value: FiniteValue
+    unit: Literal['', '%']
+
+
+class WeaponLevel(ItemWire):
+    level: int = Field(ge=1, le=100)
+    ascension: int = Field(ge=0, le=10)
+    stats: list[ItemStat] = Field(max_length=32)
+
+
+class Refinement(ItemWire):
+    rank: Rarity
+    name: str
+    description: str
+
+
+class AscensionMaterial(ItemWire):
+    id: str = Field(min_length=1)
+    name: str
+    count: int = Field(ge=0)
+
+
+class WeaponAscension(ItemWire):
+    phase: int = Field(ge=0, le=10)
+    levelCap: int = Field(ge=1, le=100)
+    coin: int = Field(ge=0)
+    items: list[AscensionMaterial] = Field(max_length=100)
+
+
+class ItemWeapon(ItemWire):
+    type: str = Field(min_length=1, max_length=100)
+    levels: list[WeaponLevel] = Field(max_length=1000)
+    refinements: list[Refinement] = Field(max_length=20)
+    ascensions: list[WeaponAscension] = Field(max_length=20)
+
+
+class ArtifactEffect(ItemWire):
+    pieces: int = Field(ge=1, le=5)
+    text: str
+
+
+class ArtifactLevelValue(ItemWire):
+    level: int = Field(ge=0, le=100)
+    value: FiniteValue
+
+
+class ArtifactMainStat(ItemWire):
+    key: str = Field(min_length=1)
+    label: str
+    unit: Literal['', '%']
+    values: list[ArtifactLevelValue] = Field(max_length=101)
+
+
+class ArtifactSubstat(ItemWire):
+    key: str = Field(min_length=1)
+    label: str
+    unit: Literal['', '%']
+    values: list[FiniteValue] = Field(max_length=100)
+
+
+class ArtifactRule(ItemWire):
+    rarity: Rarity
+    maxLevel: int = Field(ge=0, le=100)
+    mainStats: list[ArtifactMainStat] = Field(max_length=32)
+    substats: list[ArtifactSubstat] = Field(max_length=32)
+
+
+class ItemArtifact(ItemWire):
+    setId: int = Field(ge=0)
+    setName: str
+    slot: str = Field(min_length=1)
+    setEffects: list[ArtifactEffect] = Field(max_length=10)
+    rarities: list[Rarity] = Field(max_length=5)
+    rules: list[ArtifactRule] = Field(max_length=5)
+
+
+class Item(ItemWire):
+    id: str = Field(min_length=1, max_length=512)
+    language: Locale
+    name: str = Field(min_length=1, max_length=2000)
+    category: ItemCategory
+    subtype: str
+    rarity: Rarity | None
+    description: str
+    story: str
+    state: Literal['source-record', 'internal']
+    rawIds: list[str] = Field(max_length=1000)
+    documentIds: list[str] = Field(max_length=1000)
+    sources: list[SourceRecord] = Field(max_length=1000)
+    icon: ItemIcon
+    attributes: list[ItemAttribute] = Field(max_length=1000)
+    acquisition: list[str] = Field(max_length=1000)
+    coverage: dict[str, CoverageState] = Field(max_length=100)
+    weapon: ItemWeapon | None = None
+    artifact: ItemArtifact | None = None
+
+    @model_validator(mode='after')
+    def category_payload(self):
+        if self.weapon is not None and self.category != 'weapon' or self.artifact is not None and self.category != 'artifact':
+            raise ValueError('Equipment payload disagrees with category')
+        return self
+
+
+class ItemDetailQuery(WireModel):
+    language: Locale = 'zh-CN'
+    snapshotId: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class ItemListQuery(ItemDetailQuery):
+    q: str = Field(default='', max_length=2000)
+    category: ItemCategory | None = None
+    rarity: int | None = Field(default=None, ge=1, le=5)
+    weaponType: str | None = Field(default=None, max_length=100)
+    includeInternal: bool = False
+    sort: Literal['rarity', 'name'] = 'rarity'
+    page: int = Field(default=1, ge=1, le=100000)
+    pageSize: int = Field(default=48, ge=1, le=100)

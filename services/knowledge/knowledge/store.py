@@ -14,7 +14,7 @@ from pydantic import ValidationError
 from . import config
 from .chunking import chunk_text, tokenize
 from .embeddings import EmbeddingProvider
-from .models import CoverageRow, Document, Snapshot, SourceRecord
+from .models import CoverageRow, Document, Item, Snapshot, SourceRecord
 from .retrieval import reciprocal_rank_fusion, query_terms, entity_candidates, exact_entity_name
 
 
@@ -31,6 +31,12 @@ CREATE TABLE IF NOT EXISTS documents (snapshot_id TEXT NOT NULL REFERENCES snaps
 CREATE INDEX IF NOT EXISTS documents_filter ON documents(snapshot_id,language,type);
 CREATE INDEX IF NOT EXISTS documents_locale_order ON documents(snapshot_id,language,title,id);
 CREATE INDEX IF NOT EXISTS documents_snapshot_order ON documents(snapshot_id,title,id);
+CREATE TABLE IF NOT EXISTS item_catalogs (snapshot_id TEXT PRIMARY KEY REFERENCES snapshots(id), coverage TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS items (snapshot_id TEXT NOT NULL REFERENCES item_catalogs(snapshot_id), language TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL, category TEXT NOT NULL, rarity INTEGER, rarity_order INTEGER NOT NULL, state TEXT NOT NULL, weapon_type TEXT, search_name TEXT NOT NULL, search_description TEXT NOT NULL, summary TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(snapshot_id,language,id));
+CREATE INDEX IF NOT EXISTS items_rarity_order ON items(snapshot_id,language,state,rarity_order DESC,id);
+CREATE INDEX IF NOT EXISTS items_name_order ON items(snapshot_id,language,state,name,id);
+CREATE INDEX IF NOT EXISTS items_filters ON items(snapshot_id,language,category,rarity,weapon_type,state);
+CREATE INDEX IF NOT EXISTS items_identity_names ON items(snapshot_id,id,search_name);
 CREATE TABLE IF NOT EXISTS entity_names (snapshot_id TEXT NOT NULL, document_id TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY(snapshot_id,document_id,name), FOREIGN KEY(snapshot_id,document_id) REFERENCES documents(snapshot_id,id));
 CREATE INDEX IF NOT EXISTS entity_names_covering_lookup ON entity_names(snapshot_id,name,document_id);
 CREATE TABLE IF NOT EXISTS chunks (id TEXT PRIMARY KEY, snapshot_id TEXT NOT NULL, document_id TEXT NOT NULL, ordinal INTEGER NOT NULL, text TEXT NOT NULL, start_offset INTEGER NOT NULL, end_offset INTEGER NOT NULL, source_data TEXT, embedding {vector_type}, FOREIGN KEY(snapshot_id,document_id) REFERENCES documents(snapshot_id,id));
@@ -127,7 +133,7 @@ class CatalogStore:
             raise StoreError('SNAPSHOT_UNAVAILABLE', 'Requested snapshot is unavailable', 404)
         return snapshot_id
 
-    def import_snapshot(self, snapshot, documents, coverage, activate=True):
+    def import_snapshot(self, snapshot, documents, coverage, activate=True, items=None, item_coverage=None):
         try:
             snap = Snapshot.model_validate(snapshot).model_dump()
             cover = [CoverageRow.model_validate(c).model_dump() for c in coverage]
@@ -135,6 +141,8 @@ class CatalogStore:
             raise StoreError('INVALID_SNAPSHOT', 'Invalid snapshot metadata or coverage') from exc
         if snap['state'] != 'ready':
             raise StoreError('SNAPSHOT_NOT_READY', 'Only validated ready snapshots can be imported')
+        if item_coverage is not None and (items is None or not isinstance(item_coverage, dict)):
+            raise StoreError('INVALID_ITEMS', 'Item coverage requires an item catalog')
         # The complete import and active pointer share one transaction. Any stream,
         # validation, embedding or SQL failure leaves the previous active pointer intact.
         with self._tx(write=True) as db:
@@ -179,9 +187,98 @@ class CatalogStore:
                 count += 1
             if count == 0:
                 raise StoreError('EMPTY_SNAPSHOT', 'Cannot import an empty snapshot')
+            if items is not None:
+                self._import_items(db, snap['id'], items, item_coverage or {})
             if activate:
                 self._execute(db, "INSERT INTO settings(key,value) VALUES('active_snapshot',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (snap['id'],))
         return snap
+
+    def _import_items(self, db, sid, items, coverage):
+        try:
+            encoded_coverage = json.dumps(coverage, ensure_ascii=False, allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise StoreError('INVALID_ITEMS', 'Invalid item coverage') from exc
+        self._execute(db, 'INSERT INTO item_catalogs(snapshot_id,coverage) VALUES(?,?)', (sid, encoded_coverage))
+        for value in items:
+            try:
+                validated = Item.model_validate(value)
+                item = validated.model_dump(exclude_none=True)
+                # Null rarity and nullable icon fields are part of the public contract.
+                item['rarity'] = validated.rarity
+                item['icon'] = validated.icon.model_dump(exclude_unset=True)
+            except (ValidationError, KeyError, TypeError) as exc:
+                raise StoreError('INVALID_ITEM', 'Invalid normalized item') from exc
+            for document_id in item['documentIds']:
+                if not self._execute(db, 'SELECT id FROM documents WHERE snapshot_id=? AND id=? AND language=?',
+                                     (sid, document_id, item['language'])).fetchone():
+                    raise StoreError('INVALID_ITEM_REFERENCE', 'Item document is outside its snapshot or language')
+            summary = {key: item[key] for key in ('id', 'language', 'name', 'category', 'subtype', 'rarity', 'description', 'icon', 'state')}
+            normalize = lambda text: unicodedata.normalize('NFKC', text).casefold()
+            try:
+                self._execute(db, 'INSERT INTO items(snapshot_id,language,id,name,category,rarity,rarity_order,state,weapon_type,search_name,search_description,summary,data) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                              (sid, item['language'], item['id'], item['name'], item['category'], item['rarity'], item['rarity'] or 0,
+                               item['state'], item.get('weapon', {}).get('type'), normalize(item['name']), normalize(item['description']), dumps(summary), dumps(item)))
+            except Exception as exc:
+                if isinstance(exc, sqlite3.IntegrityError) or getattr(exc, 'sqlstate', None) == '23505':
+                    raise StoreError('DUPLICATE_ITEM', 'Duplicate item identity in snapshot') from exc
+                raise
+
+    def list_items(self, q='', category=None, language='zh-CN', rarity=None, weapon_type=None,
+                   include_internal=False, sort='rarity', page=1, page_size=48, snapshot_id=None):
+        category = category or None
+        weapon_type = weapon_type or None
+        if (type(page) is not int or not 1 <= page <= 100000 or type(page_size) is not int or not 1 <= page_size <= 100
+                or language not in ('zh-CN', 'en') or sort not in ('rarity', 'name')
+                or category not in (None, 'weapon', 'artifact', 'material', 'food', 'quest', 'gadget', 'other')
+                or rarity is not None and (type(rarity) is not int or not 1 <= rarity <= 5)
+                or not isinstance(q, str) or len(q) > 2000 or type(include_internal) is not bool
+                or weapon_type is not None and (not isinstance(weapon_type, str) or len(weapon_type) > 100)):
+            raise StoreError('INVALID_QUERY', 'Invalid item query or pagination')
+        with self._tx() as db:
+            sid = self._resolve(db, snapshot_id)
+            ready = bool(sid and self._execute(db, 'SELECT snapshot_id FROM item_catalogs WHERE snapshot_id=?', (sid,)).fetchone())
+            result = {'items': [], 'total': 0, 'page': page, 'pageSize': page_size, 'snapshotId': sid, 'ready': ready, 'counts': {}}
+            if not ready:
+                return result
+            where, args = ['i.snapshot_id=?', 'i.language=?'], [sid, language]
+            if not include_internal:
+                where.append("i.state='source-record'")
+            for column, value in [('category', category), ('rarity', rarity), ('weapon_type', weapon_type)]:
+                if value is not None:
+                    where.append(f'i.{column}=?')
+                    args.append(value)
+            if q.strip():
+                term = unicodedata.normalize('NFKC', q.strip()).casefold()
+                pattern = '%' + term.replace('!', '!!').replace('%', '!%').replace('_', '!_') + '%'
+                # Canonical names in either locale share the immutable item identity;
+                # description matching stays within the requested language.
+                where.append("(i.search_description LIKE ? ESCAPE '!' OR EXISTS (SELECT 1 FROM items n WHERE n.snapshot_id=i.snapshot_id AND n.id=i.id AND n.search_name LIKE ? ESCAPE '!'))")
+                args.extend([pattern, pattern])
+            clause = ' AND '.join(where)
+            counts = self._execute(db, 'SELECT i.category,COUNT(*) AS n FROM items i WHERE ' + clause + ' GROUP BY i.category', args).fetchall()
+            result['counts'] = {row['category']: row['n'] for row in counts}
+            result['total'] = sum(result['counts'].values())
+            order = 'i.rarity_order DESC,i.id' if sort == 'rarity' else 'i.name,i.id'
+            rows = self._execute(db, 'SELECT i.summary FROM items i WHERE ' + clause + ' ORDER BY ' + order + ' LIMIT ? OFFSET ?',
+                                 args + [page_size, (page - 1) * page_size]).fetchall()
+            result['items'] = [json.loads(row['summary']) for row in rows]
+            return result
+
+    def get_item(self, id, language='zh-CN', snapshot_id=None):
+        if not isinstance(id, str) or not id or len(id) > 512 or language not in ('zh-CN', 'en'):
+            raise StoreError('INVALID_QUERY', 'Invalid item identity or language')
+        with self._tx() as db:
+            sid = self._resolve(db, snapshot_id)
+            row = self._execute(db, 'SELECT data FROM items WHERE snapshot_id=? AND language=? AND id=?', (sid, language, id)).fetchone() if sid else None
+            if not row:
+                raise StoreError('ITEM_NOT_FOUND', 'Item not found in requested snapshot and language', 404)
+            return {'item': json.loads(row['data']), 'snapshotId': sid}
+
+    def item_coverage(self, snapshot_id=None):
+        with self._tx() as db:
+            sid = self._resolve(db, snapshot_id)
+            row = self._execute(db, 'SELECT coverage FROM item_catalogs WHERE snapshot_id=?', (sid,)).fetchone() if sid else None
+            return {'snapshotId': sid, 'ready': row is not None, 'coverage': json.loads(row['coverage']) if row else {}}
 
     def _document_chunks(self, doc):
         spans = doc['metadata'].get('textSpans')

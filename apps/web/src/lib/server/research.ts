@@ -28,6 +28,51 @@ const invalidEvidence = () =>
     "INVALID_EVIDENCE",
     "The knowledge service returned evidence outside the requested source boundary.",
   );
+/** Source builders may carry full payloads. Only this bounded item projection reaches a model. */
+function boundedItemSummary(value: unknown): Record<string, unknown> | undefined {
+  if (!record(value)) return undefined;
+  const result: Record<string, unknown> = Object.create(null);
+  for (const key of ["id", "category", "subtype", "state", "weaponType", "slot"])
+    if (typeof value[key] === "string") result[key] = value[key].slice(0, key === "id" ? 256 : 128);
+  if (value.rarity === null || (Number.isInteger(value.rarity) && Number(value.rarity) >= 1 && Number(value.rarity) <= 5))
+    result.rarity = value.rarity;
+  if (Number.isSafeInteger(value.setId) && Number(value.setId) >= 0) result.setId = value.setId;
+  for (const key of ["refinementRanks", "rarities"])
+    if (Array.isArray(value[key]))
+      result[key] = value[key].filter((n) => Number.isInteger(n) && n >= 1 && n <= 5).slice(0, 5);
+  if (record(value.coverage))
+    result.coverage = Object.fromEntries(Object.entries(value.coverage).filter(([key, status]) =>
+      key.length <= 40 && typeof status === "string" && ["complete", "not-applicable", "upstream-missing", "unresolved", "unreachable"].includes(status),
+    ).slice(0, 16));
+  if (Array.isArray(value.endpointStats))
+    result.endpointStats = value.endpointStats.slice(0, 2).filter((row) => record(row) &&
+      Number.isInteger(row.level) && Number(row.level) >= 1 && Number(row.level) <= 100 &&
+      Number.isInteger(row.ascension) && Number(row.ascension) >= 0 && Number(row.ascension) <= 10,
+    ).map((row) => ({
+      level: row.level, ascension: row.ascension,
+      stats: Array.isArray(row.stats) ? (row.stats as unknown[]).slice(0, 4).flatMap((stat) => {
+        if (!record(stat) || typeof stat.key !== "string" || typeof stat.label !== "string" ||
+          typeof stat.value !== "number" || !Number.isFinite(stat.value) || (stat.unit !== "" && stat.unit !== "%")) return [];
+        return [{ key: stat.key.slice(0, 80), label: stat.label.slice(0, 80), value: stat.value, unit: stat.unit }];
+      }) : [],
+    }));
+  const attributes = Array.isArray(value.attributes) ? value.attributes.slice(0, 6).filter((attribute) =>
+    record(attribute) && typeof attribute.label === "string" && typeof attribute.value === "string",
+  ).map((attribute) => ({ label: attribute.label.slice(0, 80), value: attribute.value.slice(0, 200) })) : [];
+  if (attributes.length) result.attributes = attributes;
+  // Keep the entire projection below the metadata envelope even for pathological labels.
+  while (attributes.length && JSON.stringify(result).length > 2800) attributes.pop();
+  if (JSON.stringify(result).length > 2800) delete result.coverage;
+  if (JSON.stringify(result).length > 2800) delete result.endpointStats;
+  return Object.keys(result).length ? result : undefined;
+}
+
+function itemMetadataSummary(metadata: Record<string, unknown>) {
+  // A supplemental artifact document describes the whole set and is shared by
+  // several slots. Its builder's singular summary cannot identify a single piece.
+  return metadata.category === "artifacts" ? undefined : boundedItemSummary(metadata.itemSummary);
+}
+
 function boundedMetadata(value: unknown): Record<string, unknown> | undefined {
   if (!record(value)) return undefined;
   const result: Record<string, unknown> = Object.create(null);
@@ -35,6 +80,7 @@ function boundedMetadata(value: unknown): Record<string, unknown> | undefined {
   const priorityKeys = [
     "kind",
     "outline",
+    "itemSummary",
     "contextUnknown",
     "schemaState",
     "testState",
@@ -56,11 +102,11 @@ function boundedMetadata(value: unknown): Record<string, unknown> | undefined {
     ...Object.entries(value).filter(([key]) => !priorityKeys.includes(key)),
   ];
   for (const [key, item] of entries.slice(0, 24)) {
-    const encoded = JSON.stringify(item);
+    const encoded = JSON.stringify(key === "itemSummary" ? itemMetadataSummary(value) : item);
     if (
       key.length > 128 ||
       encoded === undefined ||
-      encoded.length > 2000 ||
+      encoded.length > (key === "itemSummary" ? 2800 : 2000) ||
       total + encoded.length > 4000
     )
       continue;
@@ -384,7 +430,7 @@ const modelMetadataKeys = new Set([
   "bookSuitId",
 ]);
 /** Provenance stays in browser citations; the model needs text and interpretive constraints. */
-function modelMetadata(metadata: Source["metadata"]) {
+function modelMetadata(metadata: Source["metadata"], sharedArtifactSet = false) {
   if (!metadata) return undefined;
   const result = Object.fromEntries(
     Object.entries(metadata).filter(([key]) => modelMetadataKeys.has(key)),
@@ -407,6 +453,8 @@ function modelMetadata(metadata: Source["metadata"]) {
         result[key] = value;
     }
   }
+  const itemSummary = sharedArtifactSet ? undefined : itemMetadataSummary(metadata);
+  if (itemSummary) result.itemSummary = itemSummary;
   return result;
 }
 export function modelSource(source: Citation, excerptChars = 2400) {
@@ -421,7 +469,7 @@ export function modelSource(source: Citation, excerptChars = 2400) {
     ...content,
     text: source.text.slice(0, excerptChars),
     ...(source.text.length > excerptChars ? { textTruncated: true } : {}),
-    metadata: modelMetadata(metadata),
+    metadata: modelMetadata(metadata, source.type === "artifact" && source.documentId.startsWith("gdb:")),
   };
 }
 /** Apply the same projection to evidence in every tool result, including repeated hits. */
