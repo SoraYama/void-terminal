@@ -19,6 +19,7 @@ ALLOWED={
         '/assets/UI/furniture/':('UI_Homeworld_',),
         '/assets/UI/reliquary/':('UI_RelicIcon_',),
         '/assets/UI/namecard/':('UI_NameCardIcon_','UI_NameCardPic_'),
+        '/assets/UI/gcg/':('UI_Gcg_CardFace_',),
         '/assets/UI/monster/':('UI_AnimalIcon_',)},
 }
 AUDIT_FIELDS={'status','checkedAt','contentType','width','height','temporary','reason'}
@@ -59,6 +60,8 @@ def image_candidates(icon):
         return (plain,f'https://gi.yatta.moe/assets/UI/namecard/{identifier}.png')
     if identifier.startswith('UI_AnimalIcon_'):
         return (plain,f'https://gi.yatta.moe/assets/UI/monster/{identifier}.png')
+    if identifier.startswith('UI_Gcg_CardFace_'):
+        return (plain,f'https://gi.yatta.moe/assets/UI/gcg/{identifier}.png')
     return (plain,)
 
 

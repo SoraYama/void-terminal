@@ -25,6 +25,14 @@ describe('museum source rules',()=>{
   expect(allowedItemImage({url:'https://gi.yatta.moe/private/secret.png',status:'verified'})).toBeNull();
   expect(allowedItemImage({url:'https://gi.yatta.moe/assets/UI/UI_Equip.png',status:'unverified'})).toBeNull();
  });
+ it('accepts verified card faces only in the constrained gcg directory',()=>{
+  const url='https://gi.yatta.moe/assets/UI/gcg/UI_Gcg_CardFace_Char_Avatar_Ganyu.png';
+  expect(allowedItemImage({url,status:'verified'})).toBe(url);
+  expect(allowedItemImage({url,status:'unreachable'})).toBeNull();
+  for(const path of ['gcg/UI_Gcg_Test.png','gcg/UI_EquipIcon_Test.png','gcg/nested/UI_Gcg_CardFace_Test.png','arbitrary/UI_Gcg_CardFace_Test.png','gcg/../gcg/UI_Gcg_CardFace_Test.png']){
+   expect(allowedItemImage({url:'https://gi.yatta.moe/assets/UI/'+path,status:'verified'})).toBeNull();
+  }
+ });
  it('separates stage and cumulative ascension cost',()=>{
   const stages=[{phase:1,levelCap:40,coin:5000,items:[{id:'a',name:'A',count:3}]},{phase:2,levelCap:50,coin:15000,items:[{id:'a',name:'A',count:5}]}];
   expect(ascensionCost(stages,2,false)).toEqual({coin:15000,items:[{id:'a',name:'A',count:5}]});

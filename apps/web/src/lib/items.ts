@@ -35,6 +35,7 @@ export function allowedItemImage(icon:Pick<ItemIcon,'url'|'status'>):string|null
  if(icon.status!=='verified'||!icon.url)return null;
  try{const u=new URL(icon.url);if(u.protocol!=='https:'||u.username||u.password||u.port||u.search||u.hash)return null;
   if(u.hostname==='upload-os-bbs.mihoyo.com'&&/^\/game_record\/genshin\/equip\/[A-Za-z0-9_.-]+\.(png|webp|jpe?g)$/i.test(u.pathname))return u.href;
+  if(u.hostname==='gi.yatta.moe'&&icon.url===u.href&&/^\/assets\/UI\/gcg\/UI_Gcg_CardFace_[A-Za-z0-9_]+\.(png|webp|jpe?g)$/.test(u.pathname))return u.href;
   if(u.hostname==='gi.yatta.moe'&&/^\/assets\/UI\/(?:(?:furniture|reliquary|namecard|monster)\/)?[A-Za-z0-9_.-]+\.(png|webp|jpe?g)$/i.test(u.pathname))return u.href;
  }catch{}return null;
 }

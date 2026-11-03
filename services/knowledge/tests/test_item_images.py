@@ -128,6 +128,32 @@ class ImageCandidateTests(unittest.TestCase):
             self.assertEqual(result[0]['icon']['status'],'missing')
             request.assert_not_called()
 
+    def test_card_face_fallback_requires_404_and_keeps_exact_platinum_identifier(self):
+        identifier='UI_Gcg_CardFace_Char_Avatar_Ganyu'
+        for suffix,first_status in [('',404),('_Platinum',404),('',503),('',200)]:
+            with self.subTest(suffix=suffix,first_status=first_status):
+                exact=identifier+suffix
+                plain=f'https://gi.yatta.moe/assets/UI/{exact}.png'
+                fallback=f'https://gi.yatta.moe/assets/UI/gcg/{exact}.png'
+                def respond(request,timeout):
+                    status=first_status if request.full_url==plain else 404 if suffix else 200
+                    if status!=200:raise urllib.error.HTTPError(request.full_url,status,'fixture',{},None)
+                    return Response()
+                with tempfile.TemporaryDirectory() as tmp,patch('knowledge.items.images._open',side_effect=respond) as request:
+                    result=verify_images([record(exact,'other','material:1',plain)],Path(tmp)/'cache.json',workers=1)[0]
+                    self.assertEqual(result['icon']['identifier'],exact)
+                    self.assertEqual(result['icon']['url'],fallback if first_status==404 else plain)
+                    self.assertEqual(result['icon']['status'],'unreachable' if suffix or first_status==503 else 'verified')
+                    expected=[plain,fallback] if suffix else [plain,fallback,fallback] if first_status==404 else [plain] if first_status==503 else [plain,plain]
+                    self.assertEqual([call.args[0].full_url for call in request.call_args_list],expected)
+                    if suffix:self.assertEqual(result['icon']['reason'],'http-404')
+
+    def test_gcg_directory_accepts_only_exact_card_face_family(self):
+        self.assertTrue(allowed_url('https://gi.yatta.moe/assets/UI/gcg/UI_Gcg_CardFace_Char_Avatar_Ganyu.png'))
+        for path in ['gcg/UI_Gcg_Test.png','gcg/UI_EquipIcon_Test.png','gcg/nested/UI_Gcg_CardFace_Test.png',
+                     'arbitrary/UI_Gcg_CardFace_Test.png','gcg/../gcg/UI_Gcg_CardFace_Test.png']:
+            self.assertFalse(allowed_url('https://gi.yatta.moe/assets/UI/'+path),path)
+
     def test_builder_uses_homeworld_furniture_subdir_from_current_identifier(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);(root/'TextMap').mkdir();(root/'ExcelBinOutput').mkdir()
