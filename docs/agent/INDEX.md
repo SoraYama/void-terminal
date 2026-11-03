@@ -1,4 +1,4 @@
-> **Last updated**: 2026-11-03 (upstream freshness and production inventory descriptions, stats and images audit)
+> **Last updated**: 2026-11-03 (item museum design and latest-source acquisition preparation)
 
 # Agent Notes
 
@@ -14,6 +14,7 @@
 
 | Note | Summary |
 | --- | --- |
+| [2026-11-03-item-museum](feature/2026-11-03-item-museum.md) | User chose game inventory grid/right details; reviewed design and desktop/mobile concept await confirmation; latest main acquired, eight supplementary support files verified; product code and production data unchanged |
 | [2026-11-03-favicon](feature/2026-11-03-favicon.md) | Next.js icon.svg, 16/32/48px favicon.ico and opaque 180px apple-icon.png; simplified existing leaf emblem, reproducible sharp encoder and browser metadata/hash verification |
 | [2026-11-02-public-deploy](feature/2026-11-02-public-deploy.md) | Vultr SSH alias, Namecheap subdomain, Caddy HTTPS, private services, SQLite full snapshot and official PyPI lock URLs; runtime verification boundaries |
 | [2026-10-28-void-terminal](feature/2026-10-28-void-terminal.md) | 经批准的须弥视觉站点、流式 Agent、真实全量来源、双 Key、快照与 Docker；实施与验证边界 |
