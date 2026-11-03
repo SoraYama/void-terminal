@@ -1,7 +1,26 @@
 import {describe,it,expect} from 'vitest';
-import {readMuseumQuery,listQuery,formatStat,allowedItemImage,ascensionCost,possibleSubstats} from '../src/lib/items';
+import {readMuseumQuery,listQuery,formatStat,allowedItemImage,ascensionCost,possibleSubstats,itemSubtypeLabel} from '../src/lib/items';
 
 describe('museum source rules',()=>{
+ it('localizes known card subtypes using the item source language',()=>{
+  const fallback=['其他','Other'] as const;
+  expect(itemSubtypeLabel({subtype:'MATERIAL_GCG_CARD',language:'zh-CN'},fallback)).toBe('七圣召唤卡牌');
+  expect(itemSubtypeLabel({subtype:'MATERIAL_GCG_CARD',language:'en'},fallback)).toBe('Genius Invokation TCG card');
+  expect(itemSubtypeLabel({subtype:'MATERIAL_GCG_CARD_FACE',language:'zh-CN'},fallback)).toBe('七圣召唤卡面');
+  expect(itemSubtypeLabel({subtype:'MATERIAL_GCG_CARD_BACK',language:'en'},fallback)).toBe('Genius Invokation TCG card back');
+ });
+ it('falls back to the source-language category label for unknown enums',()=>{
+  expect(itemSubtypeLabel({subtype:'MATERIAL_FUTURE_TYPE',language:'zh-CN'},['材料','Materials'])).toBe('材料');
+  expect(itemSubtypeLabel({subtype:'FUTURE_TYPE_2',language:'en'},['小道具','Gadgets'])).toBe('Gadgets');
+  expect(itemSubtypeLabel({subtype:'MATERIAL__FUTURE_',language:'en'},['材料','Materials'])).toBe('Materials');
+ });
+ it('preserves human subtype text without translating or changing the item',()=>{
+  for(const subtype of ['角色培养素材','Character development material','ATK bonus','Limited_Edition','constructor','toString']){
+   const item={subtype,language:'zh-CN' as const};
+   expect(itemSubtypeLabel(item,['材料','Materials'])).toBe(subtype);
+   expect(item).toEqual({subtype,language:'zh-CN'});
+  }
+ });
  it('defaults to weapons and keeps selection outside the API query',()=>{
   const state=readMuseumQuery('?item=weapon%3A13501&rarity=5&page=2&snapshotId=immutable');
   expect(state.category).toBe('weapon');

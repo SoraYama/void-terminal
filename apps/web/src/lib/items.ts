@@ -16,6 +16,16 @@ export interface Item extends ItemSummary {
 }
 export interface ItemListResult {items:ItemSummary[];total:number;page:number;pageSize:number;snapshotId:string|null;ready:boolean;counts:Record<string,number>}
 export interface ItemResult {item:Item;snapshotId:string}
+const subtypeNames:Record<string,readonly [string,string]>={
+ MATERIAL_GCG_CARD:['七圣召唤卡牌','Genius Invokation TCG card'],
+ MATERIAL_GCG_CARD_FACE:['七圣召唤卡面','Genius Invokation TCG card face'],
+ MATERIAL_GCG_CARD_BACK:['七圣召唤卡背','Genius Invokation TCG card back'],
+};
+export function itemSubtypeLabel(item:Pick<ItemSummary,'subtype'|'language'>,categoryLabel:readonly [string,string]):string {
+ const index=item.language==='zh-CN'?0:1;
+ if(Object.hasOwn(subtypeNames,item.subtype))return subtypeNames[item.subtype][index];
+ return /^[A-Z][A-Z0-9_]*_[A-Z0-9_]*$/.test(item.subtype)?categoryLabel[index]:item.subtype;
+}
 export interface MuseumQuery {category:ItemCategory|'';q:string;rarity:string;weaponType:string;sort:'rarity'|'name';page:number;includeInternal:boolean;item:string;snapshotId:string}
 export function readMuseumQuery(search:string):MuseumQuery {
  const p=new URLSearchParams(search),category=p.get('category'),page=Number(p.get('page')||1);
