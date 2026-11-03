@@ -89,6 +89,19 @@ class ItemBuildTests(unittest.TestCase):
         self.assertEqual(items['material:999']['state'],'internal')
         self.assertIn('material:100003',coverage['missing']['description']['en'])
 
+    def test_explicit_internal_state_is_shared_by_stable_id_across_locales(self):
+        from knowledge.items import build_items
+        self.write('TextMap/TextMapCHS.json', {**self.texts, '11': '(test)Wall1'})
+        self.write('TextMap/TextMapEN.json', {**self.texts, '11': 'Wall1'})
+        self.table('Material', [dict(id=101, nameTextMapHash=11),
+                                dict(id=102, nameTextMapHash=999999)])
+        items, coverage = build_items(self.root, self.supp)
+        localized = {(item['id'], item['language']): item for item in items}
+        for language in ('zh-CN', 'en'):
+            self.assertEqual(localized['material:101', language]['state'], 'internal')
+            self.assertEqual(localized['material:102', language]['state'], 'source-record')
+        self.assertEqual(localized['material:101', 'en']['name'], 'Wall1')
+
     def test_readable_story_document_id_matches_only_resolved_physical_parts(self):
         weapons=json.loads((self.root/'ExcelBinOutput/WeaponExcelConfigData.json').read_text());weapons[0]['storyId']=193501;self.table('Weapon',weapons)
         self.table('Document',[dict(id=193501,PLOJOMIPJGH=[293501,999999])])

@@ -302,5 +302,9 @@ def build_items(root: Path, supplementary: Path | None = None) -> tuple[list[dic
     items=[]
     for lang in builder.maps:
         items.extend(builder.weapons(lang));items.extend(builder.artifacts(lang));items.extend(builder.materials_and_furniture(lang))
+    # Explicit test/internal evidence belongs to the stable record, not its translation.
+    internal_ids={item['id'] for item in items if item['state']=='internal'}
+    for item in items:
+        if item['id'] in internal_ids:item['state']='internal'
     items.sort(key=lambda i:(i['id'],i['language']))
     return items,coverage_report(items)
