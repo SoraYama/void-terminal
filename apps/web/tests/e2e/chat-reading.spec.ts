@@ -45,12 +45,13 @@ for(const theme of ['light','dark'] as const){
   await scroll.hover();
   const originalTop=await scroll.evaluate(el=>new Promise<number>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(el.scrollTop)))));
   await page.mouse.wheel(0,-35);
-  await expect(page.getByRole('button',{name:'回到最新回答 ↓',exact:true})).toBeVisible();
   await expect.poll(()=>scroll.evaluate(el=>el.scrollTop)).toBeLessThan(originalTop);
+  await expect(page.getByRole('button',{name:'回到最新回答 ↓',exact:true})).toBeHidden();
   const smallScroll=await scroll.evaluate(el=>el.scrollTop),before=await page.locator('.markdown p').count();
   await page.evaluate(()=>document.documentElement.removeAttribute('data-reading-paused'));
   await expect.poll(()=>page.locator('.markdown p').count()).toBeGreaterThan(before+1);
   expect(await scroll.evaluate(el=>el.scrollTop)).toBe(smallScroll);
+  await expect(page.getByRole('button',{name:'回到最新回答 ↓',exact:true})).toBeVisible();
   await scroll.evaluate(el=>{el.scrollTop=0;el.dispatchEvent(new Event('scroll'))});
   await expect.poll(()=>scroll.evaluate(el=>el.scrollTop)).toBe(0);
   const count=await page.locator('.markdown p').count();await expect.poll(()=>page.locator('.markdown p').count()).toBeGreaterThan(count+1);
@@ -89,7 +90,7 @@ test('reading: reduced motion and short narrow viewport preserve controls and mu
  await expect(textarea).toBeInViewport();
  await page.getByRole('button',{name:'停止生成',exact:true}).click();
 });
-test('reading: latest returns upward from expanded references',async({page})=>{
+test('reading: latest is hidden below the answer and returns from earlier text',async({page})=>{
  await page.setViewportSize({width:360,height:640});
  await start(page,'light');
  await page.getByRole('button',{name:'停止生成',exact:true}).click();
@@ -97,6 +98,8 @@ test('reading: latest returns upward from expanded references',async({page})=>{
  await page.locator('details.citations summary').click();
  await scroll.evaluate(el=>{el.scrollTop=el.scrollHeight;el.dispatchEvent(new Event('scroll'))});
  await expect(tail).not.toBeInViewport();
+ await expect(page.getByRole('button',{name:'回到最新回答 ↓',exact:true})).toBeHidden();
+ await scroll.evaluate(el=>{el.scrollTop=0;el.dispatchEvent(new Event('scroll'))});
  await page.getByRole('button',{name:'回到最新回答 ↓',exact:true}).click();
  await expect(tail).toBeInViewport();
 });
@@ -112,6 +115,8 @@ test('reading: switching equal-height chats keeps the compact title and export a
  const menu=page.getByRole('button',{name:'Menu',exact:true});if(await menu.isVisible())await menu.click();
  await page.getByRole('button',{name:'请讲述须弥魔神任务的来龙去脉',exact:true}).click();
  await expect(page.locator('.conversation-header')).toHaveAttribute('data-compact','true');
+ // The closing mobile drawer keeps the header inert until its exit animation ends.
+ await expect(page.locator('.mobile-menu')).toHaveCount(0);
  if(await menu.isVisible())await menu.click();
  // Refreshing the sidebar history list above also loaded the equal-height clone.
  await page.getByRole('button',{name:'等高历史对话',exact:true}).click();

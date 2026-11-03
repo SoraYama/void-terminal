@@ -1,4 +1,4 @@
-> **Date / Revised**: 2026-11-02
+> **Date / Revised**: 2026-11-02 (created) / 2026-11-03 (latest-answer visibility follow-up)
 
 # Conversation scroll, references and online multi-turn acceptance
 
@@ -19,6 +19,9 @@ became the scroll target. The banner and heading lived outside that viewport.
   Manual upward scrolling (including small wheel gestures) suspends follow; explicit
   latest-answer navigation can position in either direction from expanded footnotes.
   Restore compact-header state from actual geometry on conversation switches and resize.
+  The [2026-11-03 visibility fix](../bugfix/2026-11-03-scroll-anchor.md) supersedes
+  the upward-reference button behavior: the downward button now appears only when
+  the latest answer remains below the viewport, and hides at the physical bottom.
 - The chat scroll surface now includes the landscape, heading and conversation.
   `conversation-header.tsx` uses pinned Motion14.9.0 for an interruptible240ms
   transition into a compact landscape/title row. The scroll viewport never resizes

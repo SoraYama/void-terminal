@@ -1,4 +1,4 @@
-> **Last updated**: 2026-11-03 (footer sidebar toggle, restored wordmark size and spacing, reversible motion)
+> **Last updated**: 2026-11-03 (latest-answer button visibility at actual bottom, visible answer and paused streaming)
 
 # Agent Notes
 
@@ -23,6 +23,7 @@
 
 | Note | Summary |
 | --- | --- |
+| [2026-11-03-scroll-anchor](bugfix/2026-11-03-scroll-anchor.md) | use-conversation-scroll derives button visibility from paused follow and absolute tail distance: separate downward answer geometry from follow intent; hide at bottom/visible tail/references, refresh on streaming and resize |
 | [2026-11-02-postgres-prefix](bugfix/2026-11-02-postgres-prefix.md) | PostgreSQL en_US.utf8 Nahi misses Nahida: prefix+U+FFFF collation bound is invalid; escaped LIKE + text_pattern_ops index, live 87-test suite and 20k-posting query-plan regression |
 | [2026-11-02-chat-failures](bugfix/2026-11-02-chat-failures.md) | Empty failed assistants cause INVALID_REQUEST: normalize history; metadata/tool context exceeds 128KB: compact and synthesize within budget; preserve normalized chapter/node/part metadata and export error codes; 222 unit / 38 browser tests |
 | [2026-10-28-chat-errors](bugfix/2026-10-28-chat-errors.md) | terminal.tsx duplicates HTTP/SSE failures in message and composer; retain errorCode, localize at render time and restore old history in one bottom alert |

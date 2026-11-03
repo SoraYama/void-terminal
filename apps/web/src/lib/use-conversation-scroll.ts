@@ -11,18 +11,26 @@ export function useConversationScroll(revision:unknown,stage:string,active:boole
   const header=viewport.parentElement?.querySelector('.conversation-header');
   setCompact(Boolean(cover&&header&&cover.getBoundingClientRect().bottom<=viewport.getBoundingClientRect().top+header.clientHeight));
  },[]);
+ const updatePosition=useCallback(()=>{
+  updateCompact();
+  const viewport=chatScroll.current,tail=answerTail.current;
+  if(!viewport||!tail){setAwayFromBottom(false);return}
+  // Pausing follow is independent of whether there is an answer below to jump to.
+  const remaining=viewport.scrollHeight-viewport.clientHeight-viewport.scrollTop;
+  setAwayFromBottom(remaining>2&&tail.getBoundingClientRect().bottom>viewport.getBoundingClientRect().bottom+2);
+ },[updateCompact]);
  const followAnswer=useCallback((reposition=false)=>{
   const viewport=chatScroll.current,tail=answerTail.current;if(!viewport||!tail)return;
   const distance=tail.getBoundingClientRect().bottom-viewport.getBoundingClientRect().bottom+36;
   if(distance>0||reposition)viewport.scrollTop+=distance;
   lastScrollTop.current=viewport.scrollTop;
-  updateCompact();
- },[updateCompact]);
- const pauseFollow=useCallback(()=>{autoScroll.current=false;setAwayFromBottom(true)},[]);
- const resumeFollow=useCallback(()=>{autoScroll.current=true;setAwayFromBottom(false);followAnswer(true)},[followAnswer]);
+  updatePosition();
+ },[updatePosition]);
+ const pauseFollow=useCallback(()=>{autoScroll.current=false;updatePosition()},[updatePosition]);
+ const resumeFollow=useCallback(()=>{autoScroll.current=true;followAnswer(true)},[followAnswer]);
  const onScroll=useCallback(()=>{
   const viewport=chatScroll.current,tail=answerTail.current;if(!viewport||!tail)return;
-  updateCompact();
+  updatePosition();
   const distance=tail.getBoundingClientRect().bottom-viewport.getBoundingClientRect().bottom;
   const nearAnswer=Math.abs(distance)<90;
   const movingUp=viewport.scrollTop<lastScrollTop.current-1;
@@ -30,15 +38,16 @@ export function useConversationScroll(revision:unknown,stage:string,active:boole
   if(movingUp||!nearAnswer)autoScroll.current=false;
   else if(movingDown)autoScroll.current=true;
   lastScrollTop.current=viewport.scrollTop;
-  setAwayFromBottom(!autoScroll.current);
- },[updateCompact]);
- useLayoutEffect(()=>{if(active&&autoScroll.current)followAnswer()},[revision,stage,active,followAnswer]);
+ },[updatePosition]);
+ useLayoutEffect(()=>{if(active){if(autoScroll.current)followAnswer();else updatePosition()}},[revision,stage,active,followAnswer,updatePosition]);
  useEffect(()=>{
   if(!active)return;
   const viewport=chatScroll.current;if(!viewport)return;
-  const observer=new ResizeObserver(()=>{if(autoScroll.current)followAnswer();else updateCompact()});
-  observer.observe(viewport);return()=>observer.disconnect();
- },[active,followAnswer,updateCompact]);
+  const observer=new ResizeObserver(()=>{if(autoScroll.current)followAnswer();else updatePosition()});
+  observer.observe(viewport);
+  const messages=viewport.querySelector('.conversation-messages');if(messages)observer.observe(messages);
+  return()=>observer.disconnect();
+ },[active,followAnswer,updatePosition]);
  useLayoutEffect(()=>{autoScroll.current=true;lastScrollTop.current=0;setAwayFromBottom(false);if(active)followAnswer(true)},[conversationId,active,followAnswer]);
  return {chatScroll,answerTail,autoScroll,awayFromBottom,compact,onScroll,pauseFollow,resumeFollow};
 }
