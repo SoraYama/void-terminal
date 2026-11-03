@@ -1,4 +1,4 @@
-> **Last updated**: 2026-11-02 (PostgreSQL locale prefix lookup, index regression and release follow-up)
+> **Last updated**: 2026-11-03 (full-height library reading, fading scrollbars and collapsible navigation)
 
 # Agent Notes
 
@@ -31,6 +31,7 @@
 
 | Note | Summary |
 | --- | --- |
+| [2026-11-03-library-ui](optimize/2026-11-03-library-ui.md) | library-workspace full-height reader and compact header; global native thumb fade including Radix portals; persistent 76px sidebar rail, mobile drawer and short-screen selected-passage actions |
 | [2026-11-02-chat-reading](optimize/2026-11-02-chat-reading.md) | Streaming follows answer-tail instead of citation tags; full-height scenery/title scroll, Motion compact header, dark/mobile composer; public real DeepSeek 41k-history and failed-placeholder follow-ups |
 | [2026-11-02-dsh-runtime](optimize/2026-11-02-dsh-runtime.md) | Official DSH loop/session/pi-ai/compaction, request-scoped Key isolation, five-call cap, Zod override and standalone packaging; 239 unit regressions |
 | [2026-10-28-lore-answers](optimize/2026-10-28-lore-answers.md) | agent.ts / lore-policy.ts: mechanical gap-heavy answers, alias and typed retrieval, exact document discovery, context headroom, research/answer separation and citation compatibility |

@@ -6,6 +6,6 @@ export default defineConfig({
  testDir:'./tests/e2e', timeout:45_000, fullyParallel:false, workers:1,
  expect:{timeout:10_000},reporter:[['list'],['html',{outputFolder:'../../artifacts/playwright-report',open:'never'}]],
  outputDir:'../../artifacts/playwright-results',
- use:{baseURL,trace:'retain-on-failure',screenshot:'only-on-failure',launchOptions:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH}:{}},
+ use:{baseURL,trace:'retain-on-failure',screenshot:'only-on-failure',launchOptions:{ignoreDefaultArgs:['--hide-scrollbars'],...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH}:{})}},
  projects:[{name:'desktop',use:{viewport:{width:1440,height:900}}},{name:'mobile',use:{...devices['iPhone 13'],defaultBrowserType:'chromium'}}],
 });

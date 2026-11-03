@@ -52,6 +52,7 @@ try {
   await expect(page.locator('.source-drawer')).toContainText(document.sources[0].path);
   await page.screenshot({path:new URL('desktop-source.png',output).pathname,animations:'disabled'});
   await page.locator('.source-drawer').getByRole('button',{name:'关闭',exact:true}).click();
+  await page.locator('.back-link').click();
   await page.locator('.library-filters').getByRole('button',{name:'其他',exact:true}).click();
   const orphanSearch=page.waitForResponse(r=>r.url().includes('/api/library?')&&new URL(r.url()).searchParams.get('q')===probe.groundingQuote&&r.status()===200);
   await page.getByLabel('搜索书籍、任务或关键词…').fill(probe.groundingQuote);

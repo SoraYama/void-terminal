@@ -44,7 +44,7 @@ export function LibraryReader({record, locale, onSelection, onOpen}: {
   return <>
     <div className="reading-heading">
       <span className="eyebrow">{zh ? typeNames[doc.type] : doc.type} · {doc.language === 'zh-CN' ? (zh ? '中文原文' : 'Chinese source') : (zh ? '英文原文' : 'English source')}</span>
-      <h2>{display.title}</h2>
+      <h1>{display.title}</h1>
       {display.note && <p className="derived-title-note">{display.note}</p>}
     </div>
     <Ornament/>
@@ -53,7 +53,7 @@ export function LibraryReader({record, locale, onSelection, onOpen}: {
       <button aria-pressed={!raw} onClick={() => setRaw(false)}>{zh ? '阅读排版' : 'Reading view'}</button>
       <button aria-pressed={raw} onClick={() => setRaw(true)}>{zh ? '原始文本' : 'Raw text'}</button>
     </div>
-    <article className={'reading-text' + (raw ? ' raw-text' : '')} onMouseUp={selectPassage} onTouchEnd={() => setTimeout(selectPassage, 100)}>
+    <article className={'reading-text' + (raw ? ' raw-text' : '')} onMouseUp={selectPassage} onKeyUp={selectPassage} onTouchEnd={() => setTimeout(selectPassage, 100)}>
       {raw ? doc.text : paragraphs.map((p, i) => <p key={i}>{p}</p>)}
     </article>
     <RecordRelations document={record} zh={zh} openDocument={onOpen}/>
