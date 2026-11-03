@@ -7,7 +7,7 @@ from pathlib import Path
 from knowledge.ingest.normalize import (MAIN_REPO, MAIN_COMMIT, SUPPLEMENT_REPO,
     SUPPLEMENT_COMMIT, LANGUAGES, SUPPLEMENT_LANGUAGES, read_json, readable_asset, load_textmaps, source, stable_id)
 from .stats import weapon_levels, artifact_rules
-from .images import allowed_url
+from .images import allowed_url, image_candidates
 
 SLOTS={'EQUIP_BRACER':'flower','EQUIP_NECKLACE':'plume','EQUIP_SHOES':'sands','EQUIP_RING':'goblet','EQUIP_DRESS':'circlet'}
 WEAPONS={'WEAPON_SWORD_ONE_HAND':('Sword','单手剑'),'WEAPON_CLAYMORE':('Claymore','双手剑'),
@@ -111,6 +111,9 @@ class ItemBuilder:
         if not url and re.fullmatch(r'UI_[A-Za-z0-9_]+',identifier):
             url=(f'https://upload-os-bbs.mihoyo.com/game_record/genshin/equip/{identifier}.png'
                  if category in {'weapons','artifacts'} else f'https://gi.yatta.moe/assets/UI/{identifier}.png')
+        if identifier.startswith('UI_Homeworld_'):
+            candidates=image_candidates({'identifier':identifier})
+            url=candidates[0] if candidates else None
         return {'identifier':identifier,'url':url,'provider':'mihoyo' if url and 'mihoyo.com/' in url else 'yatta' if url else None,
                 'status':'unverified' if url else 'missing'}
 

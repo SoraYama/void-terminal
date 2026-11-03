@@ -3,6 +3,7 @@ from __future__ import annotations
 import concurrent.futures
 import copy
 import json
+import re
 import socket
 import struct
 import time
@@ -12,20 +13,53 @@ import urllib.request
 from pathlib import Path
 
 MAX_HEADER=65536
-ALLOWED={'upload-os-bbs.mihoyo.com':'/game_record/genshin/equip/','gi.yatta.moe':'/assets/UI/'}
+ALLOWED={
+    'upload-os-bbs.mihoyo.com':{'/game_record/genshin/equip/':('UI_',)},
+    'gi.yatta.moe':{'/assets/UI/':('UI_',),
+        '/assets/UI/furniture/':('UI_Homeworld_',),
+        '/assets/UI/reliquary/':('UI_RelicIcon_',),
+        '/assets/UI/namecard/':('UI_NameCardIcon_','UI_NameCardPic_'),
+        '/assets/UI/monster/':('UI_AnimalIcon_',)},
+}
+AUDIT_FIELDS={'status','checkedAt','contentType','width','height','temporary','reason'}
 
 
 def allowed_url(url):
     try:
         parsed=urllib.parse.urlsplit(url)
+        filename=parsed.path.rsplit('/',1)[-1]
         return (parsed.scheme=='https' and parsed.hostname in ALLOWED and parsed.port in (None,443)
             and not parsed.username and not parsed.password and not parsed.query and not parsed.fragment
-            and parsed.path.startswith(ALLOWED[parsed.hostname])
-            and parsed.path==ALLOWED[parsed.hostname]+parsed.path.rsplit('/',1)[-1]
-            and parsed.path.rsplit('/',1)[-1].startswith('UI_')
-            and all(c.isalnum() or c in '_.' for c in parsed.path.rsplit('/',1)[-1])
-            and parsed.path.endswith(('.png','.webp','.jpg','.jpeg')))
+            and bool(re.fullmatch(r'UI_[A-Za-z0-9_]+\.(?:png|webp|jpg|jpeg)',filename))
+            and any(parsed.path==prefix+filename and filename.startswith(families)
+                    for prefix,families in ALLOWED[parsed.hostname].items()))
     except (TypeError,ValueError):return False
+
+
+def image_provider(url):
+    return 'mihoyo' if urllib.parse.urlsplit(url).hostname=='upload-os-bbs.mihoyo.com' else 'yatta'
+
+
+def image_candidates(icon):
+    """Fixed observed provider patterns, constructed solely from source icon IDs."""
+    identifier=icon.get('identifier')
+    if identifier is None:
+        # Compatibility for legacy offline records without an identifier field;
+        # this does not introduce a request-time or browser URL interface.
+        return (icon['url'],) if allowed_url(icon.get('url')) else ()
+    if not isinstance(identifier,str) or not re.fullmatch(r'UI_[A-Za-z0-9_]+',identifier):return ()
+    plain=f'https://gi.yatta.moe/assets/UI/{identifier}.png'
+    official=f'https://upload-os-bbs.mihoyo.com/game_record/genshin/equip/{identifier}.png'
+    if identifier.startswith('UI_Homeworld_'):
+        return (f'https://gi.yatta.moe/assets/UI/furniture/{identifier}.png',)
+    if identifier.startswith('UI_RelicIcon_'):
+        return (official,f'https://gi.yatta.moe/assets/UI/reliquary/{identifier}.png')
+    if identifier.startswith('UI_EquipIcon_'):return (official,plain)
+    if identifier.startswith(('UI_NameCardIcon_','UI_NameCardPic_')):
+        return (plain,f'https://gi.yatta.moe/assets/UI/namecard/{identifier}.png')
+    if identifier.startswith('UI_AnimalIcon_'):
+        return (plain,f'https://gi.yatta.moe/assets/UI/monster/{identifier}.png')
+    return (plain,)
 
 
 class SafeRedirect(urllib.request.HTTPRedirectHandler):
@@ -92,22 +126,39 @@ def verify_images(items: list[dict], cache_path: Path, workers: int = 12) -> lis
     try:
         saved=json.loads(cache_path.read_text());cache=saved.get('checks',{}) if saved.get('version')==1 else {}
     except (OSError,ValueError,AttributeError):cache={}
-    now=time.time();urls=sorted({i['icon']['url'] for i in items if i.get('icon',{}).get('url')})
-    pending=[]
-    for url in urls:
-        old=cache.get(url,{})
-        ttl=300 if old.get('temporary') else 30*86400 if old.get('status')=='verified' else 86400
-        if not old or now-old.get('checkedAt',0)>ttl:pending.append(url)
+    now=time.time()
+    chains=[image_candidates(i.get('icon',{})) for i in items]
+    choices={chain:0 for chain in chains if chain}
+    active=set(choices)
     def check(url):return url,{**check_image(url),'checkedAt':now}
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-        for url,result in pool.map(check,pending):cache[url]=result
+        while active:
+            pending=[]
+            for url in sorted({chain[choices[chain]] for chain in active}):
+                old=cache.get(url,{})
+                ttl=300 if old.get('temporary') else 30*86400 if old.get('status')=='verified' else 86400
+                if not old or now-old.get('checkedAt',0)>ttl:pending.append(url)
+            for url,result in pool.map(check,pending):cache[url]=result
+            following=set()
+            for chain in active:
+                result=cache[chain[choices[chain]]]
+                # A transient failure is not evidence that the resource moved.
+                # Only an observed cached/live 404 permits another fixed path.
+                if result.get('reason')=='http-404' and choices[chain]+1<len(chain):
+                    choices[chain]+=1;following.add(chain)
+            active=following
     cache_path.parent.mkdir(parents=True,exist_ok=True)
     temporary=cache_path.with_name(cache_path.name+'.partial')
     temporary.write_text(json.dumps({'version':1,'checks':cache},sort_keys=True));temporary.replace(cache_path)
     result=copy.deepcopy(items)
-    for item in result:
-        url=item.get('icon',{}).get('url')
-        if url:
-            item['icon'].update(cache[url]);status=item['icon']['status']
-            item['coverage']['image']='complete' if status=='verified' else 'unreachable' if status=='unreachable' else 'upstream-missing'
+    for item,chain in zip(result,chains):
+        icon=item.setdefault('icon',{})
+        for field in AUDIT_FIELDS:icon.pop(field,None)
+        if chain:
+            url=chain[choices[chain]]
+            icon.update(url=url,provider=image_provider(url),**cache[url])
+        else:
+            icon.update(url=None,provider=None,status='missing',reason='provider-or-identifier-not-allowed',temporary=False)
+        status=icon['status']
+        item.setdefault('coverage',{})['image']='complete' if status=='verified' else 'unreachable' if status=='unreachable' else 'upstream-missing'
     return result
