@@ -7,8 +7,28 @@ import threading
 import unittest
 from pathlib import Path
 from knowledge.ingest.acquire import download, extract_archive
+from unittest.mock import patch
 
 class DownloadTests(unittest.TestCase):
+    def test_non_range_download_retries_read_timeout(self):
+        class Response:
+            def __enter__(self):return self
+            def __exit__(self,*args):pass
+            def read(self,n):return b''
+        with tempfile.TemporaryDirectory() as tmp,patch('urllib.request.urlopen',side_effect=[TimeoutError('read timed out'),Response()]) as request,patch('time.sleep'):
+            path=download('https://example.test/a',Path(tmp)/'a')
+            self.assertEqual(path.read_bytes(),b'')
+            self.assertEqual(request.call_count,2)
+
+    def test_bundled_inventory_includes_pinned_support_files(self):
+        import json
+        from knowledge.ingest import acquire
+        tree=json.loads(Path(acquire.__file__).with_name('supplement-core-files.json').read_text())
+        paths={r['path'] for r in acquire.selected_files(tree,supplementary=True)}
+        self.assertIn('src/data/image/weapons.json',paths)
+        self.assertIn('src/data/stats/weapons.json',paths)
+        self.assertIn('src/data/curve/weapons.json',paths)
+
     def test_parallel_download_verifies_bytes_and_reuses_cache(self):
         payload=b'0123456789abcdef'*5000
         class Handler(http.server.BaseHTTPRequestHandler):

@@ -9,6 +9,7 @@ from datetime import datetime,timezone
 from pathlib import Path
 from .acquire import acquire
 from .normalize import MAIN_REPO,MAIN_COMMIT,SUPPLEMENT_REPO,SUPPLEMENT_COMMIT,diff_documents,fingerprint,normalize
+from knowledge.items import build_items, coverage_report, item_summary, verify_images
 
 
 def write_json(path,value):
@@ -23,10 +24,44 @@ def read_documents(path):
                 except ValueError as exc:raise ValueError(f'Invalid normalized JSONL line {number}') from exc
 
 
+def write_items(output, items, corpus):
+    temporary=output/'items.jsonl.partial'
+    with temporary.open('w',encoding='utf-8') as stream:
+        for item in items:
+            line=json.dumps(item,ensure_ascii=False,sort_keys=True,separators=(',',':'))+'\n'
+            corpus.update(line.encode());stream.write(line)
+    temporary.replace(output/'items.jsonl')
+
+
+def verify_image_output(args):
+    output=Path(args.normalized)
+    snapshot=json.loads((output/'snapshot.json').read_text())
+    # This operation produces a new unpublished identity; imported snapshots remain immutable.
+    items=verify_images(list(read_documents(output/'items.jsonl')),Path(args.cache),args.workers)
+    corpus=hashlib.sha256()
+    summaries={document_id:item_summary(item) for item in items for document_id in item['documentIds']}
+    temporary=output/'documents.jsonl.partial';hash_temporary=output/'document-hashes.jsonl.partial'
+    with temporary.open('w',encoding='utf-8') as stream,hash_temporary.open('w') as hashes:
+        for document in read_documents(output/'documents.jsonl'):
+            if document['id'] in summaries:document['metadata']['itemSummary']=summaries[document['id']]
+            line=json.dumps(document,ensure_ascii=False,sort_keys=True,separators=(',',':'))+'\n'
+            stream.write(line);corpus.update(line.encode())
+            hashes.write(json.dumps([document['id'],fingerprint(document)])+'\n')
+    temporary.replace(output/'documents.jsonl');hash_temporary.replace(output/'document-hashes.jsonl')
+    write_items(output,items,corpus)
+    snapshot['id']=f'agd-{snapshot["sourceCommit"][:12]}-{corpus.hexdigest()[:12]}'
+    coverage=coverage_report(items);coverage['snapshotId']=snapshot['id']
+    report=json.loads((output/'report.json').read_text());report['corpusSha256']=corpus.hexdigest()
+    write_json(output/'item-coverage.json',coverage);write_json(output/'snapshot.json',snapshot);write_json(output/'report.json',report)
+    print(json.dumps({'snapshotId':snapshot['id'],'items':len(items),'verifiedImages':sum(i['icon']['status']=='verified' for i in items)},ensure_ascii=False))
+
+
 def build(args):
     root=Path(args.input)
     if not root.is_dir():raise ValueError(f'Source directory does not exist: {root}')
     output=Path(args.output);output.mkdir(parents=True,exist_ok=True)
+    items,_=build_items(root,Path(args.supplementary) if args.supplementary else None)
+    summaries={document_id:item_summary(item) for item in items for document_id in item['documentIds']}
     document_file=output/'documents.jsonl'
     hash_file=output/'document-hashes.jsonl'
     previous={}
@@ -39,7 +74,7 @@ def build(args):
     stage=output/'documents.staging.jsonl'
     with stage.open('w',encoding='utf-8') as stream:
         def emit(document):stream.write(json.dumps(document,ensure_ascii=False,sort_keys=True,separators=(',',':'))+'\n')
-        result=normalize(root,args.supplementary,sink=emit)
+        result=normalize(root,args.supplementary,sink=emit,item_summaries=summaries)
     if not result.document_ids:raise ValueError('No source documents found; refusing empty snapshot')
     corpus=hashlib.sha256();delta={'added':0,'changed':0,'unchanged':0,'deleted':0,'samples':{'added':[],'changed':[],'deleted':[]}}
     temporary=document_file.with_suffix('.jsonl.partial')
@@ -64,7 +99,10 @@ def build(args):
     with (output/'deletions.jsonl').open('w') as deletions:
         for identity in sorted(previous):deletions.write(json.dumps(identity)+'\n')
     delta['deleted']=len(previous);delta['samples']['deleted']=sorted(previous)[:100]
+    for item in items:item['documentIds']=[identity for identity in item['documentIds'] if identity in result.document_ids]
+    write_items(output,items,corpus)
     snapshot_id=getattr(args,'snapshot_id',None) or f'agd-{MAIN_COMMIT[:12]}-{corpus.hexdigest()[:12]}'
+    item_coverage=coverage_report(items);item_coverage['snapshotId']=snapshot_id
     marker=root/'acquisition.json'
     acquisition=json.loads(marker.read_text()) if marker.exists() else {'complete':False,'notes':['Local source has no complete acquisition marker; coverage cannot be called full.']}
     result.report['acquisition']=acquisition
@@ -76,10 +114,11 @@ def build(args):
     if 'book' in counts:counts['book']['notes'].append('Each physical readable file owns its citation. Unjoined files retain filename titles with titleUnresolved=true.')
     result.report['delta']=delta
     result.report['corpusSha256']=corpus.hexdigest()
+    result.report['items']={'localizedRecords':len(items),'uniqueItems':item_coverage['uniqueItems']}
     snapshot={'id':snapshot_id,'sourceRepo':MAIN_REPO,'sourceCommit':MAIN_COMMIT,'gameVersion':None,
               'createdAt':datetime.now(timezone.utc).isoformat(),'label':f'Pinned corpus {MAIN_COMMIT[:12]}'+(' (partial acquisition)' if not acquisition.get('complete') else ''),'state':'ready'}
     temporary.replace(document_file);hash_temporary.replace(hash_file);stage.unlink()
-    write_json(output/'snapshot.json',snapshot);write_json(output/'coverage.json',result.coverage);write_json(output/'report.json',result.report)
+    write_json(output/'snapshot.json',snapshot);write_json(output/'coverage.json',result.coverage);write_json(output/'report.json',result.report);write_json(output/'item-coverage.json',item_coverage)
     print(json.dumps({'snapshotId':snapshot_id,'documents':len(result.document_ids),'coverage':result.coverage,'acquisitionComplete':acquisition.get('complete',False),'output':str(output)},ensure_ascii=False))
     return output
 
@@ -90,7 +129,9 @@ def do_import(args,output=None):
     snapshot=json.loads((directory/'snapshot.json').read_text())
     if getattr(args,'snapshot_id',None):snapshot['id']=args.snapshot_id
     store=CatalogStore(args.database_url)
-    snapshot=store.import_snapshot(snapshot,read_documents(directory/'documents.jsonl'),json.loads((directory/'coverage.json').read_text()),activate=not args.no_activate)
+    snapshot=store.import_snapshot(snapshot,read_documents(directory/'documents.jsonl'),json.loads((directory/'coverage.json').read_text()),activate=not args.no_activate,
+        items=read_documents(directory/'items.jsonl') if (directory/'items.jsonl').exists() else None,
+        item_coverage=json.loads((directory/'item-coverage.json').read_text()) if (directory/'item-coverage.json').exists() else None)
     print(json.dumps({'snapshot':snapshot,'activated':not args.no_activate},ensure_ascii=False))
 
 
@@ -106,6 +147,8 @@ def main(argv=None):
         if command=='update':action.add_argument('--database-url');action.add_argument('--no-activate',action='store_true')
     imp=sub.add_parser('import',help='Import normalized JSONL atomically. --no-activate stages a snapshot for review.')
     imp.add_argument('--normalized',required=True);imp.add_argument('--database-url');imp.add_argument('--no-activate',action='store_true');imp.add_argument('--snapshot-id')
+    images=sub.add_parser('verify-images',help='Verify resource headers and write a new unpublished item snapshot identity')
+    images.add_argument('--normalized',required=True);images.add_argument('--cache',required=True);images.add_argument('--workers',type=int,default=12)
     for command in ('snapshots','activate','rollback'):
         action=sub.add_parser(command,help='List snapshots' if command=='snapshots' else 'Atomically activate a previously imported ready snapshot')
         action.add_argument('--database-url')
@@ -119,6 +162,7 @@ def main(argv=None):
             supplementary=args.source=='supplement'
             print(json.dumps(acquire(SUPPLEMENT_REPO if supplementary else MAIN_REPO,SUPPLEMENT_COMMIT if supplementary else MAIN_COMMIT,args.destination,args.tree_file,args.workers,supplementary)))
         elif args.command=='normalize':build(args)
+        elif args.command=='verify-images':verify_image_output(args)
         elif args.command=='import':do_import(args)
         elif args.command=='update':do_import(args,build(args))
         elif args.command=='prepare-embeddings':

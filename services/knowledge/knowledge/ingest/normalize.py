@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 MAIN_REPO = 'DimbreathBot/AnimeGameData'
-MAIN_COMMIT = '792978e5503ecfba73dcb3562ed44a0d35a2abe2'
+MAIN_COMMIT = 'bd35e243fa436f141f015cf221a6e19d0c34b7ca'
 SUPPLEMENT_REPO = 'theBowja/genshin-db'
 SUPPLEMENT_COMMIT = '49a6544a6c6ae36089cb42fa591fc46f01de8bcf'
 LANGUAGES = {'CHS': 'zh-CN', 'EN': 'en'}
@@ -110,12 +110,13 @@ class Normalized:
 
 
 class Normalizer:
-    def __init__(self, root, supplementary=None, languages=('zh-CN','en'), sink=None):
+    def __init__(self, root, supplementary=None, languages=('zh-CN','en'), sink=None, item_summaries=None):
         self.root = Path(root)
         self.supplementary = Path(supplementary) if supplementary else None
         self.maps,self.map_origins = load_textmaps(self.root,languages,include_origins=True)
         self.documents = []
         self.sink=sink
+        self.item_summaries=item_summaries or {}
         self.document_ids=set()
         self.report = {'inventory': [], 'missingHashes': [], 'unresolvedRelations': [],
                        'unmappedReadables': [], 'parseErrors': [], 'sourceLocales': [], 'textMapCounts': {k:len(v) for k,v in self.maps.items()},
@@ -149,6 +150,7 @@ class Normalizer:
         document = {'id':stable_id(namespace,language,kind,key),'title':title or f'{kind} {key}',
                     'type':kind,'language':language,'text':text,'source':source(repo,commit,path,locator),
                     'metadata':metadata or {},'relations':relations or []}
+        if document['id'] in self.item_summaries:document['metadata']['itemSummary']=self.item_summaries[document['id']]
         if document['id'] in self.document_ids:raise ValueError(f'Duplicate normalized ID: {document["id"]}')
         self.document_ids.add(document['id'])
         if self.sink:self.sink(document)
@@ -242,7 +244,8 @@ class Normalizer:
         for index,row in enumerate(documents):
             for language in self.maps:
                 code=next(k for k,v in LANGUAGES.items() if v==language)
-                refs=row.get('questIDList') or row.get('contentLocalizedId',[])
+                # Current pinned Document rows use this observed localization-ID list.
+                refs=row.get('questIDList') or row.get('contentLocalizedId') or row.get('PLOJOMIPJGH',[])
                 if not isinstance(refs,list): refs=[refs]
                 bodies=[]; paths=[]
                 for ref in refs:
@@ -351,7 +354,16 @@ class Normalizer:
                 except (OSError,ValueError) as exc:
                     self.report['parseErrors'].append({'path':str(path),'error':str(exc)}); continue
                 if not isinstance(row,dict): continue
-                fields=list(narrative_strings(row))
+                from knowledge.items.build import expand_effect
+                fields=[(pointer,value) for pointer,value in narrative_strings(row) if pointer!='/effectTemplateRaw']
+                template=row.get('effectTemplateRaw')
+                if template:
+                    for rank in range(1,6):
+                        refinement=row.get(f'r{rank}')
+                        if not isinstance(refinement,dict):continue
+                        text=expand_effect(refinement.get('description') or template,refinement.get('values',[]))
+                        fields=[(pointer,value) for pointer,value in fields if pointer!=f'/r{rank}/description' and not pointer.startswith(f'/r{rank}/values/')]
+                        if text and not re.search(r'\{\d+\}',text):fields.append((f'/r{rank}/description' if refinement.get('description') else '/effectTemplateRaw',text))
                 text='\n\n'.join(dict.fromkeys(v for k,v in fields if k not in {'/name'}))
                 spans=[];cursor=0;seen_values=set()
                 for pointer,value in fields:
@@ -403,5 +415,5 @@ class Normalizer:
         return Normalized(self.documents,[self.counts[k] for k in sorted(self.counts)],self.report,self.document_ids)
 
 
-def normalize(root, supplementary=None, languages=('zh-CN','en'), sink=None):
-    return Normalizer(root,supplementary,languages,sink).run()
+def normalize(root, supplementary=None, languages=('zh-CN','en'), sink=None, item_summaries=None):
+    return Normalizer(root,supplementary,languages,sink,item_summaries).run()

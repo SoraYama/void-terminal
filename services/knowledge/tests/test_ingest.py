@@ -75,7 +75,7 @@ class IngestTests(IngestFixture, unittest.TestCase):
         self.assertEqual(a, b)
         self.assertEqual(diff_documents(a, b)['unchanged'], len(a))
         self.assertEqual(diff_documents(a, b[1:])['deleted'], [a[0]['id']])
-        self.assertIn('/blob/792978', a[0]['source']['url'])
+        self.assertIn('/blob/bd35e243', a[0]['source']['url'])
 
     def test_supplement_story_is_not_lost(self):
         self.fixture()
@@ -87,6 +87,18 @@ class IngestTests(IngestFixture, unittest.TestCase):
 
 
 class PinnedSchemaTests(IngestFixture, unittest.TestCase):
+    def test_current_document_localization_list_and_expanded_supplement_effects(self):
+        self.put('TextMap/TextMapEN.json', {'1':'Story'})
+        self.put('ExcelBinOutput/DocumentExcelConfigData.json',[{'id':1,'titleTextMapHash':1,'PLOJOMIPJGH':[293501]}])
+        self.put('Readable/EN/Book293501.txt','Primary current story')
+        self.put('src/data/English/weapons/sword.json',{'id':1,'name':'Sword','effectTemplateRaw':'ATK +<color=#fff>{0}</color>.','r1':{'values':['12%']}})
+        docs=normalize(self.root,self.root).documents
+        book=next(d for d in docs if d['id']=='agd:en:book:Document:1')
+        self.assertEqual(book['text'],'Primary current story')
+        weapon=next(d for d in docs if d['source']['repo']=='theBowja/genshin-db')
+        self.assertIn('ATK +12%.',weapon['text'])
+        self.assertNotIn('{0}',weapon['text'])
+
     def test_medium_shards_are_loaded(self):
         self.put('TextMap/TextMap_MediumCHS.json', {'88': '分片正文'})
         self.assertEqual(load_textmaps(self.root)['zh-CN'].get('88'), '分片正文')

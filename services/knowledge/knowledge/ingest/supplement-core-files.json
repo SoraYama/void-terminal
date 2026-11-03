@@ -3,8 +3,16 @@
   "commit": "49a6544a6c6ae36089cb42fa591fc46f01de8bcf",
   "complete": false,
   "scopeComplete": true,
-  "scope": "All ChineseSimplified and English weapons/artifacts/characters/voiceovers/materials; five of 30 curated categories",
+  "scope": "All ChineseSimplified and English weapons/artifacts/characters/voiceovers/materials; five of 30 curated categories, plus eight image/stat/curve support files",
   "tree": [
+    {"path":"src/data/image/weapons.json","sha":"a2b935c03b510eba4fc536b3705b66ee782971bb","size":144593,"type":"blob"},
+    {"path":"src/data/image/artifacts.json","sha":"ee7d4af4b1cbe67cb2ca8be5cecb115581f63a2a","size":68987,"type":"blob"},
+    {"path":"src/data/image/materials.json","sha":"a760d82d63f5c2098298d7424ca9ecb8d7079afe","size":62308,"type":"blob"},
+    {"path":"src/data/image/foods.json","sha":"54d45bbdef158fc45d07c384237c412e7fa2ea60","size":46631,"type":"blob"},
+    {"path":"src/data/image/namecards.json","sha":"0b3cb03b6f091b464321f90ff7f8046e5e8c6a50","size":52211,"type":"blob"},
+    {"path":"src/data/image/windgliders.json","sha":"10c6e81fef9c41ad2858af645dd3db15f9d61afe","size":2497,"type":"blob"},
+    {"path":"src/data/stats/weapons.json","sha":"a52a5bb67eec4763f3d032036da08deb539bbebf","size":152307,"type":"blob"},
+    {"path":"src/data/curve/weapons.json","sha":"f85c3a6c5054733ce968573acfb436584da28855","size":62773,"type":"blob"},
     {
       "path": "src/data/ChineseSimplified/artifacts/adaycarvedfromrisingwinds.json",
       "sha": "8cc4e35b1bb275d15f8d953d6f8bdd868ddd520c",

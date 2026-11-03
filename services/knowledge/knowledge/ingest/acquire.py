@@ -11,6 +11,7 @@ import urllib.parse
 import tarfile
 import time
 import urllib.request
+import urllib.error
 from pathlib import Path, PurePosixPath
 
 
@@ -58,8 +59,15 @@ def download(url, destination, size=None, sha=None, workers=16, chunk_size=256*1
                     while block:=piece.read(1024*1024):stream.write(block)
     else:
         request=urllib.request.Request(url,headers={'User-Agent':'void-terminal-ingest/1'})
-        with urllib.request.urlopen(request,timeout=120) as response,partial.open('wb') as stream:
-            while block:=response.read(1024*1024):stream.write(block)
+        for attempt in range(4):
+            try:
+                with urllib.request.urlopen(request,timeout=120) as response,partial.open('wb') as stream:
+                    while block:=response.read(1024*1024):stream.write(block)
+                break
+            except (OSError,TimeoutError) as exc:
+                if isinstance(exc,urllib.error.HTTPError) and exc.code not in (408,425,429) and exc.code<500:raise
+                if attempt==3:raise
+                time.sleep(2**attempt)
     if size is not None and partial.stat().st_size!=size:raise ValueError(f'Download size mismatch: {destination}')
     if sha is not None and git_blob_sha(partial)!=sha:
         partial.unlink(missing_ok=True)
@@ -81,7 +89,7 @@ def extract_archive(archive, destination):
 
 
 PINNED_TREES = {
-    ('DimbreathBot/AnimeGameData','792978e5503ecfba73dcb3562ed44a0d35a2abe2'):'5762f343358a87a14ec79db26479211522e44c18',
+    ('DimbreathBot/AnimeGameData','bd35e243fa436f141f015cf221a6e19d0c34b7ca'):'216b990b921ca71e3ffac08a270747f1f403600f',
     ('theBowja/genshin-db','49a6544a6c6ae36089cb42fa591fc46f01de8bcf'):'f7a0f90c9d12dc5b13cc890f3f06ebb0a60bb02f',
 }
 MIRROR_API_BASE='https://gitlab.com/api/v4/projects/83871005/repository'
@@ -173,7 +181,7 @@ def selected_files(tree, supplementary=False):
         if item.get('type')!='blob':continue
         path=item['path']
         if supplementary:
-            include=path.startswith(('src/data/ChineseSimplified/','src/data/English/')) and path.endswith('.json')
+            include=(path.startswith(('src/data/ChineseSimplified/','src/data/English/','src/data/image/','src/data/stats/','src/data/curve/')) and path.endswith('.json'))
         else:
             include=(path.startswith('ExcelBinOutput/') and path.endswith('.json')) or path.startswith(('BinOutput/Talk/','Readable/CHS/','Readable/EN/','Subtitle/')) or (path.startswith('TextMap/') and path.endswith('.json') and any(code in path for code in ('CHS','EN')))
         if include:yield item
@@ -191,7 +199,8 @@ def acquire(repo,commit,destination,tree_file=None,workers=16,supplementary=Fals
     for item in files:
         contained_path(destination,item['path'])
         if item.get('mode','100644') not in {'100644','100755'}:raise ValueError('Selected source files must be regular Git blobs')
-    scopes=['src/data/ChineseSimplified','src/data/English'] if supplementary else ['ExcelBinOutput','BinOutput/Talk','Readable','Subtitle','TextMap']
+    scopes=sorted({str(PurePosixPath(item['path']).parent) for item in files if item['path'].startswith(('src/data/image/','src/data/stats/','src/data/curve/'))}) if supplementary else []
+    scopes=(['src/data/ChineseSimplified','src/data/English']+scopes) if supplementary else ['ExcelBinOutput','BinOutput/Talk','Readable','Subtitle','TextMap']
     with tempfile.TemporaryDirectory(prefix='.source-stage-',dir=destination) as stage_dir:
         staging=Path(stage_dir)
         for scope in scopes:contained_path(staging,scope).mkdir(parents=True,exist_ok=True)
@@ -210,10 +219,10 @@ def acquire(repo,commit,destination,tree_file=None,workers=16,supplementary=Fals
     return marker
 
 MAIN_TEXTMAPS = [
- ('TextMapCHS.json',49920244,'069dc51786bb0b8c4480552b4686e7dab7a61bb5'),
- ('TextMapEN.json',55720415,'84b6a42dc6085646b18a314f0c28a01c4f0882be'),
- ('TextMap_MediumCHS.json',18801724,'ddf41a92f596f3f3300d7b0901c2b8f61a3ecb6d'),
- ('TextMap_MediumEN.json',20704568,'e70d5ee65644a983dee081b1df0aad7d8e9e0525'),
+ ('TextMapCHS.json',51627416,'5d272e67fe7ff2cd296c6031933357ff8d38e397'),
+ ('TextMapEN.json',57676996,'5acb737e25d4462cab42496b8128d3bd91b2c08e'),
+ ('TextMap_MediumCHS.json',19104964,'bc84431fb83bd2e2f2411e37ed94339ce4a2883e'),
+ ('TextMap_MediumEN.json',21026945,'e1caa0f1184ab23033545ab4789c362ac1218da1'),
 ]
 
 
