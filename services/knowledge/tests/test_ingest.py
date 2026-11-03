@@ -87,6 +87,23 @@ class IngestTests(IngestFixture, unittest.TestCase):
 
 
 class PinnedSchemaTests(IngestFixture, unittest.TestCase):
+    def test_current_chs_localization_aliases_and_conflicts_preserve_physical_citations(self):
+        self.put('TextMap/TextMapCHS.json',{'1':'护摩之杖','2':'介绍'})
+        self.put('ExcelBinOutput/WeaponExcelConfigData.json',[dict(id=13501,nameTextMapHash=1,descTextMapHash=2,storyId=193501)])
+        self.put('ExcelBinOutput/DocumentExcelConfigData.json',[dict(id=193501,PLOJOMIPJGH=[293501])])
+        path='ART/UI/Readable/CHS/Weapon13501'
+        self.put('ExcelBinOutput/LocalizationExcelConfigData.json',[dict(id=293501,BFDDHOKGBOH=path,OKIHBKFCDND=path)])
+        self.put('Readable/CHS/Weapon13501.txt','真正的中文原文')
+        result=normalize(self.root)
+        story=next(d for d in result.documents if d['id']=='agd:zh-CN:weapon:Document:193501')
+        self.assertEqual(story['text'],'真正的中文原文')
+        self.assertEqual(story['source']['path'],'Readable/CHS/Weapon13501.txt')
+        self.assertEqual(story['source']['locator'],'L1')
+        self.put('ExcelBinOutput/LocalizationExcelConfigData.json',[dict(id=293501,BFDDHOKGBOH=path,OKIHBKFCDND='ART/UI/Readable/CHS/Other')])
+        result=normalize(self.root)
+        self.assertFalse(any(d['id']=='agd:zh-CN:weapon:Document:193501' for d in result.documents))
+        self.assertTrue(any(r['relation']=='readable-path-unresolved' for r in result.report['unresolvedRelations']))
+
     def test_current_document_localization_list_and_expanded_supplement_effects(self):
         self.put('TextMap/TextMapEN.json', {'1':'Story'})
         self.put('ExcelBinOutput/DocumentExcelConfigData.json',[{'id':1,'titleTextMapHash':1,'PLOJOMIPJGH':[293501]}])

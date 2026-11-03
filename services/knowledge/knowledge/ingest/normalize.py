@@ -34,6 +34,26 @@ def read_json(path: Path):
         return json.load(stream)
 
 
+def readable_asset(localized, code, ref):
+    """Resolve observed locale aliases, rejecting conflicting/cross-locale paths."""
+    current=[localized[k] for k in ('BFDDHOKGBOH','OKIHBKFCDND') if localized.get(k)] if code=='CHS' else []
+    if current:
+        # These opaque aliases are not universally readable assets: other rows
+        # contain atlas EN/SC sprites. Require their explicit CHS path segment.
+        if any(not isinstance(value,str) or '/CHS/' not in value for value in current):return None,True
+    keys=('assetPath','path','MBOPLLJEHCJ') if code=='CHS' else ('assetPath','path','enPath')
+    candidates=current+[localized[k] for k in keys if localized.get(k)]
+    if not candidates:return f'Book{ref}.txt',False
+    if any(not isinstance(value,str) for value in candidates):return None,True
+    paths={value.strip() for value in candidates}
+    if len(paths)!=1:return None,True
+    path=paths.pop()
+    locale=re.search(r'/Readable/([A-Z]+)/',path)
+    if locale and locale[1]!=code:return None,True
+    filename=Path(path).name
+    return filename if filename.endswith('.txt') else filename+'.txt',False
+
+
 def load_textmaps(root: Path, languages=('zh-CN','en'), include_origins=False):
     maps = {language:{} for language in languages}
     origins={language:{} for language in languages}
@@ -250,12 +270,10 @@ class Normalizer:
                 bodies=[]; paths=[]
                 for ref in refs:
                     localized=localization.get(str(ref),{})
-                    asset=localized.get('assetPath') or localized.get('path') or localized.get('MBOPLLJEHCJ' if code=='CHS' else 'enPath')
-                    if not asset:
-                        # An explicit localization ID is a filename identity; it is never a title hash.
-                        asset=f'Book{ref}'
-                    asset=Path(str(asset)).name
-                    if not asset.endswith('.txt'): asset += '.txt'
+                    asset,path_unresolved=readable_asset(localized,code,ref)
+                    if path_unresolved:
+                        self.report['unresolvedRelations'].append({'path':'ExcelBinOutput/DocumentExcelConfigData.json','id':row.get('id'),'relation':'readable-path-unresolved','target':str(ref),'language':language})
+                        continue
                     readable=self.root/'Readable'/code/asset
                     if readable.is_file():
                         if readable.relative_to(self.root).as_posix() in paths:continue

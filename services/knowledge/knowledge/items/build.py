@@ -5,7 +5,7 @@ import re
 from collections import defaultdict
 from pathlib import Path
 from knowledge.ingest.normalize import (MAIN_REPO, MAIN_COMMIT, SUPPLEMENT_REPO,
-    SUPPLEMENT_COMMIT, LANGUAGES, SUPPLEMENT_LANGUAGES, read_json, load_textmaps, source, stable_id)
+    SUPPLEMENT_COMMIT, LANGUAGES, SUPPLEMENT_LANGUAGES, read_json, readable_asset, load_textmaps, source, stable_id)
 from .stats import weapon_levels, artifact_rules
 from .images import allowed_url
 
@@ -154,9 +154,10 @@ class ItemBuilder:
         bodies=[];paths=[];missing=False;code=next(k for k,v in LANGUAGES.items() if v==lang)
         for ref in refs:
             loc=self.localizations.get(str(ref),{})
-            asset=loc.get('assetPath') or loc.get('path') or loc.get('MBOPLLJEHCJ' if code=='CHS' else 'enPath') or f'Book{ref}'
-            filename=Path(str(asset)).name
-            if not filename.endswith('.txt'):filename+='.txt'
+            filename,path_unresolved=readable_asset(loc,code,ref)
+            if path_unresolved:
+                missing=True
+                continue
             path=self.root/'Readable'/code/filename
             if path.is_file():
                 if path in paths:continue
@@ -178,7 +179,8 @@ class ItemBuilder:
             weapon_type=row.get('weaponType','unknown')
             item['subtype']=WEAPONS.get(weapon_type,(weapon_type,weapon_type))[lang=='zh-CN']
             promotions=self.promotions[row.get('weaponPromoteId')]
-            levels=weapon_levels(row,self.curves,promotions,lang)
+            stats_coverage={}
+            levels=weapon_levels(row,self.curves,promotions,lang,completeness=stats_coverage)
             refinements=[];missing=False
             for affix_id in row.get('skillAffix',[]):
                 for affix in sorted(self.affixes[affix_id],key=lambda r:r.get('level',0)):
@@ -201,7 +203,7 @@ class ItemBuilder:
                         materials.append({'id':'material:'+key,'name':self.text(material,'nameTextMapHash',lang) or key,'count':cost['count']})
                 ascensions.append({'phase':p['promoteLevel'],'levelCap':p['unlockMaxLevel'],'coin':p.get('coinCost',0),'items':materials})
             item['weapon']={'type':weapon_type,'levels':levels,'refinements':refinements,'ascensions':ascensions}
-            item['coverage'].update(stats='complete' if levels and all(len(x['stats'])==len(row.get('weaponProp',[])) for x in levels) else 'unresolved',
+            item['coverage'].update(stats='complete' if stats_coverage['complete'] else 'unresolved',
                 refinements='unresolved' if missing else 'complete' if refinements else 'not-applicable',ascensions='complete' if ascensions else 'not-applicable')
             for table in ('WeaponCurve','WeaponPromote'):
                 item['sources'].append(source(MAIN_REPO,MAIN_COMMIT,self.paths[table],'/'))
@@ -236,11 +238,12 @@ class ItemBuilder:
                         item['sources'].append(self.provenance('EquipAffix',affixes[index]))
             set_name=plain(supp[0].get('name'))
             if not set_name and affixes:set_name=self.text(affixes[0],'nameTextMapHash',lang)
-            rules=artifact_rules(variants,self.tables,lang)
+            stats_coverage={}
+            rules=artifact_rules(variants,self.tables,lang,completeness=stats_coverage)
             item['artifact']={'setId':set_id,'setName':set_name,'slot':slot,'setEffects':effects,
                 'rarities':sorted({v.get('rankLevel',1) for v in variants}),'rules':rules}
             item['documentIds']=list(dict.fromkeys(item['documentIds']))
-            item['coverage'].update(stats='complete' if rules and all(r['mainStats'] for r in rules) else 'unresolved',
+            item['coverage'].update(stats='complete' if stats_coverage['complete'] else 'unresolved',
                 setEffects='complete' if len(effects)==len(set_row.get('setNeedNum',[])) and effects else 'upstream-missing',
                 setName='complete' if set_name else 'unresolved')
             for table in ('ReliquaryLevel','ReliquaryMainProp','ReliquarySetSchemeMainProp','ReliquaryAffix'):

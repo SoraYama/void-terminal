@@ -112,6 +112,101 @@ class ItemBuildTests(unittest.TestCase):
         self.assertEqual([s['key'] for s in items['artifact:15001:flower']['artifact']['rules'][0]['mainStats']],['FIGHT_PROP_HP'])
         self.assertEqual([s['key'] for s in items['artifact:15001:plume']['artifact']['rules'][0]['mainStats']],['FIGHT_PROP_ATTACK'])
 
+    def test_missing_slot_scheme_table_or_row_omits_unsupported_mains(self):
+        self.table('ReliquaryMainProp',[dict(propDepotId=1000,propType=p) for p in ['FIGHT_PROP_HP','FIGHT_PROP_CRITICAL']])
+        self.table('ReliquaryLevel',[dict(rank=5,level=1,addProps=[dict(propType='FIGHT_PROP_HP',value=717),dict(propType='FIGHT_PROP_CRITICAL',value=.047)])])
+        for missing in ('table','row'):
+            with self.subTest(missing=missing):
+                path=self.root/'ExcelBinOutput/ReliquarySetSchemeMainPropExcelConfigData.json'
+                if missing=='table':path.unlink(missing_ok=True)
+                else:self.table('ReliquarySetSchemeMainProp',[dict(equipType='EQUIP_BRACER',CBFOCJNNOGG=[2])])
+                items,coverage=self.build();item=items['artifact:15009:circlet']
+                self.assertEqual(item['artifact']['rules'][0]['mainStats'],[])
+                self.assertEqual(item['coverage']['stats'],'unresolved')
+                self.assertIn(item['id'],coverage['missing']['stats']['en'])
+
+    def test_weapon_missing_intermediate_level_or_property_preserves_values_but_is_unresolved(self):
+        self.table('WeaponPromote',[dict(weaponPromoteId=13501,unlockMaxLevel=3)])
+        full=[dict(level=l,curveInfos=[dict(type='ATK',value=float(l)),dict(type='CRIT',value=float(l))]) for l in range(1,4)]
+        self.table('WeaponCurve',full)
+        complete,_=self.build()
+        self.assertEqual(complete['weapon:13501']['coverage']['stats'],'complete')
+        for missing in ('level','property','definition'):
+            with self.subTest(missing=missing):
+                curves=copy.deepcopy(full)
+                if missing=='level':curves.pop(1)
+                elif missing=='property':curves[1]['curveInfos'].pop()
+                else:
+                    weapons=json.loads((self.root/'ExcelBinOutput/WeaponExcelConfigData.json').read_text());weapons[0]['weaponProp'].append({'propType':'FIGHT_PROP_ATTACK_PERCENT','type':'MISSING'});self.table('Weapon',weapons)
+                self.table('WeaponCurve',curves)
+                items,coverage=self.build();item=items['weapon:13501']
+                self.assertEqual(item['coverage']['stats'],'unresolved')
+                self.assertIn(item['id'],coverage['missing']['stats']['en'])
+                self.assertAlmostEqual(item['weapon']['levels'][0]['stats'][0]['value'],45.9364)
+
+    def test_one_star_padded_secondary_is_inapplicable_and_typed_missing_initial_is_unresolved(self):
+        self.table('Weapon',[dict(id=11101,nameTextMapHash=1,rankLevel=1,weaponPromoteId=11101,weaponProp=[
+            dict(propType='FIGHT_PROP_BASE_ATTACK',initValue=23.245,type='GROW_CURVE_ATTACK_101'),
+            dict(type='GROW_CURVE_CRITICAL_101')])])
+        self.table('WeaponPromote',[dict(weaponPromoteId=11101,unlockMaxLevel=3)])
+        self.table('WeaponCurve',[dict(level=l,curveInfos=[dict(type='GROW_CURVE_ATTACK_101',value=float(l))]) for l in range(1,4)])
+        items,_=self.build();item=items['weapon:11101']
+        self.assertEqual(item['coverage']['stats'],'complete')
+        self.assertTrue(all([s['key'] for s in level['stats']]==['FIGHT_PROP_BASE_ATTACK'] for level in item['weapon']['levels']))
+        self.table('Weapon',[dict(id=11101,nameTextMapHash=1,rankLevel=1,weaponPromoteId=11101,weaponProp=[dict(propType='FIGHT_PROP_BASE_ATTACK',type='GROW_CURVE_ATTACK_101')])])
+        items,_=self.build();item=items['weapon:11101']
+        self.assertEqual(item['coverage']['stats'],'unresolved')
+        self.assertEqual(item['weapon']['levels'],[])
+        self.table('Weapon',[dict(id=11101,nameTextMapHash=1,weaponPromoteId=11101,weaponProp=[
+            dict(propType='FIGHT_PROP_BASE_ATTACK',initValue=23.245,type='GROW_CURVE_ATTACK_101'),
+            dict(propType='FIGHT_PROP_BASE_ATTACK',type='GROW_CURVE_ATTACK_101')])])
+        items,_=self.build()
+        self.assertEqual(items['weapon:11101']['coverage']['stats'],'unresolved')
+
+    def test_current_chs_localization_paths_resolve_stories_and_conflicts_fail_closed(self):
+        weapons=json.loads((self.root/'ExcelBinOutput/WeaponExcelConfigData.json').read_text());weapons[0]['storyId']=193501;self.table('Weapon',weapons)
+        self.table('Document',[dict(id=193501,PLOJOMIPJGH=[293501])])
+        path='ART/UI/Readable/CHS/Weapon13501'
+        self.table('Localization',[dict(id=293501,BFDDHOKGBOH=path,OKIHBKFCDND=path)])
+        target=self.root/'Readable/CHS/Weapon13501.txt';target.parent.mkdir(parents=True);target.write_text('护摩之杖的中文故事')
+        from knowledge.items import build_items
+        items,_=build_items(self.root,self.supp)
+        homa=next(i for i in items if i['id']=='weapon:13501' and i['language']=='zh-CN')
+        self.assertEqual(homa['story'],'护摩之杖的中文故事')
+        self.assertEqual(homa['coverage']['story'],'complete')
+        self.assertTrue(any(s['path']=='Readable/CHS/Weapon13501.txt' and s['locator']=='L1' for s in homa['sources']))
+        self.table('Localization',[dict(id=293501,BFDDHOKGBOH=path,OKIHBKFCDND='ART/UI/Readable/CHS/Other')])
+        items,_=build_items(self.root,None)
+        homa=next(i for i in items if i['id']=='weapon:13501' and i['language']=='zh-CN')
+        self.assertEqual(homa['story'],'')
+        self.assertEqual(homa['coverage']['story'],'unresolved')
+        for extra in ({'MBOPLLJEHCJ':'ART/UI/Readable/CHS/Other'}, {'BFDDHOKGBOH':'ART/UI/Readable/EN/Weapon13501_EN'}):
+            with self.subTest(extra=extra):
+                self.table('Localization',[dict(id=293501,BFDDHOKGBOH=path,OKIHBKFCDND=path)|extra])
+                items,_=build_items(self.root,None)
+                homa=next(i for i in items if i['id']=='weapon:13501' and i['language']=='zh-CN')
+                self.assertEqual(homa['story'],'')
+                self.assertEqual(homa['coverage']['story'],'unresolved')
+
+    def test_artifact_missing_intermediate_max_level_or_property_is_unresolved(self):
+        self.table('ReliquaryMainProp',[dict(propDepotId=1000,propType=p) for p in ['FIGHT_PROP_HP_PERCENT','FIGHT_PROP_CRITICAL']])
+        self.table('ReliquarySetSchemeMainProp',[dict(equipType='EQUIP_DRESS',CBFOCJNNOGG=[3,20])])
+        full=[dict(rank=5,level=l,addProps=[dict(propType='FIGHT_PROP_HP_PERCENT',value=.07),dict(propType='FIGHT_PROP_CRITICAL',value=.047)]) for l in range(1,22)]
+        self.table('ReliquaryLevel',full)
+        complete,_=self.build()
+        self.assertEqual(complete['artifact:15009:circlet']['coverage']['stats'],'complete')
+        for missing in ('intermediate','max','property'):
+            with self.subTest(missing=missing):
+                levels=copy.deepcopy(full)
+                if missing=='intermediate':levels.pop(10)
+                elif missing=='max':levels.pop()
+                else:levels[-1]['addProps'].pop()
+                self.table('ReliquaryLevel',levels)
+                items,coverage=self.build();item=items['artifact:15009:circlet']
+                self.assertEqual(item['coverage']['stats'],'unresolved')
+                self.assertIn(item['id'],coverage['missing']['stats']['en'])
+                self.assertEqual(item['artifact']['rules'][0]['mainStats'][0]['values'][0]['level'],0)
+
 
 class ImageVerificationTests(unittest.TestCase):
     def test_redirect_to_localhost_rejected_and_transient_errors_are_distinct(self):

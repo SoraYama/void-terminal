@@ -28,31 +28,49 @@ def stat(key, value, language):
     return {'key':key,'label':label,'value':value if key in FLAT else value*100,'unit':'' if key in FLAT else '%'}
 
 
-def weapon_levels(row, curves, promotions, language):
+def weapon_levels(row, curves, promotions, language, completeness=None):
     levels=[]
+    phases=[]
+    required_props={p.get('propType') for p in row.get('weaponProp',[]) if p.get('propType')}
+    valid_definitions=all('initValue' in p and p.get('type') for p in row.get('weaponProp',[]) if p.get('propType'))
     previous_cap=1
     for promotion in sorted(promotions,key=lambda r:r.get('promoteLevel',0)):
         cap=promotion.get('unlockMaxLevel',0)
+        phase=promotion.get('promoteLevel',0)
+        expected_levels=set(range(previous_cap,cap+1))
+        resolved={}
         additions={p.get('propType'):p.get('value',0) for p in promotion.get('addProps',[]) if p.get('propType')}
         for level in range(previous_cap,cap+1):
             if level not in curves:continue
             stats=[]
             for prop in row.get('weaponProp',[]):
                 key=prop.get('propType');curve=curves[level].get(prop.get('type'))
-                if not key or curve is None:continue
-                base=prop.get('initValue',0)
+                if not key or curve is None or 'initValue' not in prop or 'value' not in curve:continue
+                base=prop['initValue']
                 arith=curve.get('arith','ARITH_MULTI')
                 if arith=='ARITH_MULTI':value=base*curve['value']
                 elif arith=='ARITH_ADD':value=base+curve['value']
                 else:continue
                 stats.append(stat(key,value+additions.get(key,0),language))
-            if stats:levels.append({'level':level,'ascension':promotion.get('promoteLevel',0),'stats':stats})
+            if stats:
+                levels.append({'level':level,'ascension':phase,'stats':stats})
+                resolved[level]={s['key'] for s in stats}
+        missing_props=[{'level':level,'keys':sorted(required_props-resolved.get(level,set()))}
+                       for level in sorted(expected_levels) if required_props-resolved.get(level,set())]
+        phases.append({'phase':phase,'expectedLevels':sorted(expected_levels),'resolvedLevels':sorted(resolved),
+                       'missingProperties':missing_props,
+                       'complete':bool(required_props and expected_levels) and not missing_props})
         previous_cap=cap
+    if completeness is not None:
+        phase_ids=[p['phase'] for p in phases]
+        contiguous=bool(phase_ids) and phase_ids==list(range(max(phase_ids)+1))
+        completeness.update(complete=valid_definitions and contiguous and all(p['complete'] for p in phases),phases=phases)
     return levels
 
 
-def artifact_rules(variants, tables, language):
+def artifact_rules(variants, tables, language, completeness=None):
     rules=[]
+    rarities=[]
     for rarity in sorted({r.get('rankLevel',1) for r in variants}):
         rows=[r for r in variants if r.get('rankLevel',1)==rarity]
         max_level=max(r.get('maxLevel',1)-1 for r in rows)
@@ -61,12 +79,15 @@ def artifact_rules(variants, tables, language):
         allowed={p['propType'] for p in tables['ReliquaryMainProp'] if p.get('propDepotId') in main_depots and p.get('propType')}
         equip_type=rows[0].get('equipType')
         scheme=next((s for s in tables.get('ReliquarySetSchemeMainProp',[]) if s.get('equipType')==equip_type),None)
+        slot_props=set();ids=[]
         if scheme is not None:
             # These two fields are observed at the pinned commit; do not guess
             # other opaque fields or equate every generic depot entry to a drop.
             ids=scheme.get('CBFOCJNNOGG',[])+scheme.get('DPKIBDILFGI',[])
             slot_props={'FIGHT_PROP_'+FIGHT_PROP_IDS[i] for i in ids if i in FIGHT_PROP_IDS}
-            allowed &= slot_props
+        # A generic depot includes properties that cannot be selected in this
+        # physical slot. Missing selection data must never widen the legal pool.
+        allowed &= slot_props
         main=defaultdict(list)
         for level in tables['ReliquaryLevel']:
             ui_level=level.get('level',1)-1
@@ -86,4 +107,13 @@ def artifact_rules(variants, tables, language):
         rules.append({'rarity':rarity,'maxLevel':max_level,
             'mainStats':[group(key,sorted(values,key=lambda r:r['level'])) for key,values in sorted(main.items())],
             'substats':[group(key,sorted(values)) for key,values in sorted(subs.items())]})
+        expected_levels=set(range(max_level+1))
+        missing_props=[{'key':key,'levels':sorted(expected_levels-{v['level'] for v in main[key]})}
+                       for key in sorted(slot_props) if expected_levels-{v['level'] for v in main[key]}]
+        rarities.append({'rarity':rarity,'expectedLevels':sorted(expected_levels),
+            'resolvedLevels':{key:sorted(v['level'] for v in values) for key,values in main.items()},
+            'missingProperties':missing_props,
+            'complete':bool(slot_props and expected_levels) and allowed==slot_props
+                       and all(i in FIGHT_PROP_IDS for i in ids) and not missing_props})
+    if completeness is not None:completeness.update(complete=bool(rarities) and all(r['complete'] for r in rarities),rarities=rarities)
     return rules
