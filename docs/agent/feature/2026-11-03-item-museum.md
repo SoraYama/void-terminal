@@ -1,5 +1,5 @@
 > **Date / Revised**: 2026-11-03
-> **State**: Design prepared; implementation and production publication pending.
+> **State**: Implementation and local UI verification in progress; final offline catalog importing; production publication pending.
 
 # 道具博览馆与最新数据准备
 
@@ -13,7 +13,7 @@
 - 概念稿：[item-museum-concept.png](../../design/item-museum-concept.png)，内置 imagegen 生成；[完整提示词](../../design/item-museum-prompt.md)。图中的道具图形、文字和数值属于示意，不可用作产品数据。
 - 桌面采用分类与网格、右侧详情，手机采用三列网格与全屏详情；复用站点须弥、纸白、蓝灰、暖金视觉，支持当前主题与侧栏。
 - 设计包括按道具类型组织的数值、培养、故事与来源，记录状态、逐字段覆盖报告、受控图片来源、快照一致性和可回退发布。
-- 已发出异步设计确认；在收到确认前尚未编写产品代码。主源下载等既有数据操作独立推进。
+- 用户已确认按此设计继续实现并更新线上数据；实施计划为 [2026-11-03-item-museum](../../superpowers/plans/2026-11-03-item-museum.md)。
 
 ## 3. Actual Acquisition Evidence
 
@@ -22,7 +22,7 @@
 - repo `DimbreathBot/AnimeGameData`，commit `bd35e243fa436f141f015cf221a6e19d0c34b7ca`，root Git tree `216b990b921ca71e3ffac08a270747f1f403600f`（GitHub git-commit API 核实）。
 - 2,279 Excel 文件、57,643 Talk 文件、29,175 Readable 文件、4,779 Subtitle 文件，加 4 份完整 CHS/EN standard/Medium TextMap；共 93,880 文件。这个数量不是道具数量。
 - GitLab 镜像 commit identity 核实；路径归档绑定固定下载 URL、commit、字节数与 SHA-256，四份 TextMap 通过精确大小和 Git blob SHA-1 校验。
-- `acquisition.json` 标为所声明主源范围完整。本次运行通过进程内替换已核实的提交与 TextMap 清单调用既有下载器；仓库 `normalize.py`、`acquire.py` 与 manifest 的产品 pins **尚未修改**。归一化之前必须同步更新代码中的 pins，不能直接以旧默认 commit 构建。
+- `acquisition.json` 标为所声明主源范围完整。仓库 `normalize.py`、`acquire.py` 与 manifest 的 pins 已同步更新并通过获取和归一化测试。
 
 新 TextMap 清单：
 
@@ -41,10 +41,14 @@
 - `latest-numeric-checks.json`：护摩之杖在 1、20（突破前后）、80（突破前后）、90 级的主源数值与补充源独立数值/曲线计算一致；90 级基础攻击 608、暴击伤害 66.2%。这是原始数据算术校验，不是产品计算器测试。
 - 圣遗物源 `ReliquaryLevel.level=21` 对应界面 +20，五星生命值 4,780、攻击力 311、暴击伤害 62.2%；实现必须避免把源 level 直接作为 UI 强化等级。
 - 最新对话样本改用 `dialogList/talkRole/talkContentTextMapHash/nextDialogs`；核对代码后，现有 normalizer 已支持这些明确字段以及旧混淆字段，不需要因字段改名重写。上线前仍需新数据回归和覆盖对比。
-- `image-provider-probe.json`：官方武器/圣遗物图片样本可用；官方 `/item/` 路径不能直接套用到材料。`gi.yatta.moe/assets/UI/` 对部分真实材料图标返回 PNG，但废弃任务项、名片等样本有 404；尚未完成全量图片映射与校验。Enka 样本返回 403，另一候选域名解析失败，不作为可用图源结论。
+- 完成全量图片检查，并修正 Yatta 的 `furniture/`、`reliquary/`、`namecard/`、`monster/` 子目录。官方装备图片优先，真实 404 才使用经过验证的同标识资源路径。最终中英文共 21,734 条记录的图片可用、5,532 条候选图片不可达、384 条无可用标识；对应 13,825 个稳定物品 ID。中文全部 317 个圣遗物部件有可用图片，288 条武器源记录中 274 条可用。不可达不等于源数据中没有图像，页面会显示类型占位。
 
 ## 5. Production Boundary & Next Work
 
-线上没有发生写入或发布，活动快照仍为 `agd-792978e5503e-1ac83cf28961`。已开始只读下载既有归档 `/opt/void-terminal/releases/catalog.sqlite.zst` 到本地 `data/catalog-baseline.sqlite.zst`，用于保留历史快照与引用；该归档约 2.8GiB，下载状态需另行核实，不能视作成功完成。服务器当时可用 76GiB；数据更新必须考虑旧库、新库、WAL、压缩包同时存在的空间。
+线上没有发生写入或发布，活动快照仍为 `agd-792978e5503e-1ac83cf28961`。既有归档已下载并核实压缩 SHA-256 `48e7a06d06357af97ed95279716b41e41f4a23ba8df3c5e2f173321137dc1f83`；解压后的离线库为 17,969,799,168 字节，SHA-256 `a30b76eea72ba25522e31230da4bc868a198dc1263ff51134ae3d5c7e8adc9e7`，`quick_check=ok`。保留旧快照及历史引用。服务器当时可用 76GiB；数据更新必须考虑旧库、新库、WAL、压缩包同时存在的空间。
 
-收到设计确认后先按 writing-plans 形成实施计划，再实现 pin/获取范围更新、数值与图片归一化、物品快照和分页 API、博览馆页面、覆盖报告、回归及发布。原型生成图片不得代替真实道具资产。最终必须真实报告源数据缺失、图片不可达和未解析项目，不能承诺把上游根本不存在的介绍补成权威文本。
+数据构建及接口已通过任务审查：27,650 条中英文物品记录，对应 13,825 个稳定 ID；这是源数据记录数。354 个明确内部记录跨语言默认隐藏。完整正文为 1,560,911 条。新源的中文 Readable 路径字段已适配，武器/圣遗物/任务物品中文故事分别有 251/299/1,126 条解析完整。中文武器数值 283/288 条完整、5 条未解析；圣遗物 313/317 条完整、4 条未解析。缺少部位规则、成长等级或类型化初始值时保留已核实部分并标为未解析。最终待发布快照为 `agd-bd35e243fa43-6d0e54515743`，已完成图片校验并正在导入离线库，尚未线上切换。
+
+数据服务最终回归为 126 passed、7 个依赖外部 PostgreSQL 环境的 skip、1 个已有 Starlette/httpx deprecation warning、13 subtests passed。已验证全部 27,650 条物品模型和 41,715 个物品文献关联；无错误或悬空关联。任务接口采用服务端分页、受限代理和 SQL 同快照事务，旧快照没有物品时明确 `ready:false`。跨语言检索只使用源中的中英文正式名称，不添加猜测的昵称；共用套装文献的模型元数据不再附任意一个部位摘要，部位资料通过单件详情查看。
+
+页面已具备桌面网格/右侧详情和手机全屏详情、深浅主题、URL 筛选与详情、等级/突破/精炼、圣遗物规则、来源文献和手动发送的预填提问。截图位于忽略目录 `artifacts/screenshots/*museum*`，当前使用 API 夹具；完整真实库与生产验证尚待完成。操作与回退流程见 [data-updates](../../data-updates.md)。原型生成图片未被用作真实道具资产。
