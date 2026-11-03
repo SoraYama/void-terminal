@@ -1,4 +1,4 @@
-> **Last updated**: 2026-11-03 (latest-answer button visibility at actual bottom, visible answer and paused streaming)
+> **Last updated**: 2026-11-03 (upstream freshness and production inventory descriptions, stats and images audit)
 
 # Agent Notes
 
@@ -6,6 +6,7 @@
 
 | Note | Summary |
 | --- | --- |
+| [2026-11-03-data-audit](research/2026-11-03-data-audit.md) | AnimeGameData main ahead by 2 commits; genshin-db pin current but five-category import omits image/stats/curve; production SQLite item coverage, quest missing descriptions, unexpanded weapon templates and absent inventory UI |
 | [2026-11-02-cloud-cost](research/2026-11-02-cloud-cost.md) | Azure B1ms + disk/IPv4 ~$28.31; OVH FR monthly ~€4.84 with mandatory backup; Hetzner CX23 €5.99 including IPv4; Vultr $10; SQLite 16.736 GiB and missing small-server Compose |
 | [2026-10-28-void-terminal-plan](research/2026-10-28-void-terminal-plan.md) | 原神百科 Agent：数据/RAG/deepseek-flash/双 Key；已选星海旅志 C 与 Docker，总体方案获同意；强视觉诉求要求高保真页面稿先于编码 |
 
