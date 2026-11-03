@@ -1,4 +1,4 @@
-> **Last updated**: 2026-11-03 (brand favicon SVG, multi-size ICO and Apple touch icon)
+> **Last updated**: 2026-11-03 (footer sidebar toggle, restored wordmark size and spacing, reversible motion)
 
 # Agent Notes
 
@@ -32,6 +32,7 @@
 
 | Note | Summary |
 | --- | --- |
+| [2026-11-03-sidebar-motion](optimize/2026-11-03-sidebar-motion.md) | Sidebar bottom status/toggle row, restored 145px v4 wordmark with English/Chinese line gap; reversible 280ms width/footer motion, mobile drawer/backdrop exit and reduced-motion checks |
 | [2026-11-03-library-ui](optimize/2026-11-03-library-ui.md) | library-workspace full-height reader and compact header; global native thumb fade including Radix portals; persistent 76px sidebar rail, mobile drawer and short-screen selected-passage actions |
 | [2026-11-02-chat-reading](optimize/2026-11-02-chat-reading.md) | Streaming follows answer-tail instead of citation tags; full-height scenery/title scroll, Motion compact header, dark/mobile composer; public real DeepSeek 41k-history and failed-placeholder follow-ups |
 | [2026-11-02-dsh-runtime](optimize/2026-11-02-dsh-runtime.md) | Official DSH loop/session/pi-ai/compaction, request-scoped Key isolation, five-call cap, Zod override and standalone packaging; 239 unit regressions |

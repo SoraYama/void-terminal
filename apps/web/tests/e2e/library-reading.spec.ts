@@ -42,10 +42,15 @@ for(const theme of ['light','dark'] as const){
 test('navigation: desktop collapse persists while mobile drawer remains usable',async({page},info)=>{
  test.skip(info.project.name!=='desktop');
  await openLibrary(page,'dark');
+ const sidebar=page.locator('.sidebar');
+ await expect(page.locator('.sidebar-header .sidebar-toggle')).toHaveCount(0);
+ expect((await page.locator('.sidebar-header .brand-wordmark').boundingBox())!.width).toBeGreaterThan(140);
+ expect((await page.getByRole('button',{name:'收起菜单',exact:true}).boundingBox())!.y).toBeGreaterThan(page.viewportSize()!.height-90);
  const before=(await page.getByRole('main').boundingBox())!.width;
  await page.getByRole('button',{name:'收起菜单',exact:true}).click();
  await expect(page.getByRole('button',{name:'展开菜单',exact:true})).toHaveAttribute('aria-expanded','false');
- expect((await page.getByRole('main').boundingBox())!.width).toBeGreaterThan(before+100);
+ await expect.poll(async()=>(await page.getByRole('main').boundingBox())!.width).toBeGreaterThan(before+100);
+ await expect.poll(async()=>(await sidebar.boundingBox())!.width).toBe(76);
  await page.screenshot({path:path.resolve('../../artifacts/screenshots/desktop-library-collapsed.png'),scale:'css',style:'nextjs-portal{visibility:hidden}'});
  await page.reload();await expect(page.getByRole('button',{name:'展开菜单',exact:true})).toBeVisible();
  await page.setViewportSize({width:390,height:844});
@@ -55,6 +60,36 @@ test('navigation: desktop collapse persists while mobile drawer remains usable',
  await expect(page.locator('.document-card')).toBeVisible();
  await page.setViewportSize({width:1440,height:900});await page.getByRole('button',{name:'展开菜单',exact:true}).click();
  await expect(page.getByRole('button',{name:'收起菜单',exact:true})).toBeVisible();
+});
+test('navigation: collapse moves continuously, reverses safely and respects reduced motion',async({page},info)=>{
+ test.skip(info.project.name!=='desktop');
+ await page.emulateMedia({reducedMotion:'no-preference'});
+ await openLibrary(page,'light');
+ const sidebar=page.locator('.sidebar');
+ const expanded=(await sidebar.boundingBox())!.width;
+ const frames=await sidebar.evaluate(el=>new Promise<{width:number;overflow:boolean}[]>(resolve=>{
+  const frames:{width:number;overflow:boolean}[]=[];
+  const started=performance.now();
+  (el.querySelector('.sidebar-toggle') as HTMLButtonElement).click();
+  const sample=()=>{frames.push({width:el.getBoundingClientRect().width,overflow:document.documentElement.scrollWidth>innerWidth+1});if(performance.now()-started<450)requestAnimationFrame(sample);else resolve(frames)};
+  requestAnimationFrame(sample);
+ }));
+ expect(frames.some(frame=>frame.width>80&&frame.width<expanded-2)).toBe(true);
+ expect(frames.every(frame=>!frame.overflow)).toBe(true);
+ await expect.poll(async()=>(await sidebar.boundingBox())!.width).toBe(76);
+ // Reverse an in-progress expansion rather than queueing another full animation.
+ await sidebar.evaluate(el=>new Promise<void>(resolve=>{
+  const toggle=el.querySelector('.sidebar-toggle') as HTMLButtonElement;
+  toggle.click();setTimeout(()=>{toggle.click();resolve()},70);
+ }));
+ await expect(sidebar).toHaveAttribute('data-collapsed','true');
+ await expect.poll(async()=>(await sidebar.boundingBox())!.width).toBe(76);
+ await page.emulateMedia({reducedMotion:'reduce'});
+ await page.getByRole('button',{name:'展开菜单',exact:true}).focus();
+ await page.keyboard.press('Enter');
+ await expect.poll(async()=>(await sidebar.boundingBox())!.width).toBe(expanded);
+ await expect(page.getByRole('button',{name:'收起菜单',exact:true})).toBeFocused();
+ expect(await sidebar.evaluate(el=>el.getAnimations().some(animation=>'transitionProperty' in animation&&animation.transitionProperty==='width'))).toBe(false);
 });
 test('library: selected text remains actionable on short screens and transfers into the composer',async({page},info)=>{
  await page.setViewportSize({width:360,height:420});await page.emulateMedia({reducedMotion:'reduce'});
