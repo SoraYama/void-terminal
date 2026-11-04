@@ -262,10 +262,12 @@ def digest(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
-def inspect(snapshot, legacy=False):
+def inspect(snapshot, legacy=False, quick_check=False):
     database = '/data/catalog.sqlite' if legacy else f'/catalog-archives/{snapshot}/catalog.sqlite'
     command = ['docker', 'exec', KNOWLEDGE, 'python', '-m', 'knowledge.refresh_build',
                'inspect', '--database', database, '--snapshot', snapshot]
+    if quick_check:
+        command.append('--quick-check')
     return json.loads(output(command, timeout=1200))
 
 
@@ -296,26 +298,47 @@ def verify_public(new, old):
     library = endpoint('/api/library', q=samples['libraryQuery'], type=samples['libraryType'],
                        language=samples['language'], pageSize=3)
     require(library['snapshotId'] == sid and library['items'], 'new library search unavailable')
-    for metrics in (new, old):
-        expected = metrics['snapshotId']
-        result = endpoint('/api/sources/' + quote(metrics['samples']['sourceId'], safe=''), snapshotId=expected)
+    citations = [(metrics['snapshotId'], metrics['samples']['sourceId']) for metrics in (new, old)]
+    if old['snapshotId'] == 'agd-bd35e243fa43-9f534ea4c12d':
+        citations.append(('agd-792978e5503e-1ac83cf28961', 'src_b10d5a112f43c788be46cce5cf76192a'))
+    for expected, source_id in citations:
+        result = endpoint('/api/sources/' + quote(source_id, safe=''), snapshotId=expected)
         require(result['source']['snapshotId'] == expected and result['source']['text'], 'pinned source unavailable')
     print(json.dumps({'phase': 'public-accepted', 'snapshotId': sid, 'previousSnapshotId': old['snapshotId']}), flush=True)
 
 
-def worker_cleanup(root):
+def marked_worker(root):
     marker = root / 'state/worker.json'
     if not marker.exists():
-        return
+        return None
     job = read_json(marker)['name']
     require(isinstance(job, str) and JOB.fullmatch(job), 'invalid worker marker')
-    found = subprocess.run(['docker', 'inspect', '--format', '{{ index .Config.Labels "dev.void.catalog-refresh" }}', job],
+    return job
+
+
+def worker_container(job):
+    found = subprocess.run(['docker', 'container', 'ls', '--all', '--quiet', '--no-trunc',
+                            '--filter', f'name=^/{job}$'],
                            text=True, capture_output=True, check=False, timeout=30)
-    if found.returncode == 0:
+    container = found.stdout.strip()
+    require(found.returncode == 0 and (not container or re.fullmatch(r'[0-9a-f]{64}', container)),
+            'could not determine build container state')
+    return container or None
+
+
+def worker_cleanup(root):
+    job = marked_worker(root)
+    if job is None:
+        return
+    marker = root / 'state/worker.json'
+    container = worker_container(job)
+    if container is not None:
+        found = subprocess.run(['docker', 'container', 'inspect', '--format',
+                                '{{ index .Config.Labels "dev.void.catalog-refresh" }}', container],
+                               text=True, capture_output=True, check=False, timeout=30)
+        require(found.returncode == 0, 'could not inspect build container ownership')
         require(found.stdout.strip() == job, 'refusing to remove an unrelated container')
-        execute(['docker', 'rm', '-f', job], timeout=60)
-    elif 'No such' not in found.stderr:
-        raise RefreshError('could not determine build container state')
+        execute(['docker', 'rm', '-f', container], timeout=60)
     work = root / 'work' / job
     if work.exists():
         require(work.is_dir() and not work.is_symlink(), 'invalid disposable workspace')
@@ -334,24 +357,55 @@ def build_command(image, job, workspace, cache, sources):
             '--main-commit', sources['main'], '--supplement-commit', sources['supplement'], '--baseline', '/work/baseline.json']
 
 
-def pack(root, workspace, result):
+def archive_metadata(root, result):
     sid = result['snapshotId']
     require(isinstance(sid, str) and SID.fullmatch(sid), 'invalid build snapshot identity')
+    image = root / 'images' / (sid + '.squashfs')
+    entry = {key: result[key] for key in ('sources', 'databaseSha256', 'bytes', 'documentCount', 'chunkCount')}
+    return image, entry
+
+
+def verify_pack(image, entry):
+    metadata = image.with_suffix('.json')
+    require(image.is_file() and not image.is_symlink() and metadata.is_file() and not metadata.is_symlink(),
+            'existing image failed reuse checks')
+    saved = read_json(metadata)
+    require(saved.keys() == entry.keys() | {'imageSha256'} and
+            all(saved[key] == value for key, value in entry.items()) and
+            digest(image) == saved['imageSha256'], 'existing image failed reuse checks')
+    return saved
+
+
+def staged_result(root, sources):
+    job = marked_worker(root)
+    if job is None:
+        return None
+    workspace = root / 'work' / job
+    report = workspace / 'result.json'
+    if not report.exists():
+        return None
+    require(not workspace.is_symlink() and report.is_file() and not report.is_symlink(),
+            'invalid staged build result')
+    if worker_container(job) is not None:
+        return None
+    result = read_json(report)
+    if result['sources'] != sources:
+        return None
+    image, _ = archive_metadata(root, result)
+    return result if image.exists() or image.is_symlink() else None
+
+
+def pack(root, workspace, result):
+    final, entry = archive_metadata(root, result)
     database = workspace / 'catalog.sqlite'
     require(database.is_file() and not database.is_symlink() and database.stat().st_size == result['bytes'],
             'staged database size mismatch')
     require(not any(database.with_name(database.name + suffix).exists() for suffix in ('-wal', '-shm', '-journal')),
             'staged database has sidecar files')
     require(digest(database) == result['databaseSha256'], 'staged database SHA-256 mismatch')
-    final = root / 'images' / (sid + '.squashfs')
     metadata = final.with_suffix('.json')
-    entry = {key: result[key] for key in ('sources', 'databaseSha256', 'bytes', 'documentCount', 'chunkCount')}
-    if final.exists():
-        saved = read_json(metadata)
-        require(not final.is_symlink() and saved['sources'] == entry['sources'] and
-                saved['documentCount'] == entry['documentCount'] and saved['chunkCount'] == entry['chunkCount'] and
-                digest(final) == saved['imageSha256'], 'existing image failed reuse checks')
-        return saved
+    if final.exists() or final.is_symlink():
+        return verify_pack(final, entry)
     partial = workspace / 'candidate.squashfs'
     os.chmod(database, 0o644)
     guarded(['mksquashfs', str(database), str(partial), '-noappend', '-comp', 'zstd', '-Xcompression-level', '6',
@@ -366,7 +420,7 @@ def pack(root, workspace, result):
 
 
 def apply_update(root, before, sources):
-    require_space(root, INITIAL_WORK_BYTES)
+    require_space(root, 0)
     image = read_json(root / 'state/settings.json')['knowledgeImage']
     require(isinstance(image, str) and re.fullmatch(r'sha256:[0-9a-f]{64}', image), 'invalid worker image')
     require(output(['docker', 'inspect', '--format', '{{.Image}} {{.State.Health.Status}}', KNOWLEDGE]) == image + ' healthy',
@@ -376,28 +430,43 @@ def apply_update(root, before, sources):
     baseline = inspect(active, legacy=active == before['legacy']['snapshotId'])
     require(baseline['snapshotId'] == active and baseline['sourceCommit'] == current_sources(before)['main'],
             'legacy/active catalog does not match registry')
-    worker_cleanup(root)
-    job = 'void-catalog-build-' + uuid4().hex
-    workspace = root / 'work' / job
-    atomic_json(root / 'state/worker.json', {'name': job}, 0o600)
     try:
-        workspace.mkdir(mode=0o700)
-        (workspace / 'tmp').mkdir(mode=0o700)
-        os.chown(workspace, 10001, 10001)
-        os.chown(workspace / 'tmp', 10001, 10001)
-        atomic_json(workspace / 'baseline.json', baseline)
-        print(json.dumps({'phase': 'building', 'workspace': str(workspace)}), flush=True)
-        guarded(build_command(image, job, workspace, root / 'cache', sources), root, 8 * 3600)
-        result = read_json(workspace / 'result.json')
+        result = staged_result(root, sources)
+        reused = result is not None
+        if reused:
+            print(json.dumps({'phase': 'revalidating-staged-archive', 'snapshotId': result['snapshotId']}), flush=True)
+        else:
+            worker_cleanup(root)
+            require_space(root, INITIAL_WORK_BYTES)
+            job = 'void-catalog-build-' + uuid4().hex
+            workspace = root / 'work' / job
+            atomic_json(root / 'state/worker.json', {'name': job}, 0o600)
+            workspace.mkdir(mode=0o700)
+            (workspace / 'tmp').mkdir(mode=0o700)
+            os.chown(workspace, 10001, 10001)
+            os.chown(workspace / 'tmp', 10001, 10001)
+            atomic_json(workspace / 'baseline.json', baseline)
+            print(json.dumps({'phase': 'building', 'workspace': str(workspace)}), flush=True)
+            guarded(build_command(image, job, workspace, root / 'cache', sources), root, 8 * 3600)
+            result = read_json(workspace / 'result.json')
         require(result['sources'] == sources and result['sourceCommit'] == sources['main'], 'build pins do not match request')
         sid = result['snapshotId']
         require(sid != active and sid != before['legacy']['snapshotId'], 'candidate would overwrite a live snapshot')
-        entry = pack(root, workspace, result)
+        if reused:
+            entry = verify_pack(*archive_metadata(root, result))
+        else:
+            entry = pack(root, workspace, result)
         mounted = mount_image(root, sid, entry['bytes'])
         require(digest(mounted) == entry['databaseSha256'], 'mounted SQLite hash differs from validated candidate')
-        seen = inspect(sid)
-        require(all(seen[key] == result[key] for key in ('snapshotId', 'sourceCommit', 'documentCount', 'chunkCount', 'samples')),
+        seen = inspect(sid, quick_check=reused)
+        identity = ('snapshotId', 'sourceCommit', 'documentCount', 'chunkCount', 'samples')
+        require(all(seen[key] == result[key] for key in identity),
                 'knowledge container cannot read the verified candidate')
+        if reused:
+            from knowledge.ingest.source_plan import latest_commits
+            from knowledge.refresh_build import validate_coverage
+            validate_coverage(seen, baseline)
+            require(latest_commits() == sources, 'upstream changed while revalidating staged archive')
         sequence = 1 + max((archive['sequence'] for archive in before['snapshots'].values()), default=0)
         next_registry = {**before, 'active': sid, 'snapshots': {
             **before['snapshots'], sid: {**entry, 'sequence': sequence},

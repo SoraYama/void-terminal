@@ -1,4 +1,6 @@
+import hashlib
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,6 +13,7 @@ OLD = 'agd-' + 'a' * 12 + '-' + 'b' * 12
 NEW = 'agd-' + 'c' * 12 + '-' + 'd' * 12
 BEFORE = {'main': 'a' * 40, 'supplement': 'b' * 40}
 AFTER = {'main': 'c' * 40, 'supplement': 'b' * 40}
+JOB = 'void-catalog-build-' + '1' * 32
 
 
 class PublicationTest(unittest.TestCase):
@@ -30,6 +33,92 @@ class PublicationTest(unittest.TestCase):
 
     def current(self):
         return json.loads(self.registry.read_text())
+
+    def stage_worker(self):
+        marker = self.state / 'worker.json'
+        marker.write_text(json.dumps({'name': JOB}))
+        work = self.root / 'work' / JOB
+        work.mkdir(parents=True)
+        return marker, work
+
+    def docker_without_worker(self, args, **_):
+        if args[:3] == ['docker', 'container', 'ls']:
+            return subprocess.CompletedProcess(args, 0, stdout='', stderr='')
+        if args[:2] == ['docker', 'inspect']:
+            return subprocess.CompletedProcess(args, 1, stdout='', stderr=f'error: no such object: {JOB}\n')
+        self.fail(f'unexpected command: {args}')
+
+    def test_cleanup_removes_workspace_after_docker_auto_removes_worker(self):
+        marker, work = self.stage_worker()
+        with patch.object(refresh.subprocess, 'run', side_effect=self.docker_without_worker):
+            refresh.worker_cleanup(self.root)
+        self.assertFalse(marker.exists())
+        self.assertFalse(work.exists())
+
+    def test_cleanup_preserves_workspace_when_daemon_query_fails(self):
+        marker, work = self.stage_worker()
+        with patch.object(refresh.subprocess, 'run', return_value=subprocess.CompletedProcess(
+                [], 1, stdout='', stderr='cannot connect to the Docker daemon')):
+            with self.assertRaises(refresh.RefreshError):
+                refresh.worker_cleanup(self.root)
+        self.assertTrue(marker.exists())
+        self.assertTrue(work.exists())
+
+    def test_cleanup_does_not_remove_container_with_wrong_label(self):
+        marker, work = self.stage_worker()
+        found = subprocess.CompletedProcess([], 0, stdout='a' * 64 + '\n', stderr='')
+        unowned = subprocess.CompletedProcess([], 0, stdout='another-job\n', stderr='')
+        with patch.object(refresh.subprocess, 'run', side_effect=[found, unowned]), patch.object(
+                refresh, 'execute', side_effect=AssertionError('removed an unrelated container')):
+            with self.assertRaisesRegex(refresh.RefreshError, 'unrelated container'):
+                refresh.worker_cleanup(self.root)
+        self.assertTrue(marker.exists())
+        self.assertTrue(work.exists())
+
+    def test_reuses_verified_archive_and_refuses_tampered_archive(self):
+        for corrupt in (False, True):
+            with self.subTest(corrupt=corrupt):
+                self.registry.write_text(json.dumps(self.before))
+                marker, work = self.stage_worker()
+                images = self.root / 'images'
+                images.mkdir(exist_ok=True)
+                archive = images / (NEW + '.squashfs')
+                archive.write_bytes(b'bad' if corrupt else b'archive')
+                entry = dict(self.after['snapshots'][NEW])
+                entry.pop('sequence')
+                entry['imageSha256'] = hashlib.sha256(b'archive').hexdigest()
+                mounted = self.root / 'readonly.sqlite'
+                mounted.write_bytes(b'catalog')
+                entry['databaseSha256'] = hashlib.sha256(b'catalog').hexdigest()
+                entry['bytes'] = mounted.stat().st_size
+                archive.with_suffix('.json').write_text(json.dumps(entry))
+                baseline = {'snapshotId': OLD, 'sourceCommit': BEFORE['main']}
+                seen = {'snapshotId': NEW, 'sourceCommit': AFTER['main'],
+                        'documentCount': entry['documentCount'], 'chunkCount': entry['chunkCount'], 'samples': {}}
+                result = {**seen, 'sources': AFTER, 'bytes': entry['bytes'], 'databaseSha256': entry['databaseSha256']}
+                (work / 'result.json').write_text(json.dumps(result))
+                (self.state / 'settings.json').write_text(json.dumps({'knowledgeImage': 'sha256:' + '0' * 64}))
+                with patch.object(refresh, 'require_space'), patch.object(refresh, 'output',
+                        return_value='sha256:' + '0' * 64 + ' healthy'), patch.object(refresh, 'ensure_mount_root'), \
+                        patch.object(refresh.subprocess, 'run', side_effect=self.docker_without_worker), \
+                        patch.object(refresh, 'mount_image', return_value=mounted) as mount, \
+                        patch.object(refresh, 'inspect', side_effect=[baseline, seen]) as inspect, \
+                        patch('knowledge.refresh_build.validate_coverage'), \
+                        patch('knowledge.ingest.source_plan.latest_commits', return_value=AFTER), \
+                        patch.object(refresh, 'verify_public') as public, \
+                        patch.object(refresh, 'guarded', side_effect=AssertionError('started a rebuild')):
+                    if corrupt:
+                        with self.assertRaisesRegex(refresh.RefreshError, 'reuse checks'):
+                            refresh.apply_update(self.root, self.before, AFTER)
+                        self.assertEqual(self.current(), self.before)
+                        mount.assert_not_called()
+                        public.assert_not_called()
+                    else:
+                        self.assertEqual(refresh.apply_update(self.root, self.before, AFTER), NEW)
+                        self.assertEqual(self.current()['active'], NEW)
+                        inspect.assert_called_with(NEW, quick_check=True)
+                        public.assert_called_once_with(seen, baseline)
+                self.assertFalse(marker.exists())
 
     def test_unchanged_never_calls_builder(self):
         before = self.registry.read_bytes()
