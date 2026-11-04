@@ -33,13 +33,16 @@ def validate_registry(value):
     snapshots = value['snapshots']
     if not isinstance(snapshots, dict) or legacy['snapshotId'] in snapshots:
         raise ValueError('Invalid archive catalog registrations')
+    sequences = set()
     for sid, entry in snapshots.items():
         if (not _matches(sid, _SNAPSHOT_ID)
-                or not _shape(entry, {'sources', 'databaseSha256', 'imageSha256', 'bytes', 'documentCount', 'chunkCount'})
+                or not _shape(entry, {'sources', 'databaseSha256', 'imageSha256', 'bytes', 'documentCount', 'chunkCount', 'sequence'})
                 or not _sources(entry['sources'])
                 or not all(_matches(entry[key], _SHA256) for key in ('databaseSha256', 'imageSha256'))
-                or not all(type(entry[key]) is int and entry[key] > 0 for key in ('bytes', 'documentCount', 'chunkCount'))):
+                or not all(type(entry[key]) is int and entry[key] > 0 for key in ('bytes', 'documentCount', 'chunkCount', 'sequence'))
+                or entry['sequence'] in sequences):
             raise ValueError('Invalid archive catalog registration')
+        sequences.add(entry['sequence'])
     active = value['active']
     if not _matches(active, _SNAPSHOT_ID) or (active != legacy['snapshotId'] and active not in snapshots):
         raise ValueError('Invalid active catalog registration')

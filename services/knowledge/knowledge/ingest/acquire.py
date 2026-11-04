@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import tempfile
 import urllib.parse
 import tarfile
@@ -26,6 +27,29 @@ def git_tree_sha(entries):
     ordered=sorted(entries,key=lambda pair:pair[0].encode()+(b'/' if pair[1]['type']=='tree' else b''))
     raw=b''.join((item['mode'].lstrip('0')+' '+name).encode()+b'\0'+bytes.fromhex(item['sha']) for name,item in ordered)
     return hashlib.sha1(f'tree {len(raw)}\0'.encode()+raw).hexdigest()
+
+
+def extracted_git_tree_sha(path):
+    """Reconstruct a Git subtree from the extracted archive, including blob modes."""
+    entries = []
+    with os.scandir(path) as directory:
+        for child in directory:
+            mode = child.stat(follow_symlinks=False).st_mode
+            if stat.S_ISDIR(mode):
+                entry = {'type': 'tree', 'mode': '040000', 'sha': extracted_git_tree_sha(child.path)}
+            elif stat.S_ISREG(mode):
+                entry = {'type': 'blob', 'mode': '100755' if mode & stat.S_IXUSR else '100644',
+                         'sha': git_blob_sha(Path(child.path))}
+            else:
+                raise ValueError(f'Unsupported Git archive entry: {child.path}')
+            entries.append((child.name, entry))
+    return git_tree_sha(entries)
+
+
+def verify_archive_tree(root, scope, expected):
+    path = contained_path(root, scope)
+    if path.resolve() != path or not path.is_dir() or extracted_git_tree_sha(path) != expected:
+        raise ValueError(f'Main archive does not match the official Git tree: {scope}')
 
 
 def download(url, destination, size=None, sha=None, workers=16, chunk_size=256*1024, *, keep_parts=True):
@@ -247,7 +271,7 @@ MAIN_TEXTMAPS = [
 ]
 
 
-def extract_source_archive(archive,destination,expected_path=None):
+def extract_source_archive(archive,destination,expected_path=None,*,preserve_git_mode=False):
     """GitLab path archives have one generated wrapper; strip it without traversal."""
     destination=Path(destination).resolve();destination.mkdir(parents=True,exist_ok=True)
     count=0;wrapper=None;seen=set()
@@ -271,6 +295,8 @@ def extract_source_archive(archive,destination,expected_path=None):
             elif member.isfile():
                 target.parent.mkdir(parents=True,exist_ok=True)
                 with stream.extractfile(member) as source,target.open('wb') as output:shutil.copyfileobj(source,output)
+                if preserve_git_mode:
+                    target.chmod(0o700 if member.mode & stat.S_IXUSR else 0o600)
                 count+=1
     return count
 
@@ -305,10 +331,12 @@ def acquire_main_mirror(destination,commit,workers=16,*,source_plan=None):
     if source_plan is None:
         if commit!=MAIN_COMMIT:raise ValueError('No verified TextMap manifest for this commit')
         textmaps=MAIN_TEXTMAPS
+        archive_trees={}
     else:
         planned=validate_source_plan(source_plan)['sources']['main']
         if planned['commit']!=commit:raise ValueError('Source plan does not match the mirror commit')
         textmaps=[(file['path'].split('/')[-1],file['size'],file['sha']) for file in planned['files']]
+        archive_trees=planned['archiveTrees']
     destination=Path(destination).resolve();destination.mkdir(parents=True,exist_ok=True)
     base=MIRROR_API_BASE
     with urllib.request.urlopen(f'{base}/commits/{commit}',timeout=60) as response:verified=json.load(response)
@@ -319,8 +347,9 @@ def acquire_main_mirror(destination,commit,workers=16,*,source_plan=None):
         for path in paths:
             url=f'{base}/archive.tar.gz?sha={commit}&path={urllib.parse.quote(path,safe="")}'
             archive,metadata=cached_source_archive(destination,commit,path,url)
-            count=extract_source_archive(archive,staging,expected_path=path)
+            count=extract_source_archive(archive,staging,expected_path=path,preserve_git_mode=bool(archive_trees))
             if count==0 or not contained_path(staging,path).is_dir():raise ValueError('Empty source scope archive')
+            if archive_trees:verify_archive_tree(staging,path,archive_trees[path])
             sidecar=archive.with_name(archive.name+'.json');temporary=sidecar.with_suffix('.json.partial');temporary.write_text(json.dumps(metadata,indent=2));temporary.replace(sidecar)
             reports.append({'path':path,'files':count,'archiveSha256':metadata['sha256'],'downloadMetadata':sidecar.relative_to(destination).as_posix()})
             print(f'Fetched complete {path}: {count} files',flush=True)
@@ -336,7 +365,8 @@ def acquire_main_mirror(destination,commit,workers=16,*,source_plan=None):
                 'mirror':'https://gitlab.com/Dimbreath/animegamedata2','mirrorCommitVerified':verified['id'],
                 'scope':'All Excel, Talk, Readable and Subtitle files; full CHS/EN standard and Medium TextMaps',
                 'cacheVerificationVersion':2,'paths':reports,'files':sum(r['files'] for r in reports)}
-        if source_plan is not None:marker.update(source_marker_identity(source_plan,'main'),scopeComplete=True)
+        if source_plan is not None:
+            marker.update(source_marker_identity(source_plan,'main'),scopeComplete=True,archiveTrees=archive_trees)
         publish_source_paths(destination,staging,paths+['TextMap'],marker)
     return marker
 
@@ -363,9 +393,11 @@ def validate_acquired_source(root,plan,name):
         raise ValueError(f'Acquisition marker does not match source plan for {name}')
     files=plan['sources'][name]['files']
     if name=='main':
-        if marker.get('mirrorCommitVerified')!=expected['commit']:
+        archive_trees=plan['sources'][name]['archiveTrees']
+        if marker.get('mirrorCommitVerified')!=expected['commit'] or marker.get('archiveTrees')!=archive_trees:
             raise ValueError('Acquisition marker does not verify the mirror commit')
         validate_main_scopes(root)
+        for scope,tree in archive_trees.items():verify_archive_tree(root,scope,tree)
         scopes=['TextMap']
     else:
         if marker.get('inventoryVerification')!='official-git-tree-blobs' or marker.get('files')!=len(files):

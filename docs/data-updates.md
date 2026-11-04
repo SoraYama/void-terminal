@@ -1,6 +1,46 @@
 # 数据更新与道具资料发布
 
-知识库与博览馆共用不可变快照。新请求默认读取活动快照，带 `snapshotId` 的历史引用继续读取对应旧快照；上游仓库有新提交不会自动覆盖线上。更新需要下载、构建、检查和发布。
+知识库与博览馆共用不可变快照。新请求默认读取活动快照，带 `snapshotId` 的历史引用继续读取对应旧快照。日常更新走服务器端流程；下方的离线手工步骤保留为历史发布和故障排查参考。
+
+## 服务器自动更新
+
+`void-catalog-refresh.timer` 在启用后每天北京时间 04:30 触发，服务器关机错过的任务会在恢复后补跑。检查 [AnimeGameData](https://github.com/DimbreathBot/AnimeGameData/commits/main/) 和 [genshin-db](https://github.com/theBowja/genshin-db/commits/main/) 的 `main`；提交对不变时立即结束。更新在生产服务器隔离容器构建，无需打开本机、Codex 或浏览器。
+
+```sh
+systemctl list-timers --all void-catalog-refresh.timer
+systemctl status void-catalog-refresh.service --no-pager
+journalctl -u void-catalog-refresh.service -n 80 --no-pager
+cat /opt/void-terminal/catalog-refresh/state/last-run.json
+# 需要立刻检查时，触发与定时器相同的流程。
+systemctl start --no-block void-catalog-refresh.service
+```
+
+`published` 表示线上验收已通过，`unchanged` 表示两源均未变化。`failed` 或 `rolled-back` 时，先看日志定位来源、容量、构建或验收问题，再确认公网 `/api/status` 仍指向原快照。不要手改运行中的 `registry.json`，也不要清理已有发布文件；磁盘空间不足时更新会停止，保留既有快照。任务进行中以 systemd 和日志为准，`last-run.json` 保存最近一次完成的结果。
+
+每次固定两源提交，验证来源、语种、道具分类、图片覆盖和 SQLite 完整性。新的压缩快照先挂载并在知识容器内读取，再原子切换活动快照。公网状态、道具详情、文献和旧引用通过才保留切换；失败或发布过程中断时恢复原注册表。已有 SQLite 和预算表保留原位，重启时由 `void-catalog-mounts.service` 恢复归档挂载。实现细节见[自动更新设计](superpowers/specs/2026-11-04-catalog-refresh-design.md)。
+
+更新应用代码和日常同步数据是两件事。管理已启用自动更新的生产容器时，使用同一组 Compose 文件，保留知识服务的只读挂载：
+
+```sh
+cd /opt/void-terminal/app
+docker compose -f compose.sqlite.yaml \
+  -f /opt/void-terminal/catalog-refresh/code/deploy/compose.catalog-refresh.yaml ps
+```
+
+从 2026-11-03 生产基线首次接入时，将校验过的发布提交归档解到 `/opt/void-terminal/catalog-refresh/code-<短提交>`。在服务器以 root 执行，`REV` 为七位提交前缀：
+
+```sh
+cd /opt/void-terminal/catalog-refresh
+docker build -t "void-terminal-knowledge:catalog-refresh-$REV" \
+  -f "code-$REV/deploy/Dockerfile.knowledge" "code-$REV"
+bash "code-$REV/deploy/bootstrap-catalog-refresh.sh" "$REV"
+systemd-run --unit=void-catalog-commission-20261104 \
+  /bin/bash /opt/void-terminal/catalog-refresh/code/deploy/commission-catalog-refresh.sh
+```
+
+引导脚本要求现网还在 2026-11-03 基线，保留旧镜像，检查 Compose 切换前后都能读取旧数据；失败时恢复原知识容器。接入任务在服务器后台持续运行，首次发布及历史引用验证通过、复查两源均无变更后才启用定时器。可用 `journalctl -u void-catalog-commission-20261104` 查看接入过程，首次发布记录保存在 `state/commission-first-publish.json`。此脚本只用于首次安装；日常检查使用 `void-catalog-refresh.service`。
+
+以下第 1–6 节记录切换到自动更新前的流程。日常同步使用上面的 systemd 入口，避免绕过注册表或替换承载历史数据的 SQLite。
 
 ## 1. 固定并校验上游版本
 
@@ -87,4 +127,4 @@ docker tag void-terminal-web:before-item-museum-20261103 void-terminal-web:lates
 docker compose -f compose.sqlite.yaml up --no-build -d --wait --wait-timeout 240 knowledge web
 ```
 
-本次 19:18:45（Asia/Shanghai）切换完成，公网 API/SSE 与桌面/手机真实资料验收通过。19:19:48 复查两个上游官方 Atom feed，分别仍为 `bd35e243fa436f141f015cf221a6e19d0c34b7ca` 和 `49a6544a6c6ae36089cb42fa591fc46f01de8bcf`。后续上游更新仍须执行上述获取、归一化、图片检查、离线构建和发布流程；不会自动改动线上。
+本次 19:18:45（Asia/Shanghai）切换完成，公网 API/SSE 与桌面/手机真实资料验收通过。19:19:48 复查两个上游官方 Atom feed，分别仍为 `bd35e243fa436f141f015cf221a6e19d0c34b7ca` 和 `49a6544a6c6ae36089cb42fa591fc46f01de8bcf`。这些提交是 2026-11-03 发布的基线。

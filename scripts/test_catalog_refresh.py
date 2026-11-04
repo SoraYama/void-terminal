@@ -24,7 +24,7 @@ class PublicationTest(unittest.TestCase):
         self.before = {'version': 1, 'active': OLD, 'legacy': {'snapshotId': OLD, 'sources': BEFORE}, 'snapshots': {}}
         self.after = {**self.before, 'active': NEW, 'snapshots': {NEW: {
             'sources': AFTER, 'databaseSha256': 'e' * 64, 'imageSha256': 'f' * 64,
-            'bytes': 1024, 'documentCount': 5, 'chunkCount': 7,
+            'bytes': 1024, 'documentCount': 5, 'chunkCount': 7, 'sequence': 1,
         }}}
         self.registry.write_text(json.dumps(self.before))
 
@@ -96,7 +96,7 @@ class PublicationTest(unittest.TestCase):
 
     def test_boot_missing_historical_archive_does_not_replace_active(self):
         history = 'agd-' + 'e' * 12 + '-' + 'd' * 12
-        self.after['snapshots'][history] = self.after['snapshots'][NEW]
+        self.after['snapshots'][history] = {**self.after['snapshots'][NEW], 'sequence': 2}
         self.registry.write_text(json.dumps(self.after))
 
         def mount(_root, snapshot, _bytes):
@@ -108,6 +108,23 @@ class PublicationTest(unittest.TestCase):
                 refresh.restore_mounts(self.root)
         self.assertEqual(self.current()['active'], NEW)
         self.assertEqual(json.loads((self.state / 'mounts-result.json').read_text())['missing'], [history])
+
+    def test_boot_fallback_uses_publish_order_not_json_order(self):
+        recent = 'agd-' + 'e' * 12 + '-' + 'd' * 12
+        older = 'agd-' + 'f' * 12 + '-' + 'd' * 12
+        entry = self.after['snapshots'][NEW]
+        self.after['snapshots'] = {recent: {**entry, 'sequence': 2},
+                                   NEW: {**entry, 'sequence': 3}, older: entry}
+        self.registry.write_text(json.dumps(self.after))
+
+        def mount(_root, snapshot, _bytes):
+            if snapshot == NEW:
+                raise FileNotFoundError
+
+        with patch.object(refresh, 'ensure_mount_root'), patch.object(refresh, 'mount_image', side_effect=mount):
+            with self.assertRaises(refresh.RefreshError):
+                refresh.restore_mounts(self.root)
+        self.assertEqual(self.current()['active'], recent)
 
 
 if __name__ == '__main__':

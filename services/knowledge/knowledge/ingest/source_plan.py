@@ -127,7 +127,8 @@ def create_source_plan(main_commit, supplement_commit):
     git_sha(main_commit, 'main commit')
     git_sha(supplement_commit, 'supplement commit')
     main = VerifiedTree(MAIN_REPO, main_commit)
-    for scope in (*MAIN_SCOPES, 'Readable/CHS', 'Readable/EN'):
+    archive_trees = {scope: main.directory_sha(scope) for scope in MAIN_SCOPES}
+    for scope in ('Readable/CHS', 'Readable/EN'):
         main.directory_sha(scope)
     textmaps = [main.file(path) for path in sorted(TEXTMAPS)]
 
@@ -141,7 +142,8 @@ def create_source_plan(main_commit, supplement_commit):
                 supplemental_files.append(selected_blob(f'{scope}/{name}', entry))
 
     return validate_source_plan({'version': 1, 'sources': {
-        'main': {'repo': MAIN_REPO, 'commit': main_commit, 'rootTree': main.root, 'files': textmaps},
+        'main': {'repo': MAIN_REPO, 'commit': main_commit, 'rootTree': main.root, 'files': textmaps,
+                 'archiveTrees': archive_trees},
         'supplement': {'repo': SUPPLEMENT_REPO, 'commit': supplement_commit, 'rootTree': supplement.root,
                        'files': sorted(supplemental_files, key=lambda file: file['path'])},
     }})
@@ -155,11 +157,18 @@ def validate_source_plan(plan):
         raise ValueError('Source plan must contain main and supplement sources')
     for name, repo in REPOS.items():
         source = sources[name]
-        if (not isinstance(source, dict) or source.keys() != {'repo', 'commit', 'rootTree', 'files'}
+        keys = {'repo', 'commit', 'rootTree', 'files'} | ({'archiveTrees'} if name == 'main' else set())
+        if (not isinstance(source, dict) or source.keys() != keys
                 or source['repo'] != repo or not isinstance(source['files'], list)):
             raise ValueError(f'Invalid source plan entry for {name}')
         git_sha(source['commit'], f'{name} commit')
         git_sha(source['rootTree'], f'{name} root tree')
+        if name == 'main':
+            trees = source['archiveTrees']
+            if not isinstance(trees, dict) or trees.keys() != set(MAIN_SCOPES):
+                raise ValueError('Source plan must bind all main archive trees')
+            for scope, sha in trees.items():
+                git_sha(sha, scope)
         files = set()
         dirs = set()
         for file in source['files']:

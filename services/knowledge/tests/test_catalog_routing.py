@@ -40,13 +40,13 @@ def catalogs(tmp_path, monkeypatch):
     archives = tmp_path / 'archives #?'
     registry = {'version': 1, 'active': LEGACY, 'legacy': {'snapshotId': LEGACY, 'sources': {
         'main': '1' * 12 + '0' * 28, 'supplement': 'a' * 40}}, 'snapshots': {}}
-    for sid, marker in [(ARCHIVE, 'Current'), (PREVIOUS_ARCHIVE, 'Archived')]:
+    for sequence, (sid, marker) in enumerate([(PREVIOUS_ARCHIVE, 'Archived'), (ARCHIVE, 'Current')], 1):
         db_path = archives / sid / 'catalog.sqlite'
         archive = CatalogStore(f'sqlite:///{db_path}')
         source_ids[sid] = populate(archive, sid, marker, activate=False)
         registry['snapshots'][sid] = {
             'sources': {'main': sid[4:16] + '0' * 28, 'supplement': 'a' * 40},
-            'databaseSha256': 'b' * 64, 'imageSha256': 'c' * 64,
+            'databaseSha256': 'b' * 64, 'imageSha256': 'c' * 64, 'sequence': sequence,
             'bytes': db_path.stat().st_size, 'documentCount': 2, 'chunkCount': 2,
         }
     registry_path = tmp_path / 'registry.json'
@@ -220,6 +220,7 @@ def test_registry_rejects_invalid_schema_and_ambiguous_keys(catalogs):
         lambda r: r['snapshots'][ARCHIVE].update(bytes=True),
         lambda r: r['snapshots'][ARCHIVE].update(chunkCount=0),
         lambda r: r['snapshots'][ARCHIVE].update(documentCount=-1),
+        lambda r: r['snapshots'][ARCHIVE].update(sequence=r['snapshots'][PREVIOUS_ARCHIVE]['sequence']),
         lambda r: r['snapshots'][ARCHIVE].update(databaseSha256='G' * 64),
         lambda r: r['snapshots'][ARCHIVE].update(path='/unvalidated/other.sqlite'),
     ):

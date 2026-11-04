@@ -248,7 +248,8 @@ def restore_mounts(root):
         except (OSError, subprocess.SubprocessError, RefreshError, ValueError):
             missing.append(snapshot)
     if value['active'] in missing:
-        value['active'] = available[-1] if available else value['legacy']['snapshotId']
+        value['active'] = max(available, key=lambda sid: value['snapshots'][sid]['sequence'],
+                              default=value['legacy']['snapshotId'])
         atomic_json(root / 'state/registry.json', value)
     result = {'active': value['active'], 'mounted': available, 'missing': missing, 'sharedRoot': shared}
     atomic_json(root / 'state/mounts-result.json', result)
@@ -397,7 +398,10 @@ def apply_update(root, before, sources):
         seen = inspect(sid)
         require(all(seen[key] == result[key] for key in ('snapshotId', 'sourceCommit', 'documentCount', 'chunkCount', 'samples')),
                 'knowledge container cannot read the verified candidate')
-        next_registry = {**before, 'active': sid, 'snapshots': {**before['snapshots'], sid: entry}}
+        sequence = 1 + max((archive['sequence'] for archive in before['snapshots'].values()), default=0)
+        next_registry = {**before, 'active': sid, 'snapshots': {
+            **before['snapshots'], sid: {**entry, 'sequence': sequence},
+        }}
         worker_cleanup(root)
         try:
             publish(root, before, next_registry, lambda: verify_public(seen, baseline))

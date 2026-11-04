@@ -158,6 +158,10 @@ def test_official_heads_and_plan_bind_the_exact_source_scope(upstream, tmp_path)
     assert latest_commits() == {'main': MAIN, 'supplement': SUPPLEMENT}
     plan = json.loads(path.read_text())['sources']
     assert plan['main']['rootTree'] == upstream.roots[MAIN_REPO]
+    assert plan['main']['archiveTrees'] == {
+        scope: upstream.tree_paths[MAIN_REPO, scope + '/']
+        for scope in ('ExcelBinOutput', 'BinOutput/Talk', 'Readable', 'Subtitle')
+    }
     assert {file['path'] for file in plan['main']['files']} == TEXTMAPS.keys()
     assert {file['path'] for file in plan['supplement']['files']} == LOCALIZED | SUPPORT
     assert MAIN != MAIN_COMMIT and SUPPLEMENT != SUPPLEMENT_COMMIT
@@ -237,6 +241,31 @@ def test_dynamic_normalization_rejects_files_added_after_acquisition(upstream, t
     extra = supplement / 'src/data/English/foods/outside.json'
     extra.parent.mkdir()
     extra.write_text('{}')
+    assert normalize_cli(plan, raw, supplement, output) == 1
+    assert not (output / 'snapshot.json').exists()
+
+
+@pytest.mark.parametrize('defect', ['changed', 'added', 'removed'])
+def test_dynamic_fetch_rejects_mirror_archive_not_bound_to_official_tree(upstream, tmp_path, defect):
+    plan, raw = tmp_path / 'plan.json', tmp_path / 'raw'
+    assert plan_cli(upstream, plan) == 0
+    if defect == 'changed':
+        upstream.mirror_files['Readable/EN/example.txt'] = b'fake'
+    elif defect == 'added':
+        upstream.mirror_files['Readable/EN/extra.txt'] = b'fake'
+    else:
+        del upstream.mirror_files['Readable/EN/example.txt']
+    assert fetch_cli(plan, 'main', raw) == 1
+    assert not (raw / 'acquisition.json').exists()
+    assert not (raw / 'Readable').exists()
+
+
+def test_dynamic_normalization_rechecks_main_archive_files(upstream, tmp_path):
+    plan, raw, supplement, output = (tmp_path / part for part in ('plan.json', 'raw', 'supplement', 'normalized'))
+    assert plan_cli(upstream, plan) == 0
+    assert fetch_cli(plan, 'main', raw) == 0
+    assert fetch_cli(plan, 'supplement', supplement) == 0
+    (raw / 'BinOutput/Talk/sample.json').write_text('{"changed":true}')
     assert normalize_cli(plan, raw, supplement, output) == 1
     assert not (output / 'snapshot.json').exists()
 
