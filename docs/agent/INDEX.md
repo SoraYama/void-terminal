@@ -1,4 +1,4 @@
-> **Last updated**: 2026-11-03 (item museum production release and real public acceptance)
+> **Last updated**: 2026-11-04 (server catalog refresh)
 
 # Agent Notes
 
@@ -14,6 +14,7 @@
 
 | Note | Summary |
 | --- | --- |
+| [2026-11-04-catalog-refresh](feature/2026-11-04-catalog-refresh.md) | 生产服务器固定两源提交、验证官方树与完整性、只读快照切换、失败恢复；首次接入与定时器验收证据位置 |
 | [2026-11-03-item-museum](feature/2026-11-03-item-museum.md) | Published game inventory museum at 94d9881 / snapshot9f534ea4c12d; 13,825 source IDs, 22,984 localized verified images; Python130/Web268, public API/SSE and 13 real desktop/mobile checks passed; old SQLite/citations retained |
 | [2026-11-03-favicon](feature/2026-11-03-favicon.md) | Next.js icon.svg, 16/32/48px favicon.ico and opaque 180px apple-icon.png; simplified existing leaf emblem, reproducible sharp encoder and browser metadata/hash verification |
 | [2026-11-02-public-deploy](feature/2026-11-02-public-deploy.md) | Vultr SSH alias, Namecheap subdomain, Caddy HTTPS, private services, SQLite full snapshot and official PyPI lock URLs; runtime verification boundaries |
