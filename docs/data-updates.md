@@ -17,7 +17,7 @@ systemctl start --no-block void-catalog-refresh.service
 
 `published` 表示线上验收已通过，`unchanged` 表示两源均未变化。`failed` 或 `rolled-back` 时，先看日志定位来源、容量、构建或验收问题，再确认公网 `/api/status` 仍指向原快照。不要手改运行中的 `registry.json`，也不要清理已有发布文件；磁盘空间不足时更新会停止，保留既有快照。任务进行中以 systemd 和日志为准，`last-run.json` 保存最近一次完成的结果。
 
-每次固定两源提交，验证来源、语种、道具分类、图片覆盖和 SQLite 完整性。新的压缩快照先挂载并在知识容器内读取，再原子切换活动快照。公网状态、道具详情、文献和旧引用通过才保留切换；失败或发布过程中断时恢复原注册表。若上次中断后仍有完整的打包产物和构建记录，并且两源提交没有变化，重试会优先重新校验并使用该包；校验不通过时保留现网快照。已有 SQLite 和预算表保留原位，重启时由 `void-catalog-mounts.service` 恢复归档挂载。实现细节见[自动更新设计](superpowers/specs/2026-11-04-catalog-refresh-design.md)。
+每次固定两源提交，验证来源、语种、道具分类、图片覆盖和 SQLite 完整性。新的压缩快照先挂载并在知识容器内读取，再原子切换活动快照。公网状态、道具详情、文献和旧引用通过才保留切换；失败或发布过程中断时恢复原注册表。若两源提交没有变化，重试会优先重新校验并复用最近一次完整打包的候选归档。构建记录保存在 `state/staged-result.json`，工作目录清理或发布回退后仍可重试；校验不通过时保留现网快照。已有 SQLite 和预算表保留原位，重启时由 `void-catalog-mounts.service` 恢复归档挂载。实现细节见[自动更新设计](superpowers/specs/2026-11-04-catalog-refresh-design.md)。
 
 更新应用代码和日常同步数据是两件事。管理已启用自动更新的生产容器时，使用同一组 Compose 文件，保留知识服务的只读挂载：
 

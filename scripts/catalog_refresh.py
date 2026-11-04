@@ -336,9 +336,15 @@ def worker_cleanup(root):
         found = subprocess.run(['docker', 'container', 'inspect', '--format',
                                 '{{ index .Config.Labels "dev.void.catalog-refresh" }}', container],
                                text=True, capture_output=True, check=False, timeout=30)
-        require(found.returncode == 0, 'could not inspect build container ownership')
-        require(found.stdout.strip() == job, 'refusing to remove an unrelated container')
-        execute(['docker', 'rm', '-f', container], timeout=60)
+        if found.returncode != 0:
+            require(worker_container(job) is None, 'could not inspect build container ownership')
+        else:
+            require(found.stdout.strip() == job, 'refusing to remove an unrelated container')
+            try:
+                execute(['docker', 'rm', '-f', container], timeout=60)
+            except subprocess.CalledProcessError:
+                if worker_container(job) is not None:
+                    raise
     work = root / 'work' / job
     if work.exists():
         require(work.is_dir() and not work.is_symlink(), 'invalid disposable workspace')
@@ -376,7 +382,23 @@ def verify_pack(image, entry):
     return saved
 
 
+def archived_result(root, report, sources):
+    require(report.is_file() and not report.is_symlink(), 'invalid staged build result')
+    result = read_json(report)
+    if result['sources'] != sources:
+        return None
+    image, _ = archive_metadata(root, result)
+    return result if image.exists() or image.is_symlink() else None
+
+
 def staged_result(root, sources):
+    saved = root / 'state/staged-result.json'
+    if saved.exists() or saved.is_symlink():
+        result = archived_result(root, saved, sources)
+        if result is not None:
+            return result
+    # First deployments may have packed an archive before saving its report
+    # outside the disposable worker directory.
     job = marked_worker(root)
     if job is None:
         return None
@@ -384,15 +406,10 @@ def staged_result(root, sources):
     report = workspace / 'result.json'
     if not report.exists():
         return None
-    require(not workspace.is_symlink() and report.is_file() and not report.is_symlink(),
-            'invalid staged build result')
+    require(not workspace.is_symlink(), 'invalid staged build workspace')
     if worker_container(job) is not None:
         return None
-    result = read_json(report)
-    if result['sources'] != sources:
-        return None
-    image, _ = archive_metadata(root, result)
-    return result if image.exists() or image.is_symlink() else None
+    return archived_result(root, report, sources)
 
 
 def pack(root, workspace, result):
@@ -452,9 +469,14 @@ def apply_update(root, before, sources):
         require(result['sources'] == sources and result['sourceCommit'] == sources['main'], 'build pins do not match request')
         sid = result['snapshotId']
         require(sid != active and sid != before['legacy']['snapshotId'], 'candidate would overwrite a live snapshot')
+        saved = root / 'state/staged-result.json'
         if reused:
             entry = verify_pack(*archive_metadata(root, result))
+            atomic_json(saved, result, 0o600)
         else:
+            # Save before packing so a crash after the image rename cannot
+            # strand it without the matching SQLite digest and sample IDs.
+            atomic_json(saved, result, 0o600)
             entry = pack(root, workspace, result)
         mounted = mount_image(root, sid, entry['bytes'])
         require(digest(mounted) == entry['databaseSha256'], 'mounted SQLite hash differs from validated candidate')

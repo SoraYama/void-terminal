@@ -55,6 +55,17 @@ class PublicationTest(unittest.TestCase):
         self.assertFalse(marker.exists())
         self.assertFalse(work.exists())
 
+    def test_cleanup_accepts_auto_removal_during_ownership_check(self):
+        marker, work = self.stage_worker()
+        listed = subprocess.CompletedProcess([], 0, stdout='a' * 64 + '\n', stderr='')
+        vanished = subprocess.CompletedProcess([], 1, stdout='', stderr='No such container')
+        empty = subprocess.CompletedProcess([], 0, stdout='', stderr='')
+        with patch.object(refresh.subprocess, 'run', side_effect=[listed, vanished, empty]), patch.object(
+                refresh, 'execute', side_effect=AssertionError('tried to remove absent container')):
+            refresh.worker_cleanup(self.root)
+        self.assertFalse(marker.exists())
+        self.assertFalse(work.exists())
+
     def test_cleanup_preserves_workspace_when_daemon_query_fails(self):
         marker, work = self.stage_worker()
         with patch.object(refresh.subprocess, 'run', return_value=subprocess.CompletedProcess(
@@ -76,7 +87,7 @@ class PublicationTest(unittest.TestCase):
         self.assertTrue(work.exists())
 
     def test_reuses_verified_archive_and_refuses_tampered_archive(self):
-        for corrupt in (False, True):
+        for corrupt in (True, False):
             with self.subTest(corrupt=corrupt):
                 self.registry.write_text(json.dumps(self.before))
                 marker, work = self.stage_worker()
@@ -102,7 +113,7 @@ class PublicationTest(unittest.TestCase):
                         return_value='sha256:' + '0' * 64 + ' healthy'), patch.object(refresh, 'ensure_mount_root'), \
                         patch.object(refresh.subprocess, 'run', side_effect=self.docker_without_worker), \
                         patch.object(refresh, 'mount_image', return_value=mounted) as mount, \
-                        patch.object(refresh, 'inspect', side_effect=[baseline, seen]) as inspect, \
+                        patch.object(refresh, 'inspect', side_effect=[baseline, seen] * 2) as inspect, \
                         patch('knowledge.refresh_build.validate_coverage'), \
                         patch('knowledge.ingest.source_plan.latest_commits', return_value=AFTER), \
                         patch.object(refresh, 'verify_public') as public, \
@@ -114,6 +125,17 @@ class PublicationTest(unittest.TestCase):
                         mount.assert_not_called()
                         public.assert_not_called()
                     else:
+                        def reject_candidate(candidate, _old):
+                            if candidate == seen:
+                                raise RuntimeError('public check failed')
+                        public.side_effect = reject_candidate
+                        with self.assertRaises(refresh.PublicationError):
+                            refresh.apply_update(self.root, self.before, AFTER)
+                        self.assertEqual(self.current(), self.before)
+                        self.assertFalse(marker.exists())
+                        self.assertFalse(work.exists())
+                        refresh.worker_cleanup(self.root)  # ExecStopPost can run again.
+                        public.reset_mock(side_effect=True)
                         self.assertEqual(refresh.apply_update(self.root, self.before, AFTER), NEW)
                         self.assertEqual(self.current()['active'], NEW)
                         inspect.assert_called_with(NEW, quick_check=True)
