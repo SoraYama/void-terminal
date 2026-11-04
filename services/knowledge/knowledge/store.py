@@ -53,21 +53,33 @@ def dumps(value):
 
 
 class CatalogStore:
-    def __init__(self, database_url=None, *, embedding_provider=None):
+    def __init__(self, database_url=None, *, readonly=False, offline=False, verified_counts=None, embedding_provider=None):
         self.database_url = database_url or config.database_url()
         self.postgres = self.database_url.startswith(('postgresql://', 'postgres://'))
         self.adapter = 'postgresql-pgvector' if self.postgres else 'sqlite-development'
         if not self.postgres and not self.database_url.startswith('sqlite:///'):
             raise ValueError('Unsupported DATABASE_URL')
         self.path = None if self.postgres else self.database_url[len('sqlite:///'):]
+        if (readonly or offline) and (self.postgres or not self.path or self.path == ':memory:' or (readonly and offline)):
+            raise ValueError('Read-only and offline modes require a SQLite file and cannot be combined')
+        if verified_counts is not None and (
+                not readonly or not isinstance(verified_counts, tuple) or len(verified_counts) != 2
+                or any(type(count) is not int or count <= 0 for count in verified_counts)):
+            raise ValueError('Verified counts require a read-only archive and positive document and chunk counts')
+        self.readonly = readonly
+        self.offline = offline
+        self._verified_counts = verified_counts
+        self._uri = Path(self.path).expanduser().absolute().as_uri() + '?mode=ro&immutable=1' if readonly else None
         self._memory = None
         if self.path == ':memory:':
             self.path = f'file:catalog-{uuid.uuid4().hex}?mode=memory&cache=shared'
             self._memory = sqlite3.connect(self.path, uri=True, check_same_thread=False)
-        elif not self.postgres:
+        elif not self.postgres and not readonly:
             Path(self.path).expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
         self.embeddings = embedding_provider or EmbeddingProvider()
         self._chunk_counts = {}
+        if readonly:
+            return
         with self._tx(write=True) as db:
             if self.postgres:
                 self._execute(db, 'SELECT pg_advisory_xact_lock(70734121)')
@@ -90,16 +102,25 @@ class CatalogStore:
             import psycopg
             from psycopg.rows import dict_row
             return psycopg.connect(self.database_url, row_factory=dict_row, connect_timeout=10)
-        db = sqlite3.connect(self.path, timeout=30, uri=self.path.startswith('file:'))
+        path = self._uri or self.path
+        db = sqlite3.connect(path, timeout=30, uri=path.startswith('file:'))
         db.row_factory = sqlite3.Row
         db.execute('PRAGMA foreign_keys=ON')
         db.execute('PRAGMA busy_timeout=30000')
-        if not self.path.startswith('file:'):
+        if self.readonly:
+            db.execute('PRAGMA query_only=ON')
+        elif self.offline:
+            if db.execute('PRAGMA journal_mode=DELETE').fetchone()[0] != 'delete':
+                db.close()
+                raise sqlite3.OperationalError('Offline SQLite catalog requires DELETE journaling')
+        elif not path.startswith('file:'):
             db.execute('PRAGMA journal_mode=WAL')
         return db
 
     @contextmanager
     def _tx(self, write=False):
+        if write and self.readonly:
+            raise sqlite3.OperationalError('attempt to write a readonly catalog')
         db = self._connect()
         try:
             if not self.postgres:
@@ -147,9 +168,10 @@ class CatalogStore:
         # validation, embedding or SQL failure leaves the previous active pointer intact.
         with self._tx(write=True) as db:
             if not self.postgres:
-                # Import keeps dirty B-tree pages in a bounded 128MiB cache;
-                # SQLite's default ~2MiB cache thrashes at million-doc scale.
-                self._execute(db, 'PRAGMA cache_size=-131072')
+                # Keep dirty B-tree pages in a bounded cache. The isolated
+                # offline worker has room for 1 GiB; regular imports use 128 MiB.
+                cache_kib = 1048576 if self.offline else 131072
+                self._execute(db, f'PRAGMA cache_size=-{cache_kib}')
             if self._execute(db, 'SELECT id FROM snapshots WHERE id=?', (snap['id'],)).fetchone():
                 raise StoreError('SNAPSHOT_EXISTS', 'Snapshot already exists', 409)
             self._execute(db, 'INSERT INTO snapshots(id,data,coverage,manifest) VALUES(?,?,?,?)',
@@ -326,16 +348,24 @@ class CatalogStore:
             self._execute(db, "INSERT INTO settings(key,value) VALUES('active_snapshot',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (sid,))
             return json.loads(self._execute(db, 'SELECT data FROM snapshots WHERE id=?', (sid,)).fetchone()['data'])
 
-    def status(self):
+    def status(self, snapshot_id=None):
         with self._tx() as db:
-            sid = self._resolve(db)
+            sid = self._resolve(db, snapshot_id)
             if not sid:
                 return {'ready': False, 'activeSnapshot': None, 'documentCount': 0, 'chunkCount': 0, 'languages': [], 'retrieval': self._retrieval_info(None), 'coverage': [], 'storage': {'adapter': self.adapter}}
             row = self._execute(db, 'SELECT * FROM snapshots WHERE id=?', (sid,)).fetchone()
+            if self._verified_counts is None:
+                documents = self._execute(db, 'SELECT COUNT(*) AS n FROM documents WHERE snapshot_id=?', (sid,)).fetchone()['n']
+                chunks = self._execute(db, 'SELECT COUNT(*) AS n FROM chunks WHERE snapshot_id=?', (sid,)).fetchone()['n']
+                languages = [r['language'] for r in self._execute(db, 'SELECT DISTINCT language FROM documents WHERE snapshot_id=? ORDER BY language', (sid,)).fetchall()]
+            else:
+                documents, chunks = self._verified_counts
+                # Probe supported locales through the index without scanning
+                # the snapshot's entire document range to find distinct values.
+                languages = [language for language in ('en', 'zh-CN') if self._execute(
+                    db, 'SELECT 1 FROM documents WHERE snapshot_id=? AND language=? LIMIT 1', (sid, language)).fetchone()]
             return {'ready': True, 'activeSnapshot': json.loads(row['data']),
-                    'documentCount': self._execute(db, 'SELECT COUNT(*) AS n FROM documents WHERE snapshot_id=?', (sid,)).fetchone()['n'],
-                    'chunkCount': self._execute(db, 'SELECT COUNT(*) AS n FROM chunks WHERE snapshot_id=?', (sid,)).fetchone()['n'],
-                    'languages': [r['language'] for r in self._execute(db, 'SELECT DISTINCT language FROM documents WHERE snapshot_id=? ORDER BY language', (sid,)).fetchall()],
+                    'documentCount': documents, 'chunkCount': chunks, 'languages': languages,
                     'retrieval': self._retrieval_info(row['manifest']), 'coverage': json.loads(row['coverage']), 'storage': {'adapter': self.adapter}}
 
     def _retrieval_info(self, manifest):
@@ -559,9 +589,12 @@ class CatalogStore:
                 placeholders = ','.join('?' for _ in tokens)
                 frequencies = {r['token']: r['n'] for r in self._execute(db, 'SELECT token, COUNT(*) AS n FROM ' + token_table + ' WHERE snapshot_id=? AND token IN (' + placeholders + ') GROUP BY token', [sid] + tokens).fetchall()}
                 if frequencies:
-                    if sid not in self._chunk_counts:
-                        self._chunk_counts[sid] = self._execute(db, 'SELECT COUNT(*) AS n FROM chunks WHERE snapshot_id=?', (sid,)).fetchone()['n']
-                    size = self._chunk_counts[sid]
+                    if self._verified_counts is not None:
+                        size = self._verified_counts[1]
+                    else:
+                        if sid not in self._chunk_counts:
+                            self._chunk_counts[sid] = self._execute(db, 'SELECT COUNT(*) AS n FROM chunks WHERE snapshot_id=?', (sid,)).fetchone()['n']
+                        size = self._chunk_counts[sid]
                     weights = [(token, math.log((size + 1) / (frequencies[token] + 1)) + 1) for token in tokens if token in frequencies]
                     weighted_cases = 'CASE token ' + ' '.join('WHEN ? THEN ?' for _ in weights) + ' ELSE 0 END'
                     weight_args = [value for pair in weights for value in pair]

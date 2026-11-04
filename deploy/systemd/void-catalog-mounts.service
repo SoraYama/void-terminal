@@ -1,0 +1,13 @@
+[Unit]
+Description=Restore Void Terminal read-only catalog mounts
+Before=docker.service
+RequiresMountsFor=/opt/void-terminal/catalog-refresh
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/python3 /opt/void-terminal/catalog-refresh/code/scripts/catalog_refresh.py mounts
+TimeoutStartSec=10min
+
+[Install]
+WantedBy=docker.service

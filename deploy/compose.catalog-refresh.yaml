@@ -1,0 +1,21 @@
+# Use after bootstrapping the read-only archive mount root and registry.
+services:
+  knowledge:
+    image: void-terminal-knowledge:catalog-refresh
+    environment:
+      CATALOG_REGISTRY: /catalog-state/registry.json
+      CATALOG_ARCHIVES: /catalog-archives
+    volumes:
+      - type: bind
+        source: /opt/void-terminal/catalog-refresh/state
+        target: /catalog-state
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /opt/void-terminal/catalog-refresh/mounted
+        target: /catalog-archives
+        read_only: true
+        bind:
+          create_host_path: false
+          propagation: rslave

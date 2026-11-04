@@ -130,9 +130,12 @@ class Normalized:
 
 
 class Normalizer:
-    def __init__(self, root, supplementary=None, languages=('zh-CN','en'), sink=None, item_summaries=None):
+    def __init__(self, root, supplementary=None, languages=('zh-CN','en'), sink=None, item_summaries=None, *,
+                 main_commit=MAIN_COMMIT, supplement_commit=SUPPLEMENT_COMMIT):
         self.root = Path(root)
         self.supplementary = Path(supplementary) if supplementary else None
+        self.main_commit = main_commit
+        self.supplement_commit = supplement_commit
         self.maps,self.map_origins = load_textmaps(self.root,languages,include_origins=True)
         self.documents = []
         self.sink=sink
@@ -162,13 +165,13 @@ class Normalizer:
             if len(self.report['missingHashes'])<1000:self.report['missingHashes'].append({'language':language,'path':path,'locator':locator,'hash':value})
         return found
 
-    def add(self, kind, key, language, title, text, path, locator, metadata=None, relations=None, repo=MAIN_REPO, commit=MAIN_COMMIT, namespace='agd'):
+    def add(self, kind, key, language, title, text, path, locator, metadata=None, relations=None, repo=MAIN_REPO, commit=None, namespace='agd'):
         self.count(kind,'discovered')
         if not text.strip():
             self.count(kind,'missingText')
             return None
         document = {'id':stable_id(namespace,language,kind,key),'title':title or f'{kind} {key}',
-                    'type':kind,'language':language,'text':text,'source':source(repo,commit,path,locator),
+                    'type':kind,'language':language,'text':text,'source':source(repo,commit or self.main_commit,path,locator),
                     'metadata':metadata or {},'relations':relations or []}
         if document['id'] in self.item_summaries:document['metadata']['itemSummary']=self.item_summaries[document['id']]
         if document['id'] in self.document_ids:raise ValueError(f'Duplicate normalized ID: {document["id"]}')
@@ -240,9 +243,9 @@ class Normalizer:
                         seen_values.add(value)
                         start=body.find(value,cursor)
                         if start<0:continue
-                        spans.append({'start':start,'end':start+len(value),'source':source(MAIN_REPO,MAIN_COMMIT,self.map_origins[language][hash_value],'/'+hash_value)})
+                        spans.append({'start':start,'end':start+len(value),'source':source(MAIN_REPO,self.main_commit,self.map_origins[language][hash_value],'/'+hash_value)})
                         cursor=start+len(value)
-                    metadata={'sourceId':key,'table':name,'raw':row,'resolvedFields':dict(resolved),'textSpans':spans,'characterName':character_name or None,'entitySource':source(MAIN_REPO,MAIN_COMMIT,path,f'/{index}')}
+                    metadata={'sourceId':key,'table':name,'raw':row,'resolvedFields':dict(resolved),'textSpans':spans,'characterName':character_name or None,'entitySource':source(MAIN_REPO,self.main_commit,path,f'/{index}')}
                     if kind=='material': metadata['materialType']=row.get('materialType','unknown')
                     if kind=='book': metadata.update(series=None,volume=None)
                     relations=[]
@@ -294,7 +297,7 @@ class Normalizer:
                     self.add(kind,group_key,language,title,'','ExcelBinOutput/DocumentExcelConfigData.json',f'/{index}',metadata)
                 for part,(body,body_path) in enumerate(zip(bodies,paths)):
                     key=group_key if len(bodies)==1 else group_key+':'+Path(body_path).stem
-                    part_metadata={**metadata,'bodyPaths':[body_path],'documentGroupId':group_key,'partIndex':part+1,'partCount':len(bodies),'titleSource':source(MAIN_REPO,MAIN_COMMIT,'ExcelBinOutput/DocumentExcelConfigData.json',f'/{index}/titleTextMapHash')}
+                    part_metadata={**metadata,'bodyPaths':[body_path],'documentGroupId':group_key,'partIndex':part+1,'partCount':len(bodies),'titleSource':source(MAIN_REPO,self.main_commit,'ExcelBinOutput/DocumentExcelConfigData.json',f'/{index}/titleTextMapHash')}
                     relations=[{'kind':'story-for','targetId':stable_id('agd',language,item[1],f'{item[0]}:{item[2]}')} for item in lore]
                     if part>0:relations.append({'kind':'previous-part','targetId':stable_id('agd',language,kind,group_key+':'+Path(paths[part-1]).stem)})
                     if part+1<len(bodies):relations.append({'kind':'next-part','targetId':stable_id('agd',language,kind,group_key+':'+Path(paths[part+1]).stem)})
@@ -343,8 +346,8 @@ class Normalizer:
                     self.add('dialogue',prefix+str(node_id),language,speaker,text,relpath,f'/{node_field}/{index}',
                              {'talkId':data.get('talkId',path.stem),'nodeId':node_id,'speaker':speaker,'speakerRole':role,
                               'nextIds':next_ids,'conditions':conditions,'raw':node,
-                              'entitySource':source(MAIN_REPO,MAIN_COMMIT,relpath,f'/{node_field}/{index}'),
-                              'textSpans':[{'start':0,'end':len(text),'source':source(MAIN_REPO,MAIN_COMMIT,self.map_origins[language][text_hash],'/'+text_hash)}] if text else []},relations)
+                              'entitySource':source(MAIN_REPO,self.main_commit,relpath,f'/{node_field}/{index}'),
+                              'textSpans':[{'start':0,'end':len(text),'source':source(MAIN_REPO,self.main_commit,self.map_origins[language][text_hash],'/'+text_hash)}] if text else []},relations)
 
     def subtitles(self):
         for code,language in LANGUAGES.items():
@@ -356,7 +359,7 @@ class Normalizer:
                     line=line.strip()
                     if not line or line.isdigit() or '-->' in line:continue
                     if lines:cursor+=1
-                    spans.append({'start':cursor,'end':cursor+len(line),'source':source(MAIN_REPO,MAIN_COMMIT,path.relative_to(self.root).as_posix(),f'L{number}')})
+                    spans.append({'start':cursor,'end':cursor+len(line),'source':source(MAIN_REPO,self.main_commit,path.relative_to(self.root).as_posix(),f'L{number}')})
                     lines.append(line);cursor+=len(line)
                 self.add('dialogue',f'Subtitle:{path.stem}',language,path.stem,'\n'.join(lines),path.relative_to(self.root).as_posix(),'L1',{'kind':'subtitle','rawSubtitle':raw,'speaker':'unknown','textSpans':spans})
 
@@ -388,12 +391,12 @@ class Normalizer:
                     if pointer=='/name' or value in seen_values:continue
                     seen_values.add(value);start=text.find(value,cursor)
                     if start>=0:
-                        spans.append({'start':start,'end':start+len(value),'source':source(SUPPLEMENT_REPO,SUPPLEMENT_COMMIT,path.relative_to(self.supplementary).as_posix(),pointer)})
+                        spans.append({'start':start,'end':start+len(value),'source':source(SUPPLEMENT_REPO,self.supplement_commit,path.relative_to(self.supplementary).as_posix(),pointer)})
                         cursor=start+len(value)
                 self.add(SUPPLEMENT_TYPES.get(category,'tcg' if category.startswith('tcg') else 'other'),
                          f'{category}:{row.get("id",path.stem)}',language,row.get('name',path.stem),text,
                          path.relative_to(self.supplementary).as_posix(),'/',{'category':category,'raw':row,'resolvedFields':dict(fields),'textSpans':spans},
-                         repo=SUPPLEMENT_REPO,commit=SUPPLEMENT_COMMIT,namespace='gdb')
+                         repo=SUPPLEMENT_REPO,commit=self.supplement_commit,namespace='gdb')
 
     def orphan_textmaps(self):
         indexed={}
@@ -401,7 +404,7 @@ class Normalizer:
             count=0
             for hash_value in sorted(set(textmap)-self.used_hashes[language]):
                 text=textmap[hash_value]
-                actual_source=source(MAIN_REPO,MAIN_COMMIT,self.map_origins[language][hash_value],'/'+hash_value)
+                actual_source=source(MAIN_REPO,self.main_commit,self.map_origins[language][hash_value],'/'+hash_value)
                 title=('未归属原文 #' if language=='zh-CN' else 'Unmapped text #')+hash_value
                 document=self.add('other','TextMapHash:'+hash_value,language,title,text,actual_source['path'],actual_source['locator'],
                                   {'kind':'orphan_textmap','sourceHash':hash_value,'contextUnknown':True,'testState':'unknown',
@@ -429,9 +432,10 @@ class Normalizer:
         self.report['sourceLocales']=[p.name for p in sorted((self.root/'Readable').glob('*')) if p.is_dir()]
         self.report['unreferencedTextMaps']={language:{'count':len(set(textmap)-self.used_hashes[language]),'indexedAsOther':True,'sampleHashes':sorted(set(textmap)-self.used_hashes[language])[:30]} for language,textmap in self.maps.items()}
         self.report['documents']=len(self.document_ids)
-        self.report['source']={'repo':MAIN_REPO,'commit':MAIN_COMMIT,'supplementCommit':SUPPLEMENT_COMMIT if self.supplementary else None}
+        self.report['source']={'repo':MAIN_REPO,'commit':self.main_commit,'supplementCommit':self.supplement_commit if self.supplementary else None}
         return Normalized(self.documents,[self.counts[k] for k in sorted(self.counts)],self.report,self.document_ids)
 
 
-def normalize(root, supplementary=None, languages=('zh-CN','en'), sink=None, item_summaries=None):
-    return Normalizer(root,supplementary,languages,sink,item_summaries).run()
+def normalize(root, supplementary=None, languages=('zh-CN','en'), sink=None, item_summaries=None, *,
+              main_commit=MAIN_COMMIT, supplement_commit=SUPPLEMENT_COMMIT):
+    return Normalizer(root,supplementary,languages,sink,item_summaries,main_commit=main_commit,supplement_commit=supplement_commit).run()

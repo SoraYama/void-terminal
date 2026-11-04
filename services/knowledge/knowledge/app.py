@@ -10,6 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 from pydantic import ValidationError
+from .catalog_router import CatalogRouter
 from .config import require_production_token
 from .models import ContentType, ItemDetailQuery, ItemListQuery, Locale, ReserveRequest, SearchRequest, SettleRequest
 from .store import CatalogStore, StoreError
@@ -20,6 +21,8 @@ logger = logging.getLogger('knowledge')
 def create_app(store=None, api_token=None):
     token = os.getenv('KNOWLEDGE_API_TOKEN', '') if api_token is None else api_token
     require_production_token(token)
+    registry_path = os.getenv('CATALOG_REGISTRY')
+    archives_path = os.getenv('CATALOG_ARCHIVES')
 
     @asynccontextmanager
     async def lifespan(application):
@@ -30,11 +33,14 @@ def create_app(store=None, api_token=None):
     api = FastAPI(title='Void Knowledge', lifespan=lifespan)
     api.state.store = store
 
-    def catalog():
+    def legacy_catalog():
         # Also supports ASGI callers that don't drive lifespan themselves.
         if api.state.store is None:
             api.state.store = CatalogStore()
         return api.state.store
+
+    def catalog(db=Depends(legacy_catalog)):
+        return CatalogRouter(db, registry_path, archives_path)
 
     def authenticate(x_knowledge_token: Annotated[str | None, Header()] = None):
         if token and not hmac.compare_digest(x_knowledge_token or '', token):
@@ -75,54 +81,61 @@ def create_app(store=None, api_token=None):
             raise StoreError('INVALID_REQUEST', 'Request fields or bounds are invalid') from exc
 
     @api.get('/v1/items', dependencies=guards)
-    def items(request: Request, db=Depends(catalog)):
+    def items(request: Request, router=Depends(catalog)):
         query = item_query(request, ItemListQuery)
+        db, sid = router.select(query.snapshotId)
         return db.list_items(query.q, query.category, query.language, query.rarity, query.weaponType,
-                             query.includeInternal, query.sort, query.page, query.pageSize, query.snapshotId)
+                             query.includeInternal, query.sort, query.page, query.pageSize, sid)
 
     @api.get('/v1/items/coverage', dependencies=guards)
-    def item_coverage(request: Request, db=Depends(catalog)):
+    def item_coverage(request: Request, router=Depends(catalog)):
         query = item_query(request, ItemDetailQuery, ['snapshotId'])
-        return db.item_coverage(query.snapshotId)
+        db, sid = router.select(query.snapshotId)
+        return db.item_coverage(sid)
 
     @api.get('/v1/items/{id:path}', dependencies=guards)
-    def item(id: str, request: Request, db=Depends(catalog)):
+    def item(id: str, request: Request, router=Depends(catalog)):
         query = item_query(request, ItemDetailQuery)
-        return db.get_item(id, query.language, query.snapshotId)
+        db, sid = router.select(query.snapshotId)
+        return db.get_item(id, query.language, sid)
 
     @api.get('/v1/status', dependencies=guards)
-    def status(db=Depends(catalog)):
-        return db.status()
+    def status(router=Depends(catalog)):
+        return router.status()
 
     @api.post('/v1/search', dependencies=guards)
-    def search(body: SearchRequest, db=Depends(catalog)):
-        return db.search(body.query, body.language, body.types, body.snapshotId, body.limit)
+    def search(body: SearchRequest, router=Depends(catalog)):
+        db, sid = router.select(body.snapshotId)
+        return db.search(body.query, body.language, body.types, sid, body.limit)
 
     @api.get('/v1/quest-outline', dependencies=guards)
     def quest_outline(region: str = Query(min_length=1, max_length=80), language: Locale = 'zh-CN',
-                      snapshotId: str | None = Query(None, max_length=200), includeChapters: bool = True, db=Depends(catalog)):
-        return db.quest_outline(region, language, snapshotId, includeChapters)
+                      snapshotId: str | None = Query(None, max_length=200), includeChapters: bool = True, router=Depends(catalog)):
+        db, sid = router.select(snapshotId)
+        return db.quest_outline(region, language, sid, includeChapters)
 
     @api.get('/v1/documents', dependencies=guards)
     def documents(q: str = Query('', max_length=2000), type: ContentType | None = None,
                   language: Locale | None = None, page: int = Query(1, ge=1, le=1000000),
-                  pageSize: int = Query(24, ge=1, le=100), snapshotId: str | None = Query(None, max_length=200), db=Depends(catalog)):
-        return db.list_documents(q, type, language, page, pageSize, snapshotId)
+                  pageSize: int = Query(24, ge=1, le=100), snapshotId: str | None = Query(None, max_length=200), router=Depends(catalog)):
+        db, sid = router.select(snapshotId)
+        return db.list_documents(q, type, language, page, pageSize, sid)
 
     @api.get('/v1/documents/{id:path}', dependencies=guards)
-    def document(id: str, snapshotId: str | None = Query(None, max_length=200), db=Depends(catalog)):
-        return db.get_document(id, snapshotId)
+    def document(id: str, snapshotId: str | None = Query(None, max_length=200), router=Depends(catalog)):
+        db, sid = router.select(snapshotId)
+        return db.get_document(id, sid)
 
     @api.get('/v1/sources/{id:path}', dependencies=guards)
-    def source(id: str, snapshotId: str | None = Query(None, max_length=200), db=Depends(catalog)):
-        return db.read_source(id, snapshotId)
+    def source(id: str, snapshotId: str | None = Query(None, max_length=200), router=Depends(catalog)):
+        return router.read_source(id, snapshotId)
 
     @api.post('/v1/budget/reserve', dependencies=guards)
-    def reserve(body: ReserveRequest, db=Depends(catalog)):
+    def reserve(body: ReserveRequest, db=Depends(legacy_catalog)):
         return db.reserve_budget(body.requestId, body.identity, body.tokens)
 
     @api.post('/v1/budget/settle', dependencies=guards)
-    def settle(body: SettleRequest, db=Depends(catalog)):
+    def settle(body: SettleRequest, db=Depends(legacy_catalog)):
         return db.settle_budget(body.reservationId, body.usedTokens)
 
     return api

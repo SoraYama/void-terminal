@@ -61,8 +61,9 @@ def coverage_report(items):
 
 
 class ItemBuilder:
-    def __init__(self, root, supplementary):
+    def __init__(self, root, supplementary, *, main_commit=MAIN_COMMIT, supplement_commit=SUPPLEMENT_COMMIT):
         self.root=Path(root);self.supplementary=Path(supplementary) if supplementary else None
+        self.main_commit=main_commit;self.supplement_commit=supplement_commit
         self.maps,self.origins=load_textmaps(self.root,include_origins=True)
         self.tables={};self.paths={};self.row_indices={}
         for name in ('Weapon','WeaponCurve','WeaponPromote','EquipAffix','Reliquary','ReliquarySet',
@@ -96,7 +97,7 @@ class ItemBuilder:
     def text(self,row,key,lang):return plain(self.maps[lang].get(str(row.get(key,'')),''))
 
     def provenance(self,table,row):
-        return source(MAIN_REPO,MAIN_COMMIT,self.paths[table],f'/{self.row_indices[table][id(row)]}')
+        return source(MAIN_REPO,self.main_commit,self.paths[table],f'/{self.row_indices[table][id(row)]}')
 
     def supplement(self,lang,category,key):return self.supp.get((lang,category,str(key)),({},'', ''))
 
@@ -139,9 +140,9 @@ class ItemBuilder:
         if name or description:item['documentIds'].append(stable_id('agd',lang,{'HomeWorldFurniture':'furniture'}.get(table,table.lower() if table!='Reliquary' else 'artifact'),f'{table}:{row["id"]}'))
         for key in ('nameTextMapHash','descTextMapHash','typeDescTextMapHash','effectDescTextMapHash','specialDescTextMapHash'):
             value=str(row.get(key,''))
-            if value in self.origins[lang]:item['sources'].append(source(MAIN_REPO,MAIN_COMMIT,self.origins[lang][value],'/'+value))
+            if value in self.origins[lang]:item['sources'].append(source(MAIN_REPO,self.main_commit,self.origins[lang][value],'/'+value))
         if supp[1]:
-            item['sources'].append(source(SUPPLEMENT_REPO,SUPPLEMENT_COMMIT,supp[1],'/'))
+            item['sources'].append(source(SUPPLEMENT_REPO,self.supplement_commit,supp[1],'/'))
             item['documentIds'].append(stable_id('gdb',lang,{'weapons':'weapon','artifacts':'artifact','materials':'material','foods':'food'}[supp[1].split('/')[-2]],f'{supp[1].split("/")[-2]}:{supp[0]["id"]}'))
         for key in ('effectDescTextMapHash','specialDescTextMapHash'):
             value=self.text(row,key,lang)
@@ -174,7 +175,7 @@ class ItemBuilder:
                 if path in paths:continue
                 bodies.append(plain(path.read_text(encoding='utf-8-sig')))
                 paths.append(path)
-                item['sources'].append(source(MAIN_REPO,MAIN_COMMIT,path.relative_to(self.root).as_posix(),'L1'))
+                item['sources'].append(source(MAIN_REPO,self.main_commit,path.relative_to(self.root).as_posix(),'L1'))
             else:missing=True
         for path in paths:
             kind=item['category'] if item['category'] in {'weapon','artifact'} else 'book'
@@ -217,7 +218,7 @@ class ItemBuilder:
             item['coverage'].update(stats='complete' if stats_coverage['complete'] else 'unresolved',
                 refinements='unresolved' if missing else 'complete' if refinements else 'not-applicable',ascensions='complete' if ascensions else 'not-applicable')
             for table in ('WeaponCurve','WeaponPromote'):
-                item['sources'].append(source(MAIN_REPO,MAIN_COMMIT,self.paths[table],'/'))
+                item['sources'].append(source(MAIN_REPO,self.main_commit,self.paths[table],'/'))
             yield item
 
     def artifacts(self,lang):
@@ -258,7 +259,7 @@ class ItemBuilder:
                 setEffects='complete' if len(effects)==len(set_row.get('setNeedNum',[])) and effects else 'upstream-missing',
                 setName='complete' if set_name else 'unresolved')
             for table in ('ReliquaryLevel','ReliquaryMainProp','ReliquarySetSchemeMainProp','ReliquaryAffix'):
-                item['sources'].append(source(MAIN_REPO,MAIN_COMMIT,self.paths[table],'/'))
+                item['sources'].append(source(MAIN_REPO,self.main_commit,self.paths[table],'/'))
             if set_row:item['sources'].append(self.provenance('ReliquarySet',set_row))
             yield item
 
@@ -305,8 +306,9 @@ class ItemBuilder:
         item['coverage']['recipes']='complete' if recipes else 'not-applicable'
 
 
-def build_items(root: Path, supplementary: Path | None = None) -> tuple[list[dict],dict]:
-    builder=ItemBuilder(root,supplementary)
+def build_items(root: Path, supplementary: Path | None = None, *,
+                main_commit=MAIN_COMMIT, supplement_commit=SUPPLEMENT_COMMIT) -> tuple[list[dict],dict]:
+    builder=ItemBuilder(root,supplementary,main_commit=main_commit,supplement_commit=supplement_commit)
     items=[]
     for lang in builder.maps:
         items.extend(builder.weapons(lang));items.extend(builder.artifacts(lang));items.extend(builder.materials_and_furniture(lang))

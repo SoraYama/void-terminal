@@ -1,0 +1,10 @@
+[Unit]
+Description=Check Void Terminal data daily at 04:30 Asia/Shanghai
+
+[Timer]
+OnCalendar=*-*-* 04:30:00 Asia/Shanghai
+AccuracySec=1min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

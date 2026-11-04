@@ -1,0 +1,17 @@
+[Unit]
+Description=Check and safely refresh Void Terminal upstream data
+Wants=network-online.target
+After=network-online.target docker.service void-catalog-mounts.service
+Requires=docker.service
+RequiresMountsFor=/opt/void-terminal/catalog-refresh
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/void-terminal/catalog-refresh/code/scripts/catalog_refresh.py run
+ExecStopPost=/usr/bin/python3 /opt/void-terminal/catalog-refresh/code/scripts/catalog_refresh.py recover
+TimeoutStartSec=12h
+TimeoutStopSec=3min
+Nice=10
+CPUWeight=25
+IOWeight=25
+OOMScoreAdjust=250

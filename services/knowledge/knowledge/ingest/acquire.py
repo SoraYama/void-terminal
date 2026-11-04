@@ -22,7 +22,13 @@ def git_blob_sha(path):
     return digest.hexdigest()
 
 
-def download(url, destination, size=None, sha=None, workers=16, chunk_size=256*1024):
+def git_tree_sha(entries):
+    ordered=sorted(entries,key=lambda pair:pair[0].encode()+(b'/' if pair[1]['type']=='tree' else b''))
+    raw=b''.join((item['mode'].lstrip('0')+' '+name).encode()+b'\0'+bytes.fromhex(item['sha']) for name,item in ordered)
+    return hashlib.sha1(f'tree {len(raw)}\0'.encode()+raw).hexdigest()
+
+
+def download(url, destination, size=None, sha=None, workers=16, chunk_size=256*1024, *, keep_parts=True):
     destination=Path(destination)
     destination.parent.mkdir(parents=True,exist_ok=True)
     if destination.is_file() and (size is None or destination.stat().st_size==size) and (sha is None or git_blob_sha(destination)==sha):
@@ -74,6 +80,7 @@ def download(url, destination, size=None, sha=None, workers=16, chunk_size=256*1
         if size and size>chunk_size:shutil.rmtree(pieces)
         raise ValueError(f'Git blob checksum mismatch: {destination}')
     partial.replace(destination)
+    if not keep_parts and size and size>chunk_size:shutil.rmtree(pieces)
     return destination
 
 
@@ -137,9 +144,7 @@ def validate_inventory(tree,repo,commit,complete=True):
             children.setdefault(parent,[]).append((PurePosixPath(path).name,item))
             if item['type']=='tree':children.setdefault(path,[])
         for directory in sorted(children,key=lambda value:value.count('/')+(1 if value else 0),reverse=True):
-            ordered=sorted(children[directory],key=lambda pair:pair[0].encode()+ (b'/' if pair[1]['type']=='tree' else b''))
-            raw=b''.join((item['mode'].lstrip('0')+' '+name).encode()+b'\0'+bytes.fromhex(item['sha']) for name,item in ordered)
-            digest=hashlib.sha1(f'tree {len(raw)}\0'.encode()+raw).hexdigest()
+            digest=git_tree_sha(children[directory])
             if digest!=(by_path[directory]['sha'] if directory else expected):raise ValueError('Git tree content is incomplete or mismatched')
     return {**tree,'sourceRepo':repo,'sourceCommit':commit}
 
@@ -187,14 +192,26 @@ def selected_files(tree, supplementary=False):
         if include:yield item
 
 
-def acquire(repo,commit,destination,tree_file=None,workers=16,supplementary=False):
+def acquire(repo,commit,destination,tree_file=None,workers=16,supplementary=False,*,source_plan=None):
+    name='supplement' if supplementary else 'main'
+    if source_plan is not None:
+        from .source_plan import source_marker_identity, validate_source_plan
+        planned=validate_source_plan(source_plan)['sources'][name]
+        if tree_file is not None or (planned['repo'],planned['commit'])!=(repo,commit):
+            raise ValueError('Source plan does not match the requested acquisition')
+        plan_identity=source_marker_identity(source_plan,name)
     destination=Path(destination).resolve();destination.mkdir(parents=True,exist_ok=True)
-    if repo=='DimbreathBot/AnimeGameData' and tree_file is None:return acquire_main_mirror(destination,commit,workers)
-    bundled=repo=='theBowja/genshin-db' and tree_file is None
-    if bundled:
+    if repo=='DimbreathBot/AnimeGameData' and tree_file is None:
+        return acquire_main_mirror(destination,commit,workers,source_plan=source_plan)
+    bundled=source_plan is None and repo=='theBowja/genshin-db' and tree_file is None
+    if source_plan is not None:
+        files=planned['files']
+    elif bundled:
         tree=validate_inventory(json.loads(Path(__file__).with_name('supplement-core-files.json').read_text()),repo,commit,complete=False)
-    else:tree=fetch_tree(repo,commit,tree_file or destination/'source-tree.json')
-    files=list(selected_files(tree,supplementary))
+        files=list(selected_files(tree,supplementary))
+    else:
+        tree=fetch_tree(repo,commit,tree_file or destination/'source-tree.json')
+        files=list(selected_files(tree,supplementary))
     if not files:raise ValueError('Source inventory contains no selected files')
     for item in files:
         contained_path(destination,item['path'])
@@ -208,13 +225,17 @@ def acquire(repo,commit,destination,tree_file=None,workers=16,supplementary=Fals
             path=item['path'];target=contained_path(staging,path);existing=contained_path(destination,path)
             if existing.is_file() and git_blob_sha(existing)==item['sha']:
                 target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(existing,target)
-            download(f'https://raw.githubusercontent.com/{repo}/{commit}/{path}',target,item.get('size'),item['sha'],workers=workers)
+            # Staging is published by directory; range cache artifacts must stay out of it.
+            download(f'https://raw.githubusercontent.com/{repo}/{commit}/{urllib.parse.quote(path,safe="/")}',target,item.get('size'),item['sha'],workers=workers,keep_parts=False)
             return path
         with concurrent.futures.ThreadPoolExecutor(max_workers=min(workers,64)) as pool:
             for i,path in enumerate(pool.map(fetch,files),1):
                 if i%100==0:print(f'Fetched {i}/{len(files)} files',flush=True)
         marker={'repo':repo,'commit':commit,'files':len(files),'complete':not bundled,'scopeComplete':True,'inventoryVerification':'bundled-pinned-blobs' if bundled else 'pinned-recursive-git-tree'}
         if bundled:marker.update(scope=tree['scope'],knownGaps=['25 other supplementary categories are not included in the bundled acquisition inventory.'])
+        if source_plan is not None:
+            marker.update(plan_identity,complete=False,inventoryVerification='official-git-tree-blobs',
+                          scope='All ChineseSimplified and English weapons/artifacts/characters/voiceovers/materials, plus eight support files')
         publish_source_paths(destination,staging,scopes,marker)
     return marker
 
@@ -228,14 +249,16 @@ MAIN_TEXTMAPS = [
 
 def extract_source_archive(archive,destination,expected_path=None):
     """GitLab path archives have one generated wrapper; strip it without traversal."""
-    import shutil
     destination=Path(destination).resolve();destination.mkdir(parents=True,exist_ok=True)
-    count=0
+    count=0;wrapper=None;seen=set()
     with tarfile.open(archive,'r:gz') as stream:
         for member in stream:
-            parts=Path(member.name).parts
-            if not parts or any(part=='..' for part in parts) or member.issym() or member.islnk():
+            try:parts=safe_relative_path(member.name).parts
+            except ValueError as exc:raise ValueError(f'Unsafe source archive entry: {member.name}') from exc
+            if wrapper is None:wrapper=parts[0]
+            if parts[0]!=wrapper or member.name in seen or (len(parts)==1 and not member.isdir()) or member.issym() or member.islnk():
                 raise ValueError(f'Unsafe source archive entry: {member.name}')
+            seen.add(member.name)
             relative=Path(*parts[1:])
             if expected_path and relative.parts:
                 inside_scope=relative.as_posix()==expected_path or relative.as_posix().startswith(expected_path+'/')
@@ -275,15 +298,22 @@ def cached_source_archive(destination,commit,path,url):
     return archive,{**identity,'bytes':archive.stat().st_size,'sha256':file_sha256(archive)}
 
 
-def acquire_main_mirror(destination,commit,workers=16):
+def acquire_main_mirror(destination,commit,workers=16,*,source_plan=None):
     """Acquire only authenticated commit-scoped caches; stage complete owned paths before publishing."""
     from .normalize import MAIN_COMMIT
-    if commit!=MAIN_COMMIT:raise ValueError('No verified TextMap manifest for this commit')
+    from .source_plan import MAIN_SCOPES, source_marker_identity, validate_source_plan
+    if source_plan is None:
+        if commit!=MAIN_COMMIT:raise ValueError('No verified TextMap manifest for this commit')
+        textmaps=MAIN_TEXTMAPS
+    else:
+        planned=validate_source_plan(source_plan)['sources']['main']
+        if planned['commit']!=commit:raise ValueError('Source plan does not match the mirror commit')
+        textmaps=[(file['path'].split('/')[-1],file['size'],file['sha']) for file in planned['files']]
     destination=Path(destination).resolve();destination.mkdir(parents=True,exist_ok=True)
     base=MIRROR_API_BASE
     with urllib.request.urlopen(f'{base}/commits/{commit}',timeout=60) as response:verified=json.load(response)
-    if verified.get('id')!=commit:raise ValueError('Mirror commit identity mismatch')
-    paths=['ExcelBinOutput','BinOutput/Talk','Readable','Subtitle'];reports=[]
+    if not isinstance(verified,dict) or verified.get('id')!=commit:raise ValueError('Mirror commit identity mismatch')
+    paths=list(MAIN_SCOPES);reports=[]
     with tempfile.TemporaryDirectory(prefix='.source-stage-',dir=destination) as stage_dir:
         staging=Path(stage_dir)
         for path in paths:
@@ -294,7 +324,8 @@ def acquire_main_mirror(destination,commit,workers=16):
             sidecar=archive.with_name(archive.name+'.json');temporary=sidecar.with_suffix('.json.partial');temporary.write_text(json.dumps(metadata,indent=2));temporary.replace(sidecar)
             reports.append({'path':path,'files':count,'archiveSha256':metadata['sha256'],'downloadMetadata':sidecar.relative_to(destination).as_posix()})
             print(f'Fetched complete {path}: {count} files',flush=True)
-        for name,size,sha in MAIN_TEXTMAPS:
+        if source_plan is not None:validate_main_scopes(staging)
+        for name,size,sha in textmaps:
             target=staging/'TextMap'/name;existing=contained_path(destination,'TextMap/'+name)
             if existing.is_file() and existing.stat().st_size==size and git_blob_sha(existing)==sha:
                 target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(existing,target)
@@ -305,5 +336,47 @@ def acquire_main_mirror(destination,commit,workers=16):
                 'mirror':'https://gitlab.com/Dimbreath/animegamedata2','mirrorCommitVerified':verified['id'],
                 'scope':'All Excel, Talk, Readable and Subtitle files; full CHS/EN standard and Medium TextMaps',
                 'cacheVerificationVersion':2,'paths':reports,'files':sum(r['files'] for r in reports)}
+        if source_plan is not None:marker.update(source_marker_identity(source_plan,'main'),scopeComplete=True)
         publish_source_paths(destination,staging,paths+['TextMap'],marker)
+    return marker
+
+
+def validate_main_scopes(root):
+    from .source_plan import MAIN_SCOPES
+    for scope in (*MAIN_SCOPES,'Readable/CHS','Readable/EN'):
+        path=contained_path(root,scope)
+        if not path.is_dir() or path.resolve()!=path or not any(path.iterdir()):
+            raise ValueError(f'Missing or empty acquired source scope: {scope}')
+
+
+def validate_acquired_source(root,plan,name):
+    """Check matching acquisition markers and selected Git blobs before normalization."""
+    from .source_plan import source_marker_identity
+    root=Path(root).resolve()
+    marker_path=root/'acquisition.json'
+    if not marker_path.is_file() or marker_path.is_symlink():
+        raise ValueError(f'Missing acquisition marker for {name}')
+    marker=json.loads(marker_path.read_text(encoding='utf-8'))
+    expected=source_marker_identity(plan,name)
+    if (not isinstance(marker,dict) or any(marker.get(k)!=v for k,v in expected.items())
+            or marker.get('scopeComplete') is not True or marker.get('complete') is not (name=='main')):
+        raise ValueError(f'Acquisition marker does not match source plan for {name}')
+    files=plan['sources'][name]['files']
+    if name=='main':
+        if marker.get('mirrorCommitVerified')!=expected['commit']:
+            raise ValueError('Acquisition marker does not verify the mirror commit')
+        validate_main_scopes(root)
+        scopes=['TextMap']
+    else:
+        if marker.get('inventoryVerification')!='official-git-tree-blobs' or marker.get('files')!=len(files):
+            raise ValueError('Acquisition marker does not verify all supplementary blobs')
+        scopes=['src/data/'+subdir for subdir in ('ChineseSimplified','English','image','stats','curve')]
+    actual={path.relative_to(root).as_posix() for scope in scopes for path in contained_path(root,scope).rglob('*')
+            if not path.is_dir() or path.is_symlink()}
+    if actual!={file['path'] for file in files}:
+        raise ValueError(f'Acquired file list does not match source plan for {name}')
+    for file in files:
+        path=contained_path(root,file['path'])
+        if not path.is_file() or path.resolve()!=path or path.stat().st_size!=file['size'] or git_blob_sha(path)!=file['sha']:
+            raise ValueError(f'Acquired Git blob does not match source plan: {file["path"]}')
     return marker
