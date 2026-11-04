@@ -50,5 +50,5 @@
 
 - [x] RED/GREEN one-run lock, no-update short circuit, resource/freespace cutoff, durable rollback on negative acceptance or process interruption; pinned version routes persist across successful activation and failed new route is removed.
 - [x] Implement build container restriction, filesystem staging, mount verification, startup recovery and timer; validate unit files on target Ubuntu and run whole-branch review. Build/rehearse in isolated paths; enable archive-aware knowledge with legacy active after private/public checks.
-- [ ] Complete genuine `d54f6f0` update (or newer verified heads) through actual `run` workflow; verify old references, current pins and no-update rerun. Then enable daily timer and record next execution; no Mac/Codex schedule.
-- [ ] Save actual evidence and operating/recovery instructions in `docs/data-updates.md`, dated `docs/agent/feature/` note and index. Preserve existing backups.
+- [x] Complete genuine `d54f6f0` update (or newer verified heads) through actual `run` workflow; verify old references, current pins and no-update rerun. Then enable daily timer and record next execution; no Mac/Codex schedule.
+- [x] Save actual evidence and operating/recovery instructions in `docs/data-updates.md`, dated `docs/agent/feature/` note and index. Preserve existing backups.
