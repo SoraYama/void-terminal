@@ -6,6 +6,8 @@ Primary source: `DimbreathBot/AnimeGameData` at `792978e5503ecfba73dcb3562ed44a0
 
 Supplementary source: `theBowja/genshin-db` at `49a6544a6c6ae36089cb42fa591fc46f01de8bcf`. The bundled metadata inventory contains **all 2944 files in five categories for ChineseSimplified and English**: weapons, artifacts, characters, voiceovers and materials. Each downloaded file is verified against its upstream Git blob hash. This is five of the upstream's 30 curated categories; the acquisition marker explicitly says `complete: false`, `scopeComplete: true`. A complete recursive Git tree may be supplied with `--tree-file` to import additional categories. Its Git root and every directory digest must match the tree pinned to the requested source commit; empty, truncated, incomplete or escaping-path inventories are rejected. Cached range pieces are scoped by download identity and discarded after a full Git hash mismatch.
 
+The inventory additionally includes nine image/stat/curve support files. The character image mapping is `src/data/image/characters.json` (115,268 bytes, Git blob `7842ed8f958e5292b87a1fbc7fed58c258c139bf`) at that same fixed supplemental commit. Existing eight-support-file caches are unchanged and cannot claim the expanded scope until reacquired. Character audio uses its separately pinned archive manifest; normalized character JSONL contains the exact selected media evidence and participates in the corpus digest after documents and items.
+
 From the repository root, with the knowledge package installed:
 
 ```sh

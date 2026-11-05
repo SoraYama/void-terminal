@@ -37,6 +37,35 @@ The default pinned inputs are:
   retain its [license notice](https://github.com/theBowja/genshin-db/blob/49a6544a6c6ae36089cb42fa591fc46f01de8bcf/LICENSE)
   when redistributing its covered material. Underlying game-content rights remain separate.
 
+## Character artwork and original voices
+
+群星图鉴 uses original Genshin Impact character artwork, talent icons and voice
+recordings. These remain the rights holders' game content, separate from this
+project's MIT license. Image identity mappings come from
+`theBowja/genshin-db` at `49a6544a6c6ae36089cb42fa591fc46f01de8bcf`,
+`src/data/image/characters.json`; image delivery currently uses
+`https://gi.yatta.moe/assets/UI/` and is verified per source identifier.
+
+Original voice availability is indexed from
+[simon3000/genshin-voice](https://huggingface.co/datasets/simon3000/genshin-voice/tree/68950dc52d799876d1e64c1ab6c47955502e79a1/speaker-archives),
+revision `68950dc52d799876d1e64c1ab6c47955502e79a1`. The publisher's original
+resource-path hash mapping identifies individual WAV members. The service reads
+only a selected clip using bounded byte ranges and validates its size, CRC and
+audio format. The full voice corpus is not downloaded or bundled with the code.
+Credit belongs to the game's creators, performers and the dataset maintainer;
+the dataset's availability does not change underlying game-content rights.
+
+## Navigation and seven-element icons
+
+The three module navigation icons and seven elemental symbols are unmodified
+original Genshin Impact UI sprites from the community mirror
+[PathOfGenshin/resources](https://github.com/PathOfGenshin/resources/tree/015a2493b5672b28576ab78ffbcffde2ea0c9844/resources/gi/Sprite),
+commit `015a2493b5672b28576ab78ffbcffde2ea0c9844`. Original filenames, source URLs,
+dimensions and verified hashes are recorded in
+[the asset manifest](apps/web/public/assets/genshin-ui/manifest.json).
+They remain miHoYo / HoYoverse game artwork; the mirror's software license and
+this project's MIT license do not grant rights to the underlying images.
+
 ## Software and model dependencies
 
 JavaScript and Python packages retain their upstream licenses; exact installed

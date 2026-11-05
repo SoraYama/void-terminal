@@ -15,7 +15,7 @@ from pathlib import Path
 MAX_HEADER=65536
 ALLOWED={
     'upload-os-bbs.mihoyo.com':{'/game_record/genshin/equip/':('UI_',)},
-    'gi.yatta.moe':{'/assets/UI/':('UI_',),
+    'gi.yatta.moe':{'/assets/UI/':('UI_','Skill_'),
         '/assets/UI/furniture/':('UI_Homeworld_',),
         '/assets/UI/reliquary/':('UI_RelicIcon_',),
         '/assets/UI/namecard/':('UI_NameCardIcon_','UI_NameCardPic_'),
@@ -31,7 +31,7 @@ def allowed_url(url):
         filename=parsed.path.rsplit('/',1)[-1]
         return (parsed.scheme=='https' and parsed.hostname in ALLOWED and parsed.port in (None,443)
             and not parsed.username and not parsed.password and not parsed.query and not parsed.fragment
-            and bool(re.fullmatch(r'UI_[A-Za-z0-9_]+\.(?:png|webp|jpg|jpeg)',filename))
+            and bool(re.fullmatch(r'(?:UI|Skill)_[A-Za-z0-9_]+\.(?:png|webp|jpg|jpeg)',filename))
             and any(parsed.path==prefix+filename and filename.startswith(families)
                     for prefix,families in ALLOWED[parsed.hostname].items()))
     except (TypeError,ValueError):return False
@@ -48,7 +48,7 @@ def image_candidates(icon):
         # Compatibility for legacy offline records without an identifier field;
         # this does not introduce a request-time or browser URL interface.
         return (icon['url'],) if allowed_url(icon.get('url')) else ()
-    if not isinstance(identifier,str) or not re.fullmatch(r'UI_[A-Za-z0-9_]+',identifier):return ()
+    if not isinstance(identifier,str) or not re.fullmatch(r'(?:UI|Skill)_[A-Za-z0-9_]+',identifier):return ()
     plain=f'https://gi.yatta.moe/assets/UI/{identifier}.png'
     official=f'https://upload-os-bbs.mihoyo.com/game_record/genshin/equip/{identifier}.png'
     if identifier.startswith('UI_Homeworld_'):

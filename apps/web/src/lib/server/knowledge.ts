@@ -52,7 +52,7 @@ export async function boundedJson(
 }
 export async function knowledge<T>(
   path: string,
-  options: { body?: unknown; signal?: AbortSignal; timeout?: number } = {},
+  options: { body?: unknown; signal?: AbortSignal; timeout?: number; maxBytes?: number } = {},
 ): Promise<T> {
   const base = (process.env.KNOWLEDGE_URL || "http://127.0.0.1:8000").replace(
     /\/+$/,
@@ -94,7 +94,7 @@ export async function knowledge<T>(
         status === 503,
       );
     }
-    return (await boundedJson(response)) as T;
+    return (await boundedJson(response, options.maxBytes)) as T;
   } catch (error) {
     if (error instanceof AppError) throw error;
     if (options.signal?.aborted) throw error;

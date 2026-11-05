@@ -1,4 +1,4 @@
-> **Last updated**: 2026-11-05 (Compendium naming and heading font)
+> **Last updated**: 2026-11-05 (Character Archive; approved navigation and elemental identity refinement)
 
 # Agent Notes
 
@@ -6,6 +6,8 @@
 
 | Note | Summary |
 | --- | --- |
+| [2026-11-05-navigation-names-icons](research/2026-11-05-navigation-names-icons.md) | 原文库更名候选、9 个原版 UI PNG 哈希核验与对比稿；用户后续选定尘世文卷及首选图标，实施见 feature |
+| [2026-11-05-characters](research/2026-11-05-characters.md) | 实施前审计与用户确认的群星图鉴游戏菜单式方案；后续实现见 feature 记录 |
 | [2026-11-03-data-audit](research/2026-11-03-data-audit.md) | AnimeGameData main ahead by 2 commits; genshin-db pin current but five-category import omits image/stats/curve; production SQLite item coverage, quest missing descriptions, unexpanded weapon templates and absent inventory UI |
 | [2026-11-02-cloud-cost](research/2026-11-02-cloud-cost.md) | Azure B1ms + disk/IPv4 ~$28.31; OVH FR monthly ~€4.84 with mandatory backup; Hetzner CX23 €5.99 including IPv4; Vultr $10; SQLite 16.736 GiB and missing small-server Compose |
 | [2026-10-28-void-terminal-plan](research/2026-10-28-void-terminal-plan.md) | 原神百科 Agent：数据/RAG/deepseek-flash/双 Key；已选星海旅志 C 与 Docker，总体方案获同意；强视觉诉求要求高保真页面稿先于编码 |
@@ -14,6 +16,8 @@
 
 | Note | Summary |
 | --- | --- |
+| [2026-11-05-navigation-elements](feature/2026-11-05-navigation-elements.md) | 尘世文卷 / Teyvat Archive、书籍/背包/角色图鉴原版导航图标、七元素符号与头像条下方角色身份区 |
+| [2026-11-05-character-archive](feature/2026-11-05-character-archive.md) | 群星图鉴：角色聚合、原图/四语原声、快照 API、游戏菜单 UI；真实本地 169 个源 ID、134 个正式来源记录，媒体覆盖与发布边界单独记录 |
 | [2026-11-05-compendium-rename](feature/2026-11-05-compendium-rename.md) | 万象集录 / Compendium replaces the item museum display name; navigation/title/ARIA/E2E, complete Noto Serif SC 600 heading subset, stable /museum links and web-only release |
 | [2026-11-04-catalog-refresh](feature/2026-11-04-catalog-refresh.md) | 生产服务器固定两源提交、验证官方树与完整性、只读快照切换、失败恢复；首次接入与定时器验收证据位置 |
 | [2026-11-03-item-museum](feature/2026-11-03-item-museum.md) | Published game inventory museum at 94d9881 / snapshot9f534ea4c12d; 13,825 source IDs, 22,984 localized verified images; Python130/Web268, public API/SSE and 13 real desktop/mobile checks passed; old SQLite/citations retained |

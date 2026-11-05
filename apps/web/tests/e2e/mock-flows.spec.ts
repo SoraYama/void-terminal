@@ -42,7 +42,7 @@ async function setup(page:Page){
 async function settings(page:Page){const menu=page.getByRole('button',{name:'Menu',exact:true});if(await menu.isVisible())await menu.click();await page.getByRole('button',{name:/^(设置|Settings)$/}).click();return page.getByRole('dialog')}
 async function choose(page:Page,label:string,option:string){await page.getByRole('combobox',{name:label,exact:true}).click();await page.getByRole('option',{name:option,exact:true}).click()}
 async function configure(page:Page){const dialog=await settings(page);await dialog.getByLabel('模型 API Key').fill('browser-test-key');await dialog.getByRole('button',{name:'测试连接'}).click();await expect(dialog.getByRole('status')).toContainText('连接成功');await dialog.getByRole('button',{name:'关闭',exact:true}).click();await expect(page.locator('.mobile-menu')).toHaveCount(0)}
-async function library(page:Page){const menu=page.getByRole('button',{name:'Menu',exact:true});if(await menu.isVisible())await menu.click();await page.getByRole('button',{name:'原文库',exact:true}).click()}
+async function library(page:Page){const menu=page.getByRole('button',{name:'Menu',exact:true});if(await menu.isVisible())await menu.click();await page.getByRole('button',{name:'尘世文卷',exact:true}).click()}
 async function saveScreenshot(page:Page,name:string,project:string){await page.screenshot({path:path.join(screenshotDir,`${project}-${name}.png`),fullPage:true,scale:'css',style:'nextjs-portal{visibility:hidden}',animations:'disabled'})}
 test('mock: deep research remains visibly enabled after hover ends and toggles with the keyboard',async({page},testInfo)=>{
  if(testInfo.project.name==='desktop')await page.setViewportSize({width:948,height:1314});

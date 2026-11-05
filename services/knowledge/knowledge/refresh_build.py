@@ -71,6 +71,17 @@ def _require_metrics(metrics):
     verified = metrics.get('verifiedImages')
     if type(verified) is not int or not 0 <= verified <= metrics['itemCount']:
         raise ValueError('Invalid verified image count')
+    if 'characters' in metrics:
+        characters = _object(metrics['characters'], 'character metrics')
+        for name in ('localizedRecords', 'uniqueCharacters', 'verifiedImages', 'indexedVoiceClips'):
+            if type(characters.get(name)) is not int or characters[name] < 0:
+                raise ValueError('Invalid character metrics')
+        languages = _object(characters.get('byLanguage'), 'character language metrics')
+        if (set(languages) - _LANGUAGES or any(type(n) is not int or n < 0 for n in languages.values())
+                or sum(languages.values()) != characters['localizedRecords']
+                or characters['uniqueCharacters'] > characters['localizedRecords']
+                or characters['verifiedImages'] > 2 * characters['localizedRecords']):
+            raise ValueError('Inconsistent character metrics')
 
 
 def validate_coverage(candidate, baseline):
@@ -86,6 +97,15 @@ def validate_coverage(candidate, baseline):
     decline = baseline['verifiedImages'] * new_count - candidate['verifiedImages'] * old_count
     if 100 * decline > 5 * old_count * new_count:
         raise ValueError('Verified image coverage declined by more than 5 percentage points')
+    if 'characters' in baseline:
+        if 'characters' not in candidate:
+            raise ValueError('Character catalog is missing from candidate')
+        for language, before in baseline['characters']['byLanguage'].items():
+            if 100 * candidate['characters']['byLanguage'].get(language, 0) < 95 * before:
+                raise ValueError(f'Character coverage/{language} declined by more than 5%')
+        for field in ('verifiedImages', 'indexedVoiceClips'):
+            if 100 * candidate['characters'][field] < 95 * baseline['characters'][field]:
+                raise ValueError(f'Character {field} declined by more than 5%')
 
 
 def _require_source(source, expected, description):
@@ -200,6 +220,52 @@ def _sidecars(database):
     return [database.with_name(database.name + suffix) for suffix in ('-wal', '-shm', '-journal')]
 
 
+def _character_metrics(db, sid, expected):
+    from knowledge.character_models import Character
+    from knowledge.characters import character_summary, coverage_report
+
+    if not db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='character_catalogs'").fetchone():
+        return None
+    catalog = db.execute('SELECT coverage FROM character_catalogs WHERE snapshot_id=?', (sid,)).fetchone()
+    if catalog is None:
+        return None
+    records, languages, identities = [], {}, set()
+    images = audio = 0
+
+    def sources(value):
+        if isinstance(value, dict):
+            if {'repo', 'commit', 'path', 'locator', 'url'} <= value.keys():
+                _require_source(value, expected, 'character')
+            for child in value.values(): sources(child)
+        elif isinstance(value, list):
+            for child in value: sources(child)
+
+    for row in db.execute('SELECT language,id,summary,data FROM characters WHERE snapshot_id=? ORDER BY language,id', (sid,)):
+        record = json.loads(row['data'])
+        Character.model_validate(record)
+        if record['id'] != row['id'] or record['language'] != row['language']:
+            raise ValueError('Character row identity mismatch')
+        if json.loads(row['summary']) != character_summary(record):
+            raise ValueError('Character summary does not match detail')
+        sources(record)
+        for document_id in record['documentIds']:
+            if not db.execute('SELECT 1 FROM documents WHERE snapshot_id=? AND id=? AND language=?',
+                              (sid, document_id, record['language'])).fetchone():
+                raise ValueError('Character document reference is outside snapshot or language')
+        records.append(record)
+        languages[record['language']] = languages.get(record['language'], 0) + 1
+        identities.add(record['id'])
+        images += sum(record[name]['status'] == 'verified' for name in ('icon', 'portrait'))
+        audio += sum(media['status'] == 'verified' for voice in record['voices'] for media in voice['audio'].values())
+    expected_coverage = coverage_report(records)
+    coverage = _object(json.loads(catalog['coverage']), 'character coverage')
+    if coverage.get('snapshotId', sid) != sid or any(coverage.get(key) != expected_coverage[key]
+            for key in ('schemaVersion', 'ready', 'localizedRecords', 'uniqueCharacters', 'fields', 'missing')):
+        raise ValueError('Character coverage does not match snapshot records')
+    return {'localizedRecords': len(records), 'uniqueCharacters': len(identities), 'byLanguage': languages,
+            'verifiedImages': images, 'indexedVoiceClips': audio}
+
+
 def inspect_database(database, snapshot_id, *, quick_check=False, sealed=False, sources=None):
     """Read one pinned snapshot without initializing its schema or changing its journal mode."""
     database = Path(database).resolve(strict=True)
@@ -262,6 +328,10 @@ def inspect_database(database, snapshot_id, *, quick_check=False, sealed=False, 
         expected_sources = {
             _MAIN_REPO: commit, _SUPPLEMENT_REPO: sources['supplement'] if sources else None,
         }
+        character_metrics = _character_metrics(db, snapshot_id, expected_sources)
+        if character_metrics is not None:
+            metrics['characters'] = character_metrics
+            _require_metrics(metrics)
         metrics['samples'] = _read_samples(db, snapshot_id, expected_sources)
         if 'enrichment' in metrics:
             manifest = metrics['enrichment']
@@ -345,10 +415,13 @@ def _import_catalog(database, normalized, snapshot, corpus_sha256):
         if last and digest.hexdigest() != corpus_sha256:
             raise ValueError('Imported corpus digest does not match the normalized report')
 
+    has_characters = (normalized / 'characters.jsonl').exists()
     store.import_snapshot(
         snapshot, records('documents.jsonl'), json.loads((normalized / 'coverage.json').read_text(encoding='utf-8')),
-        activate=False, items=records('items.jsonl', last=True),
+        activate=False, items=records('items.jsonl', last=not has_characters),
         item_coverage=_read_object(normalized / 'item-coverage.json'),
+        characters=records('characters.jsonl', last=True) if has_characters else None,
+        character_coverage=_read_object(normalized / 'character-coverage.json') if has_characters else None,
     )
 
 
@@ -417,6 +490,10 @@ def build_candidate(workspace, cache, main_commit, supplement_commit, baseline_p
     _run_ingest('normalize', '--input', str(raw / 'main'), '--supplementary', str(raw / 'supplement'),
                 '--output', str(normalized), '--source-plan', str(plan_path), *normalize_args)
     _validated_normalization(normalized, plan, sources)
+    if (normalized / 'characters.jsonl').exists():
+        _run_ingest('verify-character-media', '--normalized', str(normalized), '--supplementary', str(raw / 'supplement'),
+                    '--cache', str(cache / 'characters'), '--workers', '8')
+        _validated_normalization(normalized, plan, sources)
     shutil.rmtree(raw)
     image_args = ['--asset-cache', str(cache / 'pathofgenshin')] if enrich else []
     _run_ingest('verify-images', '--normalized', str(normalized), '--cache', str(image_cache), '--workers', '8', *image_args)
@@ -448,6 +525,9 @@ def build_candidate(workspace, cache, main_commit, supplement_commit, baseline_p
     metrics = inspect_database(database, snapshot['id'], quick_check=True, sealed=True, sources=sources)
     if metrics['documentCount'] != report.get('documents'):
         raise ValueError('Database document count does not match normalized corpus')
+    if 'characters' in report and (metrics.get('characters', {}).get('localizedRecords') != report['characters'].get('localizedRecords')
+            or metrics.get('characters', {}).get('uniqueCharacters') != report['characters'].get('uniqueCharacters')):
+        raise ValueError('Database character count does not match normalized corpus')
     validate_coverage(metrics, baseline)
     database_hash, size = _database_digest(database)
     result = metrics | {'sources': sources, 'databaseSha256': database_hash, 'bytes': size}

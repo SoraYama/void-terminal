@@ -259,7 +259,7 @@ def acquire(repo,commit,destination,tree_file=None,workers=16,supplementary=Fals
         if bundled:marker.update(scope=tree['scope'],knownGaps=['25 other supplementary categories are not included in the bundled acquisition inventory.'])
         if source_plan is not None:
             marker.update(plan_identity,complete=False,inventoryVerification='official-git-tree-blobs',
-                          scope='All ChineseSimplified and English weapons/artifacts/characters/voiceovers/materials, plus eight support files')
+                          scope='All ChineseSimplified and English weapons/artifacts/characters/voiceovers/materials, plus nine support files')
         publish_source_paths(destination,staging,scopes,marker)
     return marker
 

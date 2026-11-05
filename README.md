@@ -81,6 +81,23 @@ docker compose --profile ingest run --rm ingest rollback PREVIOUS_SNAPSHOT_ID
 
 导入后重新检查 `/api/status`：确认 `activeSnapshot.sourceCommit`、文档与 chunk 数量、语言和每类 coverage。任务、对话、书籍、装备等类型的覆盖必须分别审查；“支持某种类型”不等于该类型全量导入。保留 snapshot ID，以便问答和资料浏览指向同一版本。
 
+## 群星图鉴
+
+`/characters` 提供角色头像、原始立绘、等级与突破属性、天赋倍率、命之座、故事、语音及培养材料，与万象集录共用来源阅读和快照。中英文本与汉英日韩配音分别选择；点击播放才获取原声音频。来源缺失会明确标注，角色记录数量不代表已实装数量。
+
+新版本 `normalize` 会同时生成 `characters.jsonl` 和 `character-coverage.json`。补充源获取范围增加固定提交的 `src/data/image/characters.json`；旧缓存需要重新执行获取校验，不能直接改 marker 宣称已包含新文件。媒体验证在导入前执行，使用新的归一化输出目录，勿覆盖已经发布的快照文件：
+
+```sh
+# 先按上文 fetch / normalize 流程准备新的 normalized 目录。
+docker compose --profile ingest run --rm ingest verify-character-media --normalized /data/sources/normalized --supplementary /data/sources/genshin-db --cache /data/sources/character-media-cache
+docker compose --profile ingest run --rm ingest import --normalized /data/sources/normalized --no-activate
+docker compose --profile ingest run --rm ingest snapshots
+```
+
+验证器检查原图格式与尺寸，并从固定 revision 的语音 ZIP 读取有界目录，按原始资源路径哈希匹配，不下载整个语音库。播放时仅获取选中片段，检查大小、CRC 和 PCM WAV。媒体映射参与语料摘要，因此验证后会产生新的 snapshot ID；审查 `character-coverage.json`、缓存目录的 `report.json` 和真实播放后，再按上文流程显式激活。音频索引覆盖不等于每条录音均已试听。未构建角色表的历史快照仍可阅读原文，图鉴显示未构建状态。
+
+数据契约见 [角色契约](docs/characters-contract.md)，本地真实数据、浏览器验收与来源缺口见 [群星图鉴实施记录](docs/agent/feature/2026-11-05-character-archive.md)。本地验收库仅包含角色、培养材料及关联文献，不可作为生产全量语料替代品。
+
 ## Embedding 与检索成本
 
 默认 `EMBEDDING_ENABLED=false`，只运行词法检索。模型默认 `intfloat/multilingual-e5-small`，384 维；语义检索需要真实本地权重、固定 40 字符 revision、兼容 manifest 和以同一模型建立的索引，不会使用随机向量冒充。模型权重不会在知识服务启动时自动下载。

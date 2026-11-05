@@ -17,7 +17,7 @@ TEXTMAPS = frozenset(f'TextMap/{prefix}{lang}.json' for prefix in ('TextMap', 'T
 SUPPLEMENT_CATEGORIES = ('artifacts', 'characters', 'materials', 'voiceovers', 'weapons')
 SUPPLEMENT_SCOPES = frozenset(f'src/data/{lang}/{category}' for lang in SUPPLEMENT_LANGUAGES for category in SUPPLEMENT_CATEGORIES)
 SUPPORT_FILES = frozenset({
-    *(f'src/data/image/{category}.json' for category in ('artifacts', 'foods', 'materials', 'namecards', 'weapons', 'windgliders')),
+    *(f'src/data/image/{category}.json' for category in ('artifacts', 'characters', 'foods', 'materials', 'namecards', 'weapons', 'windgliders')),
     'src/data/stats/weapons.json', 'src/data/curve/weapons.json',
 })
 REGULAR_MODES = {'100644', '100755'}

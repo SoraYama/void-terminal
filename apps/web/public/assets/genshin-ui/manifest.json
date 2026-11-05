@@ -1,0 +1,96 @@
+{
+  "repository": "PathOfGenshin/resources",
+  "commit": "015a2493b5672b28576ab78ffbcffde2ea0c9844",
+  "assets": [
+    {
+      "file": "UI_BtnIcon_CodexBooks.png",
+      "width": 64,
+      "height": 51,
+      "bytes": 1871,
+      "gitBlob": "1c387c9e3f856435b7471c8c7a00de52fc05a824",
+      "sha256": "1ef9d7e35b6a26fb8007ed28a6769a237b0ab0d2b8043caee57e860d74525cfb",
+      "url": "https://raw.githubusercontent.com/PathOfGenshin/resources/015a2493b5672b28576ab78ffbcffde2ea0c9844/resources/gi/Sprite/UI_BtnIcon_CodexBooks.png"
+    },
+    {
+      "file": "UI_BtnIcon_Bag.png",
+      "width": 60,
+      "height": 64,
+      "bytes": 2462,
+      "gitBlob": "078b9114bcbce11f85791f9c5549dbf7f9ecfcb9",
+      "sha256": "c04df7da8bc067127aaa7196f1b3cdc6f9a46a6d88112520a65e5ac959cc3a3d",
+      "url": "https://raw.githubusercontent.com/PathOfGenshin/resources/015a2493b5672b28576ab78ffbcffde2ea0c9844/resources/gi/Sprite/UI_BtnIcon_Bag.png"
+    },
+    {
+      "file": "UI_BtnIcon_AvatarList.png",
+      "width": 64,
+      "height": 64,
+      "bytes": 2561,
+      "gitBlob": "5be89ce06d478560ba88e681e71f11fb9e63408f",
+      "sha256": "4671519a097f35227089ed8df9a47f3a7d0a9e705392e191fdb85d6c923e73dd",
+      "url": "https://raw.githubusercontent.com/PathOfGenshin/resources/015a2493b5672b28576ab78ffbcffde2ea0c9844/resources/gi/Sprite/UI_BtnIcon_AvatarList.png"
+    },
+    {
+      "file": "UI_Icon_Element_Fire.png",
+      "width": 92,
+      "height": 112,
+      "bytes": 2547,
+      "gitBlob": "5b747d22da18c8c2d932fb6c83a254f8a68eca57",
+      "sha256": "d22b4aef0764d178a198c8b8cb1fd8abf1a92ed67c60f465aa847963aa6f568e",
+      "url": "https://raw.githubusercontent.com/PathOfGenshin/resources/015a2493b5672b28576ab78ffbcffde2ea0c9844/resources/gi/Sprite/UI_Icon_Element_Fire.png"
+    },
+    {
+      "file": "UI_Icon_Element_Water.png",
+      "width": 100,
+      "height": 100,
+      "bytes": 2278,
+      "gitBlob": "e70a437408f683e56a4ab45af6eb578547ea084a",
+      "sha256": "696cc23c6e628701a09fcf001017e55a415bca4f83e1e27ecb709344ae933b8a",
+      "url": "https://raw.githubusercontent.com/PathOfGenshin/resources/015a2493b5672b28576ab78ffbcffde2ea0c9844/resources/gi/Sprite/UI_Icon_Element_Water.png"
+    },
+    {
+      "file": "UI_Icon_Element_Wind.png",
+      "width": 108,
+      "height": 108,
+      "bytes": 2590,
+      "gitBlob": "86db09c99ae2560df20f89e3916248092aad75c6",
+      "sha256": "4257e774c8d6ec6b7ea9e4a4ae02d57bf6fec218b08ca8a6139a4111080b2f10",
+      "url": "https://raw.githubusercontent.com/PathOfGenshin/resources/015a2493b5672b28576ab78ffbcffde2ea0c9844/resources/gi/Sprite/UI_Icon_Element_Wind.png"
+    },
+    {
+      "file": "UI_Icon_Element_Electric.png",
+      "width": 104,
+      "height": 104,
+      "bytes": 2076,
+      "gitBlob": "abbd476a285ad5dea7fc908226fe57348bd8c8bf",
+      "sha256": "997b6f5fa0f26a3ed60c2ae288741de4de3a8caea95811c34d3b4038f3272c85",
+      "url": "https://raw.githubusercontent.com/PathOfGenshin/resources/015a2493b5672b28576ab78ffbcffde2ea0c9844/resources/gi/Sprite/UI_Icon_Element_Electric.png"
+    },
+    {
+      "file": "UI_Icon_Element_Ice.png",
+      "width": 104,
+      "height": 118,
+      "bytes": 2438,
+      "gitBlob": "730a1502ad8b6d728abc54b02e76b74336c06ba1",
+      "sha256": "f98cb20c87ee220b1db6063cc8c0d31059a48f6525c81ca3ae987f75ced03edf",
+      "url": "https://raw.githubusercontent.com/PathOfGenshin/resources/015a2493b5672b28576ab78ffbcffde2ea0c9844/resources/gi/Sprite/UI_Icon_Element_Ice.png"
+    },
+    {
+      "file": "UI_Icon_Element_Rock.png",
+      "width": 96,
+      "height": 104,
+      "bytes": 2324,
+      "gitBlob": "8100321849d87cf67743bb0ec93b3ff3a9db7402",
+      "sha256": "2890726d6d1639142ad95216bb8db58affc2bb8c3737c3b2ab821f4525f4918f",
+      "url": "https://raw.githubusercontent.com/PathOfGenshin/resources/015a2493b5672b28576ab78ffbcffde2ea0c9844/resources/gi/Sprite/UI_Icon_Element_Rock.png"
+    },
+    {
+      "file": "UI_Icon_Element_Grass.png",
+      "width": 116,
+      "height": 110,
+      "bytes": 2502,
+      "gitBlob": "94862337f94664a8389f48edae7f2fc7fd71d0bd",
+      "sha256": "8fd0982d01bc62a794fdb0d6d0b0f3cca282683e13aadf269f684ea20c9687fe",
+      "url": "https://raw.githubusercontent.com/PathOfGenshin/resources/015a2493b5672b28576ab78ffbcffde2ea0c9844/resources/gi/Sprite/UI_Icon_Element_Grass.png"
+    }
+  ]
+}

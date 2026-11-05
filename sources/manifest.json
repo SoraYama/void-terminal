@@ -39,6 +39,13 @@
         "BookSuit",
         "BooksCodex",
         "Avatar",
+        "AvatarCurve",
+        "AvatarPromote",
+        "AvatarSkillDepot",
+        "AvatarSkill",
+        "AvatarTalent",
+        "ProudSkill",
+        "FetterInfo",
         "FetterStory",
         "Fetters",
         "Reminder"
@@ -63,12 +70,12 @@
       "paths": [
         "src/data/ChineseSimplified/**",
         "src/data/English/**",
-        "src/data/image/{weapons,artifacts,materials,foods,namecards,windgliders}.json",
+        "src/data/image/{weapons,artifacts,characters,materials,foods,namecards,windgliders}.json",
         "src/data/stats/weapons.json",
         "src/data/curve/weapons.json"
       ],
       "bundledInventory": "services/knowledge/knowledge/ingest/supplement-core-files.json",
-      "bundledInventoryScope": "All records in five categories in CHS+EN and eight image/stat/curve support files; remaining 25 language categories explicitly not claimed",
+      "bundledInventoryScope": "All records in five categories in CHS+EN and nine image/stat/curve support files; remaining 25 language categories explicitly not claimed. Existing caches need reacquisition to claim this expanded scope.",
       "treeSha": "f7a0f90c9d12dc5b13cc890f3f06ebb0a60bb02f"
     }
   ],

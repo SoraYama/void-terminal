@@ -3,8 +3,9 @@
   "commit": "49a6544a6c6ae36089cb42fa591fc46f01de8bcf",
   "complete": false,
   "scopeComplete": true,
-  "scope": "All ChineseSimplified and English weapons/artifacts/characters/voiceovers/materials; five of 30 curated categories, plus eight image/stat/curve support files",
+  "scope": "All ChineseSimplified and English weapons/artifacts/characters/voiceovers/materials; five of 30 curated categories, plus nine image/stat/curve support files",
   "tree": [
+    {"path":"src/data/image/characters.json","sha":"7842ed8f958e5292b87a1fbc7fed58c258c139bf","size":115268,"type":"blob"},
     {"path":"src/data/image/weapons.json","sha":"a2b935c03b510eba4fc536b3705b66ee782971bb","size":144593,"type":"blob"},
     {"path":"src/data/image/artifacts.json","sha":"ee7d4af4b1cbe67cb2ca8be5cecb115581f63a2a","size":68987,"type":"blob"},
     {"path":"src/data/image/materials.json","sha":"a760d82d63f5c2098298d7424ca9ecb8d7079afe","size":62308,"type":"blob"},

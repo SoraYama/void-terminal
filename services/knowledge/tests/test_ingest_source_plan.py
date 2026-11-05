@@ -13,7 +13,7 @@ from knowledge.ingest.normalize import MAIN_COMMIT, MAIN_REPO, SUPPLEMENT_COMMIT
 MAIN = '1' * 40
 SUPPLEMENT = '2' * 40
 SUPPORT = {
-    *(f'src/data/image/{kind}.json' for kind in ('weapons', 'artifacts', 'materials', 'foods', 'namecards', 'windgliders')),
+    *(f'src/data/image/{kind}.json' for kind in ('weapons', 'artifacts', 'characters', 'materials', 'foods', 'namecards', 'windgliders')),
     'src/data/stats/weapons.json', 'src/data/curve/weapons.json',
 }
 LOCALIZED = {

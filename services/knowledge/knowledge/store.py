@@ -16,6 +16,7 @@ from .chunking import chunk_text, tokenize
 from .embeddings import EmbeddingProvider
 from .models import CoverageRow, Document, Item, Snapshot, SourceRecord
 from .retrieval import reciprocal_rank_fusion, query_terms, entity_candidates, exact_entity_name
+from .characters.store import CharacterStore, SCHEMA as CHARACTER_SCHEMA
 
 
 class StoreError(ValueError):
@@ -52,7 +53,7 @@ def dumps(value):
     return json.dumps(value, ensure_ascii=False, separators=(',', ':'))
 
 
-class CatalogStore:
+class CatalogStore(CharacterStore):
     def __init__(self, database_url=None, *, readonly=False, offline=False, verified_counts=None, embedding_provider=None):
         self.database_url = database_url or config.database_url()
         self.postgres = self.database_url.startswith(('postgresql://', 'postgres://'))
@@ -84,7 +85,7 @@ class CatalogStore:
             if self.postgres:
                 self._execute(db, 'SELECT pg_advisory_xact_lock(70734121)')
                 self._execute(db, 'CREATE EXTENSION IF NOT EXISTS vector')
-            schema = SCHEMA.format(vector_type='vector(384)' if self.postgres else 'TEXT')
+            schema = SCHEMA.format(vector_type='vector(384)' if self.postgres else 'TEXT') + CHARACTER_SCHEMA
             for statement in schema.split(';'):
                 if statement.strip():
                     self._execute(db, statement)
@@ -154,7 +155,8 @@ class CatalogStore:
             raise StoreError('SNAPSHOT_UNAVAILABLE', 'Requested snapshot is unavailable', 404)
         return snapshot_id
 
-    def import_snapshot(self, snapshot, documents, coverage, activate=True, items=None, item_coverage=None):
+    def import_snapshot(self, snapshot, documents, coverage, activate=True, items=None, item_coverage=None,
+                        characters=None, character_coverage=None):
         try:
             snap = Snapshot.model_validate(snapshot).model_dump()
             cover = [CoverageRow.model_validate(c).model_dump() for c in coverage]
@@ -164,6 +166,8 @@ class CatalogStore:
             raise StoreError('SNAPSHOT_NOT_READY', 'Only validated ready snapshots can be imported')
         if item_coverage is not None and (items is None or not isinstance(item_coverage, dict)):
             raise StoreError('INVALID_ITEMS', 'Item coverage requires an item catalog')
+        if character_coverage is not None and (characters is None or not isinstance(character_coverage, dict)):
+            raise StoreError('INVALID_CHARACTERS', 'Character coverage requires a character catalog')
         # The complete import and active pointer share one transaction. Any stream,
         # validation, embedding or SQL failure leaves the previous active pointer intact.
         with self._tx(write=True) as db:
@@ -211,6 +215,8 @@ class CatalogStore:
                 raise StoreError('EMPTY_SNAPSHOT', 'Cannot import an empty snapshot')
             if items is not None:
                 self._import_items(db, snap['id'], items, item_coverage or {})
+            if characters is not None:
+                self._import_characters(db, snap['id'], characters, character_coverage or {})
             if activate:
                 self._execute(db, "INSERT INTO settings(key,value) VALUES('active_snapshot',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (snap['id'],))
         return snap

@@ -10,7 +10,7 @@ async function openLibrary(page:Page,theme:'light'|'dark'){
  await page.route('**/api/documents/reading-book?*',r=>r.fulfill({json:{document:{id:'reading-book',title:source.title,type:'artifact',language:'zh-CN',text:passage,source:{repo:'fixture',commit:'fixture',path:source.path,locator:source.locator},metadata:{},relations:[]},sources:[source],snapshotId:'reading-fixture'}}));
  await page.goto('/');
  const menu=page.getByRole('button',{name:'Menu',exact:true});if(await menu.isVisible())await menu.click();
- await page.getByRole('button',{name:'原文库',exact:true}).click();
+ await page.getByRole('button',{name:'尘世文卷',exact:true}).click();
  await page.locator('.document-card').click();await expect(page.locator('.reading-text')).toContainText('第60段');
 }
 for(const theme of ['light','dark'] as const){
@@ -56,7 +56,7 @@ test('navigation: desktop collapse persists while mobile drawer remains usable',
  await page.setViewportSize({width:390,height:844});
  await page.getByRole('button',{name:'Menu',exact:true}).click();
  const drawer=page.getByRole('dialog');await expect(drawer.getByRole('button',{name:'设置',exact:true})).toBeVisible();
- await drawer.getByRole('button',{name:'原文库',exact:true}).click();await expect(drawer).toHaveCount(0);
+ await drawer.getByRole('button',{name:'尘世文卷',exact:true}).click();await expect(drawer).toHaveCount(0);
  await expect(page.locator('.document-card')).toBeVisible();
  await page.setViewportSize({width:1440,height:900});await page.getByRole('button',{name:'展开菜单',exact:true}).click();
  await expect(page.getByRole('button',{name:'收起菜单',exact:true})).toBeVisible();

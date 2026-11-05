@@ -7,13 +7,14 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from starlette.exceptions import HTTPException
 from pydantic import ValidationError
 from .catalog_router import CatalogRouter
 from .config import require_production_token
 from .models import ContentType, ItemDetailQuery, ItemListQuery, Locale, ReserveRequest, SearchRequest, SettleRequest
 from .store import CatalogStore, StoreError
+from .character_models import CharacterDetailQuery, CharacterListQuery, CharacterVoiceQuery
 
 logger = logging.getLogger('knowledge')
 
@@ -98,6 +99,47 @@ def create_app(store=None, api_token=None):
         query = item_query(request, ItemDetailQuery)
         db, sid = router.select(query.snapshotId)
         return db.get_item(id, query.language, sid)
+
+    @api.get('/v1/characters', dependencies=guards)
+    def characters(request: Request, router=Depends(catalog)):
+        query = item_query(request, CharacterListQuery)
+        db, sid = router.select(query.snapshotId)
+        return db.list_characters(q=query.q, language=query.language, element=query.element,
+            weapon_type=query.weaponType, rarity=query.rarity, region=query.region,
+            include_internal=query.includeInternal, sort=query.sort, page=query.page,
+            page_size=query.pageSize, snapshot_id=sid)
+
+    @api.get('/v1/characters/coverage', dependencies=guards)
+    def character_coverage(request: Request, router=Depends(catalog)):
+        query = item_query(request, CharacterDetailQuery, ['snapshotId'])
+        db, sid = router.select(query.snapshotId)
+        return db.character_coverage(sid)
+
+    @api.get('/v1/characters/{id}/voices/{voice_id}', dependencies=guards)
+    def character_voice(id: str, voice_id: str, request: Request, router=Depends(catalog)):
+        import re
+        if not re.fullmatch(r'[A-Za-z0-9_-]{1,100}', voice_id):
+            raise StoreError('INVALID_REQUEST', 'Invalid voice identity')
+        query = item_query(request, CharacterVoiceQuery)
+        db, sid = router.select(query.snapshotId)
+        character = db.get_character(id, query.language, sid)['character']
+        voice = next((row for row in character['voices'] if row['id'] == voice_id), None)
+        media = voice.get('audio', {}).get(query.audioLanguage) if voice else None
+        if not media or media.get('status') != 'verified' or media.get('provider') != 'genshin-voice':
+            raise StoreError('VOICE_NOT_FOUND', 'Audio is missing for this voice and language', 404)
+        try:
+            from .characters.media import load_voice
+            audio = load_voice(media)
+        except Exception as exc:
+            raise StoreError('VOICE_UNAVAILABLE', 'Audio is temporarily unavailable', 503) from exc
+        return Response(audio, media_type='audio/wav', headers={
+            'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff'})
+
+    @api.get('/v1/characters/{id:path}', dependencies=guards)
+    def character(id: str, request: Request, router=Depends(catalog)):
+        query = item_query(request, CharacterDetailQuery)
+        db, sid = router.select(query.snapshotId)
+        return db.get_character(id, query.language, sid)
 
     @api.get('/v1/status', dependencies=guards)
     def status(router=Depends(catalog)):

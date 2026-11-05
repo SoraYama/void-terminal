@@ -11,6 +11,7 @@ from .acquire import acquire, validate_acquired_source
 from .normalize import MAIN_REPO,MAIN_COMMIT,SUPPLEMENT_REPO,SUPPLEMENT_COMMIT,fingerprint,normalize
 from .source_plan import create_source_plan, dynamic_snapshot_id, load_source_plan
 from knowledge.items import build_items, coverage_report, item_summary, verify_images
+from knowledge.characters import build_characters, coverage_report as character_coverage_report
 
 
 def write_json(path,value):
@@ -26,12 +27,67 @@ def read_documents(path):
 
 
 def write_items(output, items, corpus):
-    temporary=output/'items.jsonl.partial'
+    write_catalog(output, 'items', items, corpus)
+
+
+def write_catalog(output, name, records, corpus):
+    temporary=output/(name+'.jsonl.partial')
     with temporary.open('w',encoding='utf-8') as stream:
-        for item in items:
+        for item in records:
             line=json.dumps(item,ensure_ascii=False,sort_keys=True,separators=(',',':'))+'\n'
             corpus.update(line.encode());stream.write(line)
-    temporary.replace(output/'items.jsonl')
+    temporary.replace(output/(name+'.jsonl'))
+
+
+def hash_file(corpus, path):
+    with path.open('rb') as stream:
+        for block in iter(lambda:stream.read(1024*1024), b''):corpus.update(block)
+
+
+def update_character_coverage_identity(output, snapshot_id):
+    path=output/'character-coverage.json'
+    if path.exists():
+        coverage=json.loads(path.read_text());coverage['snapshotId']=snapshot_id;write_json(path,coverage)
+
+
+def verify_character_media_output(args):
+    from knowledge.characters.media import verify_character_media
+    output=Path(args.normalized)
+    snapshot=json.loads((output/'snapshot.json').read_text())
+    report=json.loads((output/'report.json').read_text())
+    main_commit=snapshot['sourceCommit']
+    supplement_commit=report['source']['supplementCommit']
+    planned=report.get('acquisition',{}).get('sourcePlanSha256')
+    # Check the claimed input identity and both source markers before changing it.
+    if planned and (report.get('supplementaryAcquisition',{}).get('sourcePlanSha256') != planned
+            or report['acquisition'].get('commit') != main_commit
+            or report['source'].get('commit') != main_commit
+            or report['supplementaryAcquisition'].get('commit') != supplement_commit
+            or snapshot['id'] != dynamic_snapshot_id(main_commit,supplement_commit,report['corpusSha256'])):
+        raise ValueError('Character media input does not match the normalized source plan')
+    before=hashlib.sha256()
+    for name in ('documents','items','characters'):hash_file(before,output/(name+'.jsonl'))
+    if before.hexdigest()!=report['corpusSha256']:
+        raise ValueError('Character media input corpus digest does not match the normalized report')
+    characters=verify_character_media(list(read_documents(output/'characters.jsonl')),Path(args.cache),args.workers,
+        supplementary=Path(args.supplementary) if args.supplementary else None,
+        image_mapping=Path(args.image_mapping) if args.image_mapping else None,
+        voice_index=Path(args.voice_index) if args.voice_index else None)
+    corpus=hashlib.sha256()
+    for name in ('documents','items'):hash_file(corpus,output/(name+'.jsonl'))
+    write_catalog(output,'characters',characters,corpus)
+    snapshot['id']=(dynamic_snapshot_id(main_commit,supplement_commit,corpus.hexdigest()) if planned
+                    else f'agd-{main_commit[:12]}-{corpus.hexdigest()[:12]}')
+    coverage=character_coverage_report(characters);coverage['snapshotId']=snapshot['id']
+    item_path=output/'item-coverage.json'
+    if item_path.exists():
+        item_coverage=json.loads(item_path.read_text());item_coverage['snapshotId']=snapshot['id'];write_json(item_path,item_coverage)
+    report['corpusSha256']=corpus.hexdigest()
+    report['characters']={'localizedRecords':len(characters),'uniqueCharacters':coverage['uniqueCharacters']}
+    media_report=Path(args.cache)/'report.json'
+    if media_report.exists():report.setdefault('enrichment',{})['characters']=json.loads(media_report.read_text())
+    write_json(output/'character-coverage.json',coverage);write_json(output/'snapshot.json',snapshot);write_json(output/'report.json',report)
+    print(json.dumps({'snapshotId':snapshot['id'],'characters':len(characters)},ensure_ascii=False))
 
 
 def verify_image_output(args):
@@ -70,10 +126,12 @@ def verify_image_output(args):
             hashes.write(json.dumps([document['id'],fingerprint(document)])+'\n')
     temporary.replace(output/'documents.jsonl');hash_temporary.replace(output/'document-hashes.jsonl')
     write_items(output,items,corpus)
+    if (output/'characters.jsonl').exists():hash_file(corpus,output/'characters.jsonl')
     snapshot['id']=(dynamic_snapshot_id(main_commit,supplement_commit,corpus.hexdigest()) if plan_digest is not None
                     else f'agd-{main_commit[:12]}-{corpus.hexdigest()[:12]}')
     coverage=coverage_report(items);coverage['snapshotId']=snapshot['id']
     report['corpusSha256']=corpus.hexdigest()
+    update_character_coverage_identity(output,snapshot['id'])
     write_json(output/'item-coverage.json',coverage);write_json(output/'snapshot.json',snapshot);write_json(output/'report.json',report)
     print(json.dumps({'snapshotId':snapshot['id'],'items':len(items),'verifiedImages':sum(i['icon']['status']=='verified' for i in items)},ensure_ascii=False))
 
@@ -106,6 +164,7 @@ def build(args):
             supplement_acquisition=fixed_acquisition(supplementary,SUPPLEMENT_REPO,SUPPLEMENT_COMMIT,'No acquisition marker provided')
     output=Path(args.output);output.mkdir(parents=True,exist_ok=True)
     items,_=build_items(root,supplementary,main_commit=main_commit,supplement_commit=supplement_commit)
+    characters,_=build_characters(root,supplementary,main_commit=main_commit,supplement_commit=supplement_commit)
     tcg_report=None
     if getattr(args,'tcg_root',None):
         from .tcg import enrich_tcg
@@ -150,12 +209,15 @@ def build(args):
         for identity in sorted(previous):deletions.write(json.dumps(identity)+'\n')
     delta['deleted']=len(previous);delta['samples']['deleted']=sorted(previous)[:100]
     for item in items:item['documentIds']=[identity for identity in item['documentIds'] if identity in result.document_ids]
+    for character in characters:character['documentIds']=[identity for identity in character['documentIds'] if identity in result.document_ids]
     write_items(output,items,corpus)
+    write_catalog(output,'characters',characters,corpus)
     if source_plan is not None:
         snapshot_id=dynamic_snapshot_id(main_commit,supplement_commit,corpus.hexdigest())
     else:
         snapshot_id=getattr(args,'snapshot_id',None) or f'agd-{main_commit[:12]}-{corpus.hexdigest()[:12]}'
     item_coverage=coverage_report(items);item_coverage['snapshotId']=snapshot_id
+    character_coverage=character_coverage_report(characters);character_coverage['snapshotId']=snapshot_id
     if tcg_report is not None:result.report['enrichment']={'tcg':tcg_report}
     result.report['acquisition']=acquisition
     if supplementary:result.report['supplementaryAcquisition']=supplement_acquisition
@@ -165,10 +227,12 @@ def build(args):
     result.report['delta']=delta
     result.report['corpusSha256']=corpus.hexdigest()
     result.report['items']={'localizedRecords':len(items),'uniqueItems':item_coverage['uniqueItems']}
+    result.report['characters']={'localizedRecords':len(characters),'uniqueCharacters':character_coverage['uniqueCharacters']}
     snapshot={'id':snapshot_id,'sourceRepo':MAIN_REPO,'sourceCommit':main_commit,'gameVersion':None,
               'createdAt':datetime.now(timezone.utc).isoformat(),'label':f'Pinned corpus {main_commit[:12]}'+(' (partial acquisition)' if not acquisition.get('complete') else ''),'state':'ready'}
     temporary.replace(document_file);hash_temporary.replace(hash_file);stage.unlink()
     write_json(output/'snapshot.json',snapshot);write_json(output/'coverage.json',result.coverage);write_json(output/'report.json',result.report);write_json(output/'item-coverage.json',item_coverage)
+    write_json(output/'character-coverage.json',character_coverage)
     print(json.dumps({'snapshotId':snapshot_id,'documents':len(result.document_ids),'coverage':result.coverage,'acquisitionComplete':acquisition.get('complete',False),'output':str(output)},ensure_ascii=False))
     return output
 
@@ -178,10 +242,23 @@ def do_import(args,output=None):
     directory=Path(output or args.normalized)
     snapshot=json.loads((directory/'snapshot.json').read_text())
     if getattr(args,'snapshot_id',None):snapshot['id']=args.snapshot_id
+    report_path=directory/'report.json'
+    expected=json.loads(report_path.read_text()).get('corpusSha256') if report_path.exists() else None
+    digest=hashlib.sha256()
+    files=[name for name in ('documents','items','characters') if (directory/(name+'.jsonl')).exists()]
+    def records(name):
+        with (directory/(name+'.jsonl')).open('rb') as stream:
+            for line in stream:
+                digest.update(line)
+                if line.strip():yield json.loads(line)
+        if expected is not None and name==files[-1] and digest.hexdigest()!=expected:
+            raise ValueError('Imported corpus digest does not match the normalized report')
     store=CatalogStore(args.database_url)
-    snapshot=store.import_snapshot(snapshot,read_documents(directory/'documents.jsonl'),json.loads((directory/'coverage.json').read_text()),activate=not args.no_activate,
-        items=read_documents(directory/'items.jsonl') if (directory/'items.jsonl').exists() else None,
-        item_coverage=json.loads((directory/'item-coverage.json').read_text()) if (directory/'item-coverage.json').exists() else None)
+    snapshot=store.import_snapshot(snapshot,records('documents'),json.loads((directory/'coverage.json').read_text()),activate=not args.no_activate,
+        items=records('items') if 'items' in files else None,
+        item_coverage=json.loads((directory/'item-coverage.json').read_text()) if (directory/'item-coverage.json').exists() else None,
+        characters=records('characters') if 'characters' in files else None,
+        character_coverage=json.loads((directory/'character-coverage.json').read_text()) if (directory/'character-coverage.json').exists() else None)
     print(json.dumps({'snapshot':snapshot,'activated':not args.no_activate},ensure_ascii=False))
 
 
@@ -208,6 +285,13 @@ def main(argv=None):
     images=sub.add_parser('verify-images',help='Verify resource headers and write a new unpublished item snapshot identity')
     images.add_argument('--normalized',required=True);images.add_argument('--cache',required=True);images.add_argument('--workers',type=int,default=12)
     images.add_argument('--asset-cache',help='Verify optional exact-identifier fallback images')
+    character_media=sub.add_parser('verify-character-media',help='Verify character images and pinned voice archive membership; write a new unpublished snapshot')
+    character_media.add_argument('--normalized',required=True)
+    character_media.add_argument('--supplementary')
+    character_media.add_argument('--cache',required=True,help='Directory for bounded image checks, voice indexes and coverage report')
+    character_media.add_argument('--image-mapping',help='Optional immutable pinned character image mapping JSON')
+    character_media.add_argument('--voice-index',help='Optional pinned publisher voice index README')
+    character_media.add_argument('--workers',type=int,default=8)
     for command in ('snapshots','activate','rollback'):
         action=sub.add_parser(command,help='List snapshots' if command=='snapshots' else 'Atomically activate a previously imported ready snapshot')
         action.add_argument('--database-url')
@@ -230,6 +314,7 @@ def main(argv=None):
             print(json.dumps(acquire(repo,commit,args.destination,args.tree_file,args.workers,supplementary,source_plan=source_plan)))
         elif args.command=='normalize':build(args)
         elif args.command=='verify-images':verify_image_output(args)
+        elif args.command=='verify-character-media':verify_character_media_output(args)
         elif args.command=='import':do_import(args)
         elif args.command=='update':do_import(args,build(args))
         elif args.command=='prepare-embeddings':
