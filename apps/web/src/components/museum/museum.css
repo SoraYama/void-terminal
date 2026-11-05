@@ -1,4 +1,4 @@
-@font-face{font-family:MuseumDisplay;src:url('/assets/fonts/museum-heading.ttf') format('truetype');font-style:normal;font-weight:600;font-display:swap}
+@font-face{font-family:MuseumDisplay;src:url('/assets/fonts/compendium-heading.ttf') format('truetype');font-style:normal;font-weight:600;font-display:swap}
 .main.museum{background:linear-gradient(180deg,#19392c20,#173d3745),url('/assets/scenery-sumeru-world.jpg') center/cover;overflow:hidden}
 .museum .workspace{padding:0;min-height:0;height:100%;max-width:none}
 .museum-workspace{--museum-ink:#304354;--museum-muted:#637079;--museum-paper:#f5f0e5;--museum-panel:#fffaf0;--museum-gold:#967944;--museum-line:#bda77c75;--rarity-1:#869198;--rarity-2:#6b947d;--rarity-3:#578aaa;--rarity-4:#8b6ba4;--rarity-5:#b99653;height:100%;display:flex;flex-direction:column;padding:22px 24px 24px;color:var(--museum-ink);gap:20px;min-width:0}

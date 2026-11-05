@@ -72,9 +72,9 @@ test('museum: deep link, delayed selection and broken image are safe',async({pag
  await page.reload();await expect(page.locator('.museum-detail h2')).toHaveText('雾切之回光');
 });
 test('museum: navigation preserves draft and ask pins a new unsent conversation',async({page},info)=>{
- test.skip(info.project.name==='mobile');await fixture(page);await page.goto('/');await page.locator('#question').fill('保留我的草稿');await page.getByRole('button',{name:'道具博览馆',exact:true}).click();await expect(page).toHaveURL(/museum/);await page.goBack();await expect(page.locator('#question')).toHaveValue('保留我的草稿');await page.goForward();await selectHoma(page);
+ test.skip(info.project.name==='mobile');await fixture(page);await page.goto('/');await page.locator('#question').fill('保留我的草稿');await page.getByRole('button',{name:'万象集录',exact:true}).click();await expect(page).toHaveURL(/museum/);await page.goBack();await expect(page.locator('#question')).toHaveValue('保留我的草稿');await page.goForward();await selectHoma(page);
  await page.getByRole('button',{name:'向终端询问此道具',exact:true}).click();await expect(page.locator('#question')).toHaveValue(/护摩之杖/);await page.getByRole('button',{name:'恢复之前的草稿',exact:true}).click();await expect(page.locator('#question')).toHaveValue('保留我的草稿');
- await page.getByRole('button',{name:'道具博览馆',exact:true}).click();await selectHoma(page);await page.getByRole('button',{name:'向终端询问此道具',exact:true}).click();
+ await page.getByRole('button',{name:'万象集录',exact:true}).click();await selectHoma(page);await page.getByRole('button',{name:'向终端询问此道具',exact:true}).click();
  let sent=false;await page.route('**/api/chat',r=>{sent=true;expect(r.request().postDataJSON().snapshotId).toBe(snapshotId);return r.fulfill({contentType:'text/event-stream',body:`event: text_delta\ndata: {"text":"fixture reply"}\n\nevent: done\ndata: {"snapshotId":"${snapshotId}","usage":{},"finishReason":"stop"}\n\n`})});
  expect(sent).toBe(false);await page.getByRole('button',{name:'发送',exact:true}).click();await expect(page.locator('.markdown')).toContainText('fixture reply');expect(sent).toBe(true);
 });
@@ -106,7 +106,7 @@ async function releaseHistory(page:Page){
  });
 }
 async function awaitHeldHistory(page:Page){await expect.poll(()=>page.evaluate(()=>(window as unknown as {historyDelay:{pending:unknown[]}}).historyDelay.pending.length)).toBe(1)}
-async function enterMuseum(page:Page,mobile:boolean){if(mobile)await page.getByRole('button',{name:'Menu',exact:true}).click();await page.getByRole('button',{name:'道具博览馆',exact:true}).click();await selectHoma(page)}
+async function enterMuseum(page:Page,mobile:boolean){if(mobile)await page.getByRole('button',{name:'Menu',exact:true}).click();await page.getByRole('button',{name:'万象集录',exact:true}).click();await selectHoma(page)}
 
 test('museum: Ask cancels a send waiting for initial history persistence',async({page},info)=>{
  await fixture(page);await delayHistory(page);let requests:Array<Record<string,unknown>>=[];
@@ -164,6 +164,6 @@ test('museum: server pagination, filters, stale lists, errors and retry',async({
  fail=true;await page.getByRole('searchbox').fill('failure');await expect(page.locator('.museum-empty').getByRole('alert')).toContainText('Fixture unavailable');fail=false;await page.getByRole('button',{name:'重试',exact:true}).click();await expect(page.locator('.museum-card')).toContainText('护摩之杖');
 });
 test('museum: UI language, source language and theme remain shared with the shell',async({page},info)=>{
- test.skip(info.project.name==='mobile');await fixture(page);await page.goto('/museum');await page.getByRole('button',{name:'界面语言',exact:true}).click();await expect(page.getByRole('heading',{name:'Item Museum',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Weapons',exact:true})).toHaveAttribute('aria-pressed','true');
+ test.skip(info.project.name==='mobile');await fixture(page);await page.goto('/museum');await page.getByRole('button',{name:'界面语言',exact:true}).click();await expect(page.getByRole('heading',{name:'Compendium',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Weapons',exact:true})).toHaveAttribute('aria-pressed','true');
  await page.getByRole('button',{name:'Settings',exact:true}).click();const pending=page.waitForRequest(r=>r.url().includes('/api/items?')&&new URL(r.url()).searchParams.get('language')==='en');await choose(page,'Source language','English sources');await page.keyboard.press('Escape');const request=await pending;expect(new URL(request.url()).searchParams.get('snapshotId')).toBe(snapshotId);
 });
