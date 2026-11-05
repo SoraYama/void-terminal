@@ -128,3 +128,27 @@ docker compose -f compose.sqlite.yaml up --no-build -d --wait --wait-timeout 240
 ```
 
 本次 19:18:45（Asia/Shanghai）切换完成，公网 API/SSE 与桌面/手机真实资料验收通过。19:19:48 复查两个上游官方 Atom feed，分别仍为 `bd35e243fa436f141f015cf221a6e19d0c34b7ca` 和 `49a6544a6c6ae36089cb42fa591fc46f01de8bcf`。这些提交是 2026-11-03 发布的基线。
+
+### 七圣召唤与补图演练
+
+仍以 AnimeGameData 为道具主源，以 genshin-db 为第二源。卡牌资料以原始
+背包 ID 和卡面表关联，保留原道具介绍、故事和图片。补图仅使用固定 Git
+提交中完全同名且完整解码、校验通过的 PNG，浏览器直接使用固定版本链接。
+
+首次先构建独立 worker 镜像，固定两个仓库的完整提交，用服务器现有刷新锁
+跑演练。此命令不修改生产注册表、容器或定时器。
+
+```bash
+python3 scripts/catalog_rehearse.py --workspace /opt/void-terminal/catalog-refresh/rehearsals/<new-id> \
+  --image sha256:<worker-image-id> --main-commit <40-hex> --supplement-commit <40-hex>
+python3 scripts/catalog_audit.py /opt/void-terminal/catalog-refresh/rehearsals/<new-id>
+```
+
+读取私有目录中的 `rehearsal-report.json` 和 `verified-item-delta.json`。
+前者包含采集和压缩期间每秒采样的磁盘余量、候选归档、历史引用和私有回退
+验收；后者从已封装的 SQLite 重算各语言和分类的实际补齐量及退步。图片
+目录命中和实际补齐分开。两份报告通过、生产基准与上游提交仍一致后，
+`scripts/catalog_release_enrichment.py` 才用同一归档上线，无需重新构建
+数据库。生产执行须有和日常刷新相同的 systemd 停止后恢复措施
+（`catalog_refresh.py recover`）。两份报告任一失败就保留旧版。定时器时刻
+不变；上线后核验北京时间的下一次触发及真实计划运行。

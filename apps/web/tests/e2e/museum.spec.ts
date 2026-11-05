@@ -7,9 +7,11 @@ const base={language:'zh-CN',state:'source-record',rawIds:['13501'],documentIds:
 const homa={...base,id:'weapon:13501',name:'护摩之杖',category:'weapon',subtype:'长柄武器',rarity:5,description:'朱赤的「柴火之杖」，曾在古老的祭仪中使用。',story:'传说在很久以前，每一场火祭都意味着新的开始。',icon:{identifier:'UI_EquipIcon_Pole_Homa',url:'https://gi.yatta.moe/assets/UI/UI_EquipIcon_Pole_Homa.png',status:'verified',provider:'yatta'},weapon:{type:'WEAPON_POLE',levels:[{level:1,ascension:0,stats:[{key:'ATK',label:'基础攻击力',value:45.9364,unit:''}]},{level:20,ascension:0,stats:[{key:'ATK',label:'基础攻击力',value:121.73146,unit:''}]},{level:20,ascension:1,stats:[{key:'ATK',label:'基础攻击力',value:152.83146,unit:''}]},{level:90,ascension:6,stats:[{key:'ATK',label:'基础攻击力',value:608.0745972,unit:''},{key:'CD',label:'暴击伤害',value:66.1536,unit:'%'}]}],refinements:[1,2,3,4,5].map(rank=>({rank,name:'无羁的朱赤之蝶',description:`生命值提升${15+rank*5}%。`})),ascensions:[{phase:1,levelCap:40,coin:5000,items:[{id:'material:100110',name:'漆黑陨铁的一粒',count:5}]},{phase:2,levelCap:50,coin:15000,items:[{id:'material:100110',name:'漆黑陨铁的一粒',count:8}]}]}};
 const flower={...base,id:'artifact:15001:flower',name:'角斗士的留恋',category:'artifact',subtype:'生之花',rarity:5,description:'战士佩戴的花。',story:'角斗士的故事。',icon:{...homa.icon,url:'https://gi.yatta.moe/assets/UI/reliquary/UI_RelicIcon_15001_4.png'},artifact:{setId:15001,setName:'角斗士的终幕礼',slot:'flower',setEffects:[{pieces:2,text:'攻击力提高18%。'},{pieces:4,text:'普通攻击造成的伤害提高35%。'}],rarities:[5],rules:[{rarity:5,maxLevel:20,mainStats:[{key:'HP',label:'生命值',unit:'',values:[{level:0,value:717},{level:20,value:4780}]}],substats:[{key:'HP',label:'生命值',unit:'',values:[209,239,269,299]},{key:'ATK',label:'攻击力',unit:'',values:[14,16,18,19]}]}]}};
 const quest={...base,id:'material:100110',name:'诗篇断章（上）',category:'quest',subtype:'任务物品',rarity:3,description:'一张被撕下的纸页。',story:'来自古老诗篇的断章。',icon:{identifier:'missing',url:null,status:'missing',provider:'none'}};
+const tcgSprite='https://raw.githubusercontent.com/PathOfGenshin/resources/015a2493b5672b28576ab78ffbcffde2ea0c9844/resources/gi/Sprite/UI_ItemIcon_100102.png';
+const tcg={...base,id:'material:330001',name:'七圣召唤卡牌',category:'other',subtype:'MATERIAL_GCG_CARD',rarity:3,description:'原版道具说明。',story:'原版道具故事。',icon:{identifier:'UI_ItemIcon_100102',url:tcgSprite,status:'verified',provider:'pathofgenshin'},tcg:{cardId:330001,face:'standard',name:'卡牌名称',effect:'造成2点火元素伤害。',storyTitle:'卡牌故事标题',story:'独立的卡牌故事。',acquisition:'在牌手手册中获取。',costs:[{type:'GCG_COST_DICE_PYRO',count:2},{type:'GCG_COST_ENERGY',count:1}],hp:12,skills:[{id:3,name:'霜华矢',effect:'造成冰元素伤害。',costs:[{type:'GCG_COST_DICE_CRYO',count:5}]}],sources:{effect:source}}};
 const goblet={...flower,id:'artifact:15001:goblet',name:'角斗士的酣醉',subtype:'空之杯',artifact:{...flower.artifact,slot:'goblet',rules:[{rarity:5,maxLevel:20,mainStats:[{key:'HP_PERCENT',label:'生命值百分比',unit:'%',values:[{level:0,value:7},{level:20,value:46.6}]},{key:'ATK_PERCENT',label:'攻击力百分比',unit:'%',values:[{level:0,value:7},{level:20,value:46.6}]}],substats:[{key:'HP_PERCENT',label:'生命值百分比',unit:'%',values:[4.1,4.7,5.3,5.8]},{key:'ATK_PERCENT',label:'攻击力百分比',unit:'%',values:[4.1,4.7,5.3,5.8]}]}]}};
 const weapons=[homa,...Array.from({length:23},(_,i)=>({...homa,id:`weapon:${14000+i}`,name:['雾切之回光','终末嗟叹之诗','四风原典','千夜浮梦','赤角石溃杵','渔获'][i%6],rarity:i>5?4:5,icon:{...homa.icon,url:`https://gi.yatta.moe/assets/UI/${['UI_EquipIcon_Sword_Narukami','UI_EquipIcon_Bow_Widsith','UI_EquipIcon_Catalyst_Fourwinds','UI_EquipIcon_Catalyst_Ayus','UI_EquipIcon_Claymore_Itadorimaru','UI_EquipIcon_Pole_Mori'][i%6]}.png`}}))];
-const records=[...weapons,flower,goblet,quest];
+const records=[...weapons,flower,goblet,quest,tcg];
 async function fixture(page:Page,theme='light'){
  await page.addInitScript(theme=>localStorage.setItem('void.preferences',JSON.stringify({theme,locale:'zh-CN',sourceLanguage:'zh-CN',mode:'shared'})),theme);
  await page.route('**/api/status',r=>r.fulfill({json:{ready:true,provider:{model:'fixture',sharedEnabled:true,byok:true}}}));
@@ -44,6 +46,23 @@ test('museum: filters, artifact rules, quest story, fallback and browser back',a
  await page.getByRole('button',{name:'任务物品',exact:true}).click();await page.locator(`[data-item-id="${quest.id}"]`).click();await expect(page.locator('.museum-detail')).toContainText('图片暂缺');await expect(page.getByRole('tab',{name:'培养',exact:true})).toHaveCount(0);await page.getByRole('tab',{name:'故事',exact:true}).click();await expect(page.locator('.museum-detail')).toContainText(quest.story);
  if(info.project.name==='mobile'){await page.goBack();await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.locator(`[data-item-id="${quest.id}"]`)).toBeFocused()}
  await page.getByRole('searchbox').fill('不存在的道具');await expect(page.locator('.museum-empty')).toContainText('没有找到');await expect(page).toHaveURL(/q=/);await page.getByRole('button',{name:'清除筛选',exact:true}).click();await expect(page.locator('.museum-card')).toHaveCount(24);
+});
+test('museum: TCG enrichment keeps the original description and story available',async({page})=>{
+ await fixture(page);
+ await page.route(tcgSprite,r=>r.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aEL8AAAAASUVORK5CYII=','base64')}));
+ await page.goto(`/museum?category=other&item=${encodeURIComponent(tcg.id)}&snapshotId=${snapshotId}`);
+ const detail=page.locator('.museum-detail'),panel=detail.getByRole('tabpanel');
+ await expect(detail.getByRole('heading',{name:tcg.name,exact:true})).toBeVisible();
+ const sprite=detail.getByRole('img',{name:tcg.name,exact:true});
+ await expect(sprite).toHaveAttribute('src',tcgSprite);
+ await expect.poll(()=>sprite.evaluate(el=>(el as HTMLImageElement).naturalWidth)).toBe(1);
+ await expect(panel).toContainText(tcg.description);
+ const story=detail.getByRole('tab',{name:'故事',exact:true});
+ await story.click();await expect(panel).toContainText(tcg.story);
+ await story.press('ArrowRight');
+ await expect(detail.getByRole('tab',{name:'七圣召唤',exact:true})).toBeFocused();
+ for(const value of [tcg.tcg.name,tcg.tcg.effect,tcg.tcg.storyTitle,tcg.tcg.story,tcg.tcg.acquisition,'火元素骰','充能','生命值','霜华矢','造成冰元素伤害。'])await expect(panel).toContainText(value);
+ await expect(panel.getByRole('definition').allTextContents()).resolves.toEqual(['12','2','1','5']);
 });
 test('museum: deep link, delayed selection and broken image are safe',async({page},info)=>{
  test.skip(info.project.name==='mobile');await fixture(page);

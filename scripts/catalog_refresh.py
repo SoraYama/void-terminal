@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 import fcntl
 import hashlib
@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -132,14 +133,16 @@ def publish(root, before, after, verify):
     try:
         atomic_json(root / 'state/registry.json', after)
         verify()
-    except Exception as error:
+    except (Exception, KeyboardInterrupt) as error:
         recover(root)
+        if not isinstance(error, Exception):
+            raise
         raise PublicationError('candidate failed public acceptance; previous registry restored') from error
     pending.unlink()
     fsync_dir(pending.parent)
 
 
-def run_once(root, latest, update):
+def run_once(root, latest, update, *, same_source_update=None):
     with task_lock(root):
         recover(root)
         before = registry(root)
@@ -148,7 +151,7 @@ def run_once(root, latest, update):
             require(isinstance(sources, dict) and set(sources) == {'main', 'supplement'} and
                     all(isinstance(x, str) and re.fullmatch(r'[0-9a-f]{40}', x) for x in sources.values()),
                     'invalid upstream commit pair')
-            if sources == current_sources(before):
+            if sources == current_sources(before) and not (same_source_update and same_source_update(root, before, sources)):
                 record(root, 'unchanged', snapshotId=before['active'], sources=sources)
                 return
             print(json.dumps({'phase': 'update-found', 'sources': sources}, ensure_ascii=False), flush=True)
@@ -159,7 +162,10 @@ def run_once(root, latest, update):
             record(root, 'failed', snapshotId=before['active'], reason=type(error).__name__,
                    detail=str(error) if isinstance(error, RefreshError) else 'see service log')
             raise
-        record(root, 'published', snapshotId=snapshot, previousSnapshotId=before['active'], sources=sources)
+        if snapshot == before['active']:
+            record(root, 'unchanged', snapshotId=snapshot, sources=sources)
+        else:
+            record(root, 'published', snapshotId=snapshot, previousSnapshotId=before['active'], sources=sources)
 
 
 def output(args, timeout=120):
@@ -304,6 +310,18 @@ def verify_public(new, old):
     for expected, source_id in citations:
         result = endpoint('/api/sources/' + quote(source_id, safe=''), snapshotId=expected)
         require(result['source']['snapshotId'] == expected and result['source']['text'], 'pinned source unavailable')
+    for sample in new.get('enrichmentSamples', {}).get('cards', []):
+        detail = endpoint('/api/items/' + quote(sample['id'], safe=''), snapshotId=sid, language=sample['language'])
+        card = detail['item'].get('tcg') or {}
+        require(detail['snapshotId'] == sid and card.get('cardId') == sample['cardId']
+                and card.get('face') == sample['face'] and (card.get('effect') or card.get('skills')),
+                'public card details do not match verified item data')
+    for sample in new.get('enrichmentSamples', {}).get('images', []):
+        detail = endpoint('/api/items/' + quote(sample['id'], safe=''), snapshotId=sid, language=sample['language'])
+        icon = detail['item']['icon']
+        require(detail['snapshotId'] == sid and icon['status'] == 'verified'
+                and icon.get('sha256') == sample['sha256'] and icon['url'] == sample['url'],
+                'public fallback image does not match verified item data')
     print(json.dumps({'phase': 'public-accepted', 'snapshotId': sid, 'previousSnapshotId': old['snapshotId']}), flush=True)
 
 
@@ -391,11 +409,11 @@ def archived_result(root, report, sources):
     return result if image.exists() or image.is_symlink() else None
 
 
-def staged_result(root, sources):
+def staged_result(root, sources, compatible=lambda result: True):
     saved = root / 'state/staged-result.json'
     if saved.exists() or saved.is_symlink():
         result = archived_result(root, saved, sources)
-        if result is not None:
+        if result is not None and compatible(result):
             return result
     # First deployments may have packed an archive before saving its report
     # outside the disposable worker directory.
@@ -409,7 +427,8 @@ def staged_result(root, sources):
     require(not workspace.is_symlink(), 'invalid staged build workspace')
     if worker_container(job) is not None:
         return None
-    return archived_result(root, report, sources)
+    result = archived_result(root, report, sources)
+    return result if result is not None and compatible(result) else None
 
 
 def pack(root, workspace, result):
@@ -436,9 +455,70 @@ def pack(root, workspace, result):
     return entry
 
 
-def apply_update(root, before, sources):
+def enrichment_compatible(result, sources, *, allow_retry):
+    from knowledge.catalog_enrichment import RULES_VERSION
+
+    manifest = result.get('enrichment') or {}
+    images, tcg = manifest.get('images') or {}, manifest.get('tcg') or {}
+    retry, matched = images.get('retry'), tcg.get('matched')
+    return (manifest.get('rulesVersion') == RULES_VERSION and manifest.get('sources') == sources
+            and type(matched) is int and matched > 0
+            and type(retry) is int and retry >= 0 and (allow_retry or not retry))
+
+
+def enrichment_enabled(root):
+    return read_json(root / 'state/settings.json').get('enrichmentEnabled', False) is True
+
+
+def archive_database(root, value):
+    sid = value['active']
+    require(sid in value['snapshots'], 'catalog enrichment requires an archived baseline')
+    return mount_image(root, sid, value['snapshots'][sid]['bytes'])
+
+
+def needs_same_source_update(root, before, sources):
+    if not enrichment_enabled(root):
+        return False
+    from knowledge.catalog_enrichment import RULES_VERSION
+
+    database = archive_database(root, before)
+    with closing(sqlite3.connect(database.as_uri() + '?mode=ro&immutable=1', uri=True)) as db:
+        row = db.execute('SELECT coverage FROM item_catalogs WHERE snapshot_id=?', (before['active'],)).fetchone()
+    manifest = json.loads(row[0]).get('enrichmentManifest') if row else None
+    require(manifest and manifest['sources'] == sources, 'first enrichment must be promoted from a rehearsal')
+    if manifest['rulesVersion'] != RULES_VERSION:
+        cursor = root / 'state/enrichment-unchanged.json'
+        if not cursor.is_file() or read_json(cursor) != {
+            'rulesVersion': RULES_VERSION, 'sources': sources, 'snapshotId': before['active'],
+        }:
+            return True
+    images = manifest.get('images') or {}
+    if not images.get('retry'):
+        return False
     require_space(root, 0)
     image = read_json(root / 'state/settings.json')['knowledgeImage']
+    require(re.fullmatch(r'sha256:[0-9a-f]{64}', image), 'invalid worker image')
+    script = Path(__file__).with_name('catalog_retry.py').resolve(strict=True)
+    require(marked_worker(root) is None, 'catalog worker needs recovery before retry probe')
+    job = 'void-catalog-build-' + uuid4().hex
+    probe = ['docker', 'run', '--rm', '--name', job, '--label', 'dev.void.catalog-refresh=' + job,
+             '--user', '10001:10001', '--cpus', '1', '--memory', '512m',
+             '--pids-limit', '48', '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
+             '--mount', f'type=bind,source={database.parent},target=/baseline,readonly',
+             '--mount', f'type=bind,source={root / "cache"},target=/cache',
+             '--mount', f'type=bind,source={script},target=/probe.py,readonly',
+             '--env', 'PYTHONPATH=/app/services/knowledge', image, 'python', '/probe.py', before['active']]
+    atomic_json(root / 'state/worker.json', {'name': job}, 0o600)
+    try:
+        return json.loads(output(probe, timeout=900))['newlyVerifiedImages'] > 0
+    finally:
+        worker_cleanup(root)
+
+
+def apply_update(root, before, sources, *, rehearsed=None, extra_verify=None):
+    require_space(root, 0)
+    image = read_json(root / 'state/settings.json')['knowledgeImage']
+    enrich = rehearsed is not None or enrichment_enabled(root)
     require(isinstance(image, str) and re.fullmatch(r'sha256:[0-9a-f]{64}', image), 'invalid worker image')
     require(output(['docker', 'inspect', '--format', '{{.Image}} {{.State.Health.Status}}', KNOWLEDGE]) == image + ' healthy',
             'knowledge container is not healthy or does not match configured worker image')
@@ -447,8 +527,16 @@ def apply_update(root, before, sources):
     baseline = inspect(active, legacy=active == before['legacy']['snapshotId'])
     require(baseline['snapshotId'] == active and baseline['sourceCommit'] == current_sources(before)['main'],
             'legacy/active catalog does not match registry')
+    if enrich and rehearsed is None:
+        require(baseline.get('enrichment'), 'first enrichment must be promoted from a rehearsal')
     try:
-        result = staged_result(root, sources)
+        if rehearsed is not None:
+            result = rehearsed
+        elif enrich:
+            result = staged_result(root, sources,
+                                   lambda candidate: enrichment_compatible(candidate, sources, allow_retry=False))
+        else:
+            result = staged_result(root, sources, lambda candidate: not candidate.get('enrichment'))
         reused = result is not None
         if reused:
             print(json.dumps({'phase': 'revalidating-staged-archive', 'snapshotId': result['snapshotId']}), flush=True)
@@ -464,11 +552,26 @@ def apply_update(root, before, sources):
             os.chown(workspace / 'tmp', 10001, 10001)
             atomic_json(workspace / 'baseline.json', baseline)
             print(json.dumps({'phase': 'building', 'workspace': str(workspace)}), flush=True)
-            guarded(build_command(image, job, workspace, root / 'cache', sources), root, 8 * 3600)
+            command = build_command(image, job, workspace, root / 'cache', sources)
+            if enrich:
+                database = archive_database(root, before)
+                command[command.index(image):command.index(image)] = [
+                    '--mount', f'type=bind,source={database.parent},target=/baseline,readonly',
+                ]
+                command += ['--enrich', '--baseline-database', '/baseline/catalog.sqlite']
+            guarded(command, root, 8 * 3600)
             result = read_json(workspace / 'result.json')
         require(result['sources'] == sources and result['sourceCommit'] == sources['main'], 'build pins do not match request')
         sid = result['snapshotId']
-        require(sid != active and sid != before['legacy']['snapshotId'], 'candidate would overwrite a live snapshot')
+        if enrich:
+            require(enrichment_compatible(result, sources, allow_retry=True), 'candidate enrichment manifest is incompatible')
+            if sid == active and not reused and result.get('enrichmentSamples') == baseline.get('enrichmentSamples'):
+                atomic_json(root / 'state/enrichment-unchanged.json', {
+                    'rulesVersion': result['enrichment']['rulesVersion'], 'sources': sources, 'snapshotId': active,
+                }, 0o600)
+                return active
+        require(sid != active and sid != before['legacy']['snapshotId'] and sid not in before['snapshots'],
+                'candidate would overwrite a registered snapshot')
         saved = root / 'state/staged-result.json'
         if reused:
             entry = verify_pack(*archive_metadata(root, result))
@@ -481,8 +584,19 @@ def apply_update(root, before, sources):
         mounted = mount_image(root, sid, entry['bytes'])
         require(digest(mounted) == entry['databaseSha256'], 'mounted SQLite hash differs from validated candidate')
         seen = inspect(sid, quick_check=reused)
+        if enrich:
+            from knowledge.catalog_enrichment import compare_items, read_baseline_items, validate_enrichment_counts
+
+            old_items = read_baseline_items(archive_database(root, before), active)
+            new_items = read_baseline_items(mounted, sid)
+            difference = compare_items(old_items, new_items)
+            require(not difference['regressions'] and not difference['deletedItems'],
+                    'enriched archive regressed relative to active catalog')
+            validate_enrichment_counts(new_items, seen['enrichment'])
         identity = ('snapshotId', 'sourceCommit', 'documentCount', 'chunkCount', 'samples')
-        require(all(seen[key] == result[key] for key in identity),
+        require(all(seen[key] == result[key] for key in identity)
+                and seen.get('enrichment') == result.get('enrichment')
+                and seen.get('enrichmentSamples') == result.get('enrichmentSamples'),
                 'knowledge container cannot read the verified candidate')
         if reused:
             from knowledge.ingest.source_plan import latest_commits
@@ -494,8 +608,14 @@ def apply_update(root, before, sources):
             **before['snapshots'], sid: {**entry, 'sequence': sequence},
         }}
         worker_cleanup(root)
+
+        def verify():
+            verify_public(seen, baseline)
+            if extra_verify is not None:
+                extra_verify()
+
         try:
-            publish(root, before, next_registry, lambda: verify_public(seen, baseline))
+            publish(root, before, next_registry, verify)
         except PublicationError:
             try:
                 verify_public(baseline, baseline)
@@ -515,7 +635,7 @@ def main():
     root = args.root.resolve()
     if args.command == 'run':
         from knowledge.ingest.source_plan import latest_commits
-        run_once(root, latest_commits, apply_update)
+        run_once(root, latest_commits, apply_update, same_source_update=needs_same_source_update)
     else:
         with task_lock(root):
             if args.command == 'mounts':

@@ -3,7 +3,7 @@ import {useState} from 'react';
 import {ArrowLeft,ArrowSquareOut,ChatCircle,BookOpen} from '@phosphor-icons/react';
 import {ThemedSelect} from '../themed-select';
 import {ItemImage,Rarity,categoryNames} from './item-image';
-import {ascensionCost,formatStat,possibleSubstats,itemSubtypeLabel,type Item,type ItemResult} from '../../lib/items';
+import {ascensionCost,formatStat,possibleSubstats,itemSubtypeLabel,type Item,type ItemResult,type ItemTcg,type TcgCost} from '../../lib/items';
 import type {Locale} from '../../lib/contracts';
 import {safeUrl} from '../../lib/client';
 
@@ -11,7 +11,7 @@ interface Props {result:ItemResult;locale:Locale;onClose:()=>void;onSelect:(id:s
 export function ItemDetail({result,locale,onClose,onSelect,onOpenDocument,onAsk}:Props){
  const {item,snapshotId}=result,zh=locale==='zh-CN';
  const [tab,setTab]=useState('attributes');
- const tabs=[{id:'attributes',name:zh?'属性':'Details'},...(item.weapon?.ascensions.length?[{id:'growth',name:zh?'培养':'Ascension'}]:[]),...(item.story?[{id:'story',name:zh?'故事':'Story'}]:[]),{id:'sources',name:zh?'来源':'Sources'}];
+ const tabs=[{id:'attributes',name:zh?'属性':'Details'},...(item.weapon?.ascensions.length?[{id:'growth',name:zh?'培养':'Ascension'}]:[]),...(item.story?[{id:'story',name:zh?'故事':'Story'}]:[]),...(item.tcg?[{id:'tcg',name:zh?'七圣召唤':'TCG'}]:[]),{id:'sources',name:zh?'来源':'Sources'}];
  return <article className="museum-detail">
   <header className="museum-detail-heading"><div><h2>{item.name}</h2><p>{itemSubtypeLabel(item,categoryNames[item.category])}</p><Rarity value={item.rarity} zh={zh}/></div><button onClick={onClose} aria-label={zh?'返回道具列表':'Back to items'} title={zh?'返回道具列表':'Back to items'}><ArrowLeft size={23}/></button></header>
   <ItemImage item={item} zh={zh} large/>
@@ -22,11 +22,40 @@ export function ItemDetail({result,locale,onClose,onSelect,onOpenDocument,onAsk}
     {tab==='attributes'&&<>{item.weapon&&<WeaponRefinement item={item} zh={zh}/>}<p className="museum-description">{item.description|| (zh?'上游尚未提供说明。':'The source has not supplied a description.')}</p>{item.artifact&&<ArtifactRules item={item} locale={locale}/>}{!!item.attributes.length&&<dl className="museum-attributes">{item.attributes.map((a,i)=><div key={i}><dt>{a.label}</dt><dd>{a.value}</dd></div>)}</dl>}{!!item.acquisition.length&&<><h3>{zh?'获取与用途':'Acquisition and use'}</h3>{item.acquisition.map((a,i)=><p key={i}>{a}</p>)}</>}</>}
     {tab==='growth'&&<AscensionCosts item={item} locale={locale} onSelect={onSelect}/>}
     {tab==='story'&&<p className="museum-story">{item.story}</p>}
+    {tab==='tcg'&&item.tcg&&<CardDetails card={item.tcg} itemName={item.name} locale={locale}/>}
     {tab==='sources'&&<><p className="museum-record-state">{item.state==='internal'?(zh?'内部记录 · 不代表可获得道具':'Internal record · Availability not established'):(zh?'收录于源数据 · 不代表当前可获取':'Source record · Current availability not established')}</p><dl className="museum-provenance"><dt>{zh?'快照':'Snapshot'}</dt><dd>{snapshotId}</dd><dt>ID</dt><dd>{item.id}</dd></dl>{item.sources.map((s,i)=><div className="museum-source" key={i}><strong>{s.path}</strong><span>{s.commit} · {s.locator}</span>{safeUrl(s.url)&&<a href={safeUrl(s.url)} target="_blank" rel="noopener noreferrer">{zh?'查看固定版本来源':'View pinned source'}<ArrowSquareOut size={16}/></a>}</div>)}<details className="museum-coverage"><summary>{zh?'资料完整性':'Data completeness'}</summary><dl>{Object.entries(item.coverage).map(([key,value])=><div key={key}><dt>{key}</dt><dd>{({complete:zh?'完整':'Complete','not-applicable':zh?'不适用':'Not applicable','upstream-missing':zh?'上游缺失':'Missing upstream',unresolved:zh?'尚未解析':'Unresolved',unreachable:zh?'不可达':'Unreachable'})[value]}</dd></div>)}</dl></details>{item.documentIds.length?item.documentIds.map((id,i)=><button className="museum-document" key={id} onClick={()=>onOpenDocument(id,snapshotId)}><BookOpen size={18}/>{zh?'查看原始文献':'Read original document'}{i>0?` ${i+1}`:''}</button>):<p>{zh?'该记录尚未关联原始文献。':'No original document is linked to this record.'}</p>}</>}
    </section>
    <button className="museum-ask" onClick={()=>onAsk(item.name,item.id,snapshotId)}><ChatCircle size={20}/>{zh?'向终端询问此道具':'Ask the terminal about this item'}</button>
   </div>
  </article>;
+}
+const cardFaceLabels={standard:['普通卡面','Standard card face'],gold:['金色卡面','Gold card face'],platinum:['白金卡面','Platinum card face']} as const;
+const cardCostLabels:Record<string,readonly [string,string]>={
+ GCG_COST_DICE_ANEMO:['风元素骰','Anemo dice'],GCG_COST_DICE_CRYO:['冰元素骰','Cryo dice'],
+ GCG_COST_DICE_DENDRO:['草元素骰','Dendro dice'],GCG_COST_DICE_ELECTRO:['雷元素骰','Electro dice'],
+ GCG_COST_DICE_GEO:['岩元素骰','Geo dice'],GCG_COST_DICE_HYDRO:['水元素骰','Hydro dice'],
+ GCG_COST_DICE_PYRO:['火元素骰','Pyro dice'],GCG_COST_DICE_SAME:['相同元素骰','Matching elemental dice'],
+ GCG_COST_DICE_VOID:['任意元素骰','Any elemental dice'],GCG_COST_ENERGY:['充能','Energy'],
+ GCG_COST_LEGEND:['秘传','Arcane Legend'],
+};
+function CardCosts({costs,locale}:{costs:TcgCost[];locale:Locale}){
+ const zh=locale==='zh-CN',labelIndex=zh?0:1;
+ return <dl className="museum-attributes">{costs.map(({type,count},i)=><div key={i}><dt>{Object.hasOwn(cardCostLabels,type)?cardCostLabels[type][labelIndex]:zh?'其他费用':'Other cost'}</dt><dd>{formatStat(count,'',locale)}</dd></div>)}</dl>;
+}
+function CardDetails({card,itemName,locale}:{card:ItemTcg;itemName:string;locale:Locale}){
+ const zh=locale==='zh-CN',labelIndex=zh?0:1;
+ return <>
+  <h3>{card.name||itemName}</h3><p className="museum-note">{cardFaceLabels[card.face]?.[labelIndex]}</p>
+  {card.effect&&<><h3>{zh?'卡牌效果':'Card effect'}</h3><p>{card.effect}</p></>}
+  {card.hp!==undefined&&<dl className="museum-attributes"><div><dt>{zh?'生命值':'Health'}</dt><dd>{formatStat(card.hp,'',locale)}</dd></div></dl>}
+  {!!card.costs?.length&&<><h3>{zh?'费用':'Cost'}</h3><CardCosts costs={card.costs} locale={locale}/></>}
+  {!!card.skills?.length&&<><h3>{zh?'角色技能':'Character skills'}</h3>{card.skills.map(skill=><div key={skill.id}>
+   {skill.name&&<h4>{skill.name}</h4>}{skill.effect&&<p>{skill.effect}</p>}
+   {!!skill.costs?.length&&<CardCosts costs={skill.costs} locale={locale}/>}
+  </div>)}</>}
+  {(card.storyTitle||card.story)&&<><h3>{card.storyTitle||(zh?'卡牌故事':'Card story')}</h3>{card.story&&<p className="museum-story">{card.story}</p>}</>}
+  {card.acquisition&&<><h3>{zh?'卡牌获取方式':'How to obtain the card'}</h3><p>{card.acquisition}</p></>}
+ </>;
 }
 function WeaponStats({item,locale}:{item:Item;locale:Locale}){
  const levels=item.weapon!.levels,zh=locale==='zh-CN';const [index,setIndex]=useState(Math.max(0,levels.length-1));const selected=levels[index];

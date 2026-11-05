@@ -52,6 +52,15 @@ describe('museum source rules',()=>{
    expect(allowedItemImage({url:'https://gi.yatta.moe/assets/UI/'+path,status:'verified'})).toBeNull();
   }
  });
+ it('accepts only canonical verified PNGs from the pinned PathOfGenshin sprite tree',()=>{
+  const base='https://raw.githubusercontent.com/PathOfGenshin/resources/015a2493b5672b28576ab78ffbcffde2ea0c9844/resources/gi/Sprite/';
+  const url=base+'UI_ItemIcon_100102.png';
+  expect(allowedItemImage({url,status:'verified'})).toBe(url);
+  expect(allowedItemImage({url,status:'unverified'})).toBeNull();
+  for(const unsafe of [url.replace('015a2493b5672b28576ab78ffbcffde2ea0c9844','main'),url.replace('PathOfGenshin','other'),url.replace('raw.githubusercontent.com','other.test'),url.replace('raw.githubusercontent.com','name@raw.githubusercontent.com'),url.replace('raw.githubusercontent.com','raw.githubusercontent.com:443'),url+'?v=1',url+'#face',base+'nested/../UI_ItemIcon_100102.png',base+'UI_ItemIcon_100102.svg',base+'Other_100102.png']){
+   expect(allowedItemImage({url:unsafe,status:'verified'})).toBeNull();
+  }
+ });
  it('separates stage and cumulative ascension cost',()=>{
   const stages=[{phase:1,levelCap:40,coin:5000,items:[{id:'a',name:'A',count:3}]},{phase:2,levelCap:50,coin:15000,items:[{id:'a',name:'A',count:5}]}];
   expect(ascensionCost(stages,2,false)).toEqual({coin:15000,items:[{id:'a',name:'A',count:5}]});

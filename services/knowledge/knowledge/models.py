@@ -89,6 +89,13 @@ Rarity = Annotated[int, Field(ge=1, le=5)]
 FiniteValue = Annotated[float, Field(allow_inf_nan=False)]
 
 
+class ImageEvidence(ItemWire):
+    repo: Literal['PathOfGenshin/resources']
+    commit: str = Field(pattern=r'^[0-9a-f]{40}$')
+    path: str = Field(pattern=r'^resources/gi/Sprite/UI_[A-Za-z0-9_]+\.png$')
+    gitBlobSha1: str = Field(pattern=r'^[0-9a-f]{40}$')
+
+
 class ItemIcon(ItemWire):
     identifier: str
     url: str | None
@@ -100,6 +107,20 @@ class ItemIcon(ItemWire):
     height: int | None = Field(default=None, ge=1, le=16384)
     temporary: bool | None = None
     reason: str | None = Field(default=None, max_length=1000)
+    sha256: str | None = Field(default=None, pattern=r'^[0-9a-f]{64}$')
+    evidence: ImageEvidence | None = None
+
+    @model_validator(mode='after')
+    def verify_fallback_identity(self):
+        if self.provider == 'pathofgenshin':
+            proof = self.evidence
+            if (self.status != 'verified' or not proof or not self.sha256
+                    or proof.path != f'resources/gi/Sprite/{self.identifier}.png'
+                    or self.url != f'https://raw.githubusercontent.com/{proof.repo}/{proof.commit}/{proof.path}'):
+                raise ValueError('Fallback image must match its verified immutable evidence')
+        elif self.evidence or self.sha256:
+            raise ValueError('Unexpected fallback image evidence')
+        return self
 
     @field_validator('url')
     @classmethod
@@ -196,6 +217,35 @@ class ItemArtifact(ItemWire):
     rules: list[ArtifactRule] = Field(max_length=5)
 
 
+class TCGCost(ItemWire):
+    type: str = Field(min_length=1, max_length=100)
+    count: int = Field(ge=0, le=100)
+
+
+class TCGSkill(ItemWire):
+    id: int = Field(gt=0)
+    name: str | None = None
+    effect: str | None = None
+    costs: list[TCGCost] | None = Field(default=None, max_length=32)
+    sources: dict[Literal['id', 'name', 'effect', 'costs'], SourceRecord]
+
+
+class ItemTCG(ItemWire):
+    cardId: int = Field(gt=0)
+    face: Literal['standard', 'gold', 'platinum']
+    cardType: Literal['GCG_CARD_CHARACTER', 'GCG_CARD_ASSIST', 'GCG_CARD_EVENT', 'GCG_CARD_MODIFY']
+    name: str | None = None
+    effect: str | None = None
+    storyTitle: str | None = None
+    story: str | None = None
+    acquisition: str | None = None
+    costs: list[TCGCost] | None = Field(default=None, max_length=32)
+    hp: int | None = Field(default=None, gt=0)
+    skills: list[TCGSkill] = Field(default_factory=list, max_length=32)
+    sources: dict[Literal['cardId', 'face', 'cardType', 'name', 'effect', 'storyTitle', 'story',
+                          'acquisition', 'costs', 'hp', 'skills'], SourceRecord]
+
+
 class Item(ItemWire):
     id: str = Field(min_length=1, max_length=512)
     language: Locale
@@ -215,6 +265,7 @@ class Item(ItemWire):
     coverage: dict[str, CoverageState] = Field(max_length=100)
     weapon: ItemWeapon | None = None
     artifact: ItemArtifact | None = None
+    tcg: ItemTCG | None = None
 
     @model_validator(mode='after')
     def category_payload(self):

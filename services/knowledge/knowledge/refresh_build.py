@@ -169,6 +169,33 @@ def _read_samples(db, sid, expected):
     return samples
 
 
+def _enrichment_samples(db, sid, expected):
+    from knowledge.models import ItemIcon, ItemTCG
+
+    samples = {'cards': [], 'images': []}
+    for language, item_id, data in db.execute(
+        "SELECT language,id,data FROM items WHERE snapshot_id=? AND state='source-record' "
+        "AND json_type(data,'$.tcg')='object' ORDER BY language,id", (sid,),
+    ):
+        card = ItemTCG.model_validate(json.loads(data)['tcg'])
+        for field, record in card.sources.items():
+            _require_source(record.model_dump(), expected, f'{item_id} TCG {field}')
+        for skill in card.skills:
+            for field, record in skill.sources.items():
+                _require_source(record.model_dump(), expected, f'{item_id} TCG skill {field}')
+        if (card.effect or card.skills) and (len(samples['cards']) < 2 or item_id in {'material:326613', 'material:334613'}):
+            samples['cards'].append({'id': item_id, 'language': language, 'cardId': card.cardId, 'face': card.face})
+    rows = db.execute(
+        "SELECT language,id,json_extract(data,'$.icon') FROM items WHERE snapshot_id=? "
+        "AND state='source-record' AND json_extract(data,'$.icon.provider')='pathofgenshin' "
+        "ORDER BY language,id LIMIT 3", (sid,),
+    )
+    for language, item_id, data in rows:
+        icon = ItemIcon.model_validate_json(data)
+        samples['images'].append({'id': item_id, 'language': language, 'url': icon.url, 'sha256': icon.sha256})
+    return samples
+
+
 def _sidecars(database):
     return [database.with_name(database.name + suffix) for suffix in ('-wal', '-shm', '-journal')]
 
@@ -224,12 +251,29 @@ def inspect_database(database, snapshot_id, *, quick_check=False, sealed=False, 
             'documentsByLanguage': docs, 'itemsByCategory': items, 'itemCount': sum(items.values()),
             'verifiedImages': sum(row['verified'] or 0 for row in item_stats),
         }
+        coverage = db.execute('SELECT coverage FROM item_catalogs WHERE snapshot_id=?', (snapshot_id,)).fetchone()
+        if coverage:
+            enrichment = json.loads(coverage['coverage']).get('enrichmentManifest')
+            if enrichment is not None:
+                metrics['enrichment'] = _object(enrichment, 'item enrichment manifest')
         if 'gameVersion' in snapshot:
             metrics['gameVersion'] = snapshot['gameVersion']
         _require_metrics(metrics)
-        metrics['samples'] = _read_samples(db, snapshot_id, {
+        expected_sources = {
             _MAIN_REPO: commit, _SUPPLEMENT_REPO: sources['supplement'] if sources else None,
-        })
+        }
+        metrics['samples'] = _read_samples(db, snapshot_id, expected_sources)
+        if 'enrichment' in metrics:
+            manifest = metrics['enrichment']
+            pins = _object(manifest.get('sources'), 'enrichment source pins')
+            from knowledge.ingest.source_plan import dynamic_snapshot_id
+
+            if (pins.get('main') != commit or sources is not None and pins != sources
+                    or dynamic_snapshot_id(commit, pins.get('supplement'), manifest.get('corpusSha256')) != snapshot_id):
+                raise ValueError('Enrichment manifest does not match snapshot identity')
+            metrics['enrichmentSamples'] = _enrichment_samples(
+                db, snapshot_id, expected_sources | {_SUPPLEMENT_REPO: pins['supplement']}
+            )
         return metrics
 
 
@@ -320,18 +364,21 @@ def _database_digest(database):
     return digest.hexdigest(), size
 
 
-def build_candidate(workspace, cache, main_commit, supplement_commit, baseline_path):
+def build_candidate(workspace, cache, main_commit, supplement_commit, baseline_path, *, enrich=False, baseline_database=None):
     sources = {'main': main_commit, 'supplement': supplement_commit}
     if any(not _COMMIT.fullmatch(commit) for commit in sources.values()):
         raise ValueError('Both sources require a pinned lowercase 40-character commit')
     baseline = _read_object(Path(baseline_path))
     _require_metrics(baseline)
+    if enrich and not baseline_database:
+        raise ValueError('Enrichment requires a read-only published baseline database')
     work = Path(workspace).resolve()
     cache = Path(cache).resolve()
     database, plan_path = work / 'catalog.sqlite', work / 'source-plan.json'
     result_path, temporary = work / 'result.json', work / '.result.json.partial'
     raw, normalized, report_path = work / 'raw', work / 'normalized', work / 'report.json'
-    reserved = (database, *_sidecars(database), plan_path, result_path, temporary, raw, normalized, report_path)
+    delta_path = work / 'enrichment-delta.json'
+    reserved = (database, *_sidecars(database), plan_path, result_path, temporary, raw, normalized, report_path, delta_path)
     if any(os.path.lexists(path) for path in reserved):
         raise ValueError('Workspace already contains candidate files; use a fresh work directory')
     if cache == work or any(cache.is_relative_to(path) for path in reserved):
@@ -356,12 +403,44 @@ def build_candidate(workspace, cache, main_commit, supplement_commit, baseline_p
     for name in sources:
         _run_ingest('fetch', '--source', name, '--destination', str(raw / name),
                     '--source-plan', str(plan_path), '--workers', '8')
+    normalize_args = []
+    tcg_acquisition = None
+    if enrich:
+        from knowledge.ingest.tcg import acquire_tcg
+
+        try:
+            tcg_acquisition = acquire_tcg(supplement_commit, raw / 'tcg', cache / 'tcg')
+        except (OSError, RuntimeError, ValueError) as error:
+            tcg_acquisition = {'status': 'unavailable', 'error': str(error)}
+        else:
+            normalize_args = ['--tcg-root', str(raw / 'tcg')]
     _run_ingest('normalize', '--input', str(raw / 'main'), '--supplementary', str(raw / 'supplement'),
-                '--output', str(normalized), '--source-plan', str(plan_path))
+                '--output', str(normalized), '--source-plan', str(plan_path), *normalize_args)
     _validated_normalization(normalized, plan, sources)
     shutil.rmtree(raw)
-    _run_ingest('verify-images', '--normalized', str(normalized), '--cache', str(image_cache), '--workers', '8')
+    image_args = ['--asset-cache', str(cache / 'pathofgenshin')] if enrich else []
+    _run_ingest('verify-images', '--normalized', str(normalized), '--cache', str(image_cache), '--workers', '8', *image_args)
     snapshot, report = _validated_normalization(normalized, plan, sources)
+    if enrich:
+        from knowledge.catalog_enrichment import RULES_VERSION, compare_items, read_baseline_items
+        from knowledge.ingest.__main__ import read_documents, write_json
+
+        delta = compare_items(read_baseline_items(baseline_database, baseline['snapshotId']),
+                              read_documents(normalized / 'items.jsonl'))
+        details = report.get('enrichment', {})
+        delta.update(baselineSnapshotId=baseline['snapshotId'], candidateSnapshotId=snapshot['id'],
+                     sources=sources, tcgAcquisition=tcg_acquisition, enrichments=details)
+        write_json(delta_path, delta)
+        if delta['regressions'] or delta['deletedItems']:
+            raise ValueError(f'Item coverage regressed; see {delta_path.name}')
+        coverage_path = normalized / 'item-coverage.json'
+        coverage = _read_object(coverage_path)
+        coverage['enrichmentManifest'] = {
+            'rulesVersion': RULES_VERSION, 'sources': sources,
+            'corpusSha256': report['corpusSha256'],
+            'tcg': details.get('tcg'), 'images': details.get('images'),
+        }
+        write_json(coverage_path, coverage)
     # Only the ingest tools need the per-document change inventory.
     for name in ('document-hashes.jsonl', 'deletions.jsonl'):
         (normalized / name).unlink(missing_ok=True)
@@ -387,6 +466,8 @@ def main(argv=None):
     build = commands.add_parser('build', help='Build and validate a single disposable candidate')
     for option in ('workspace', 'cache', 'main-commit', 'supplement-commit', 'baseline'):
         build.add_argument('--' + option, required=True)
+    build.add_argument('--enrich', action='store_true')
+    build.add_argument('--baseline-database')
     inspect = commands.add_parser('inspect', help='Report actual coverage and sample IDs for one snapshot')
     inspect.add_argument('--database', required=True)
     inspect.add_argument('--snapshot', required=True)
@@ -396,7 +477,8 @@ def main(argv=None):
         if args.command == 'inspect':
             result = inspect_database(args.database, args.snapshot, quick_check=args.quick_check)
         else:
-            result = build_candidate(args.workspace, args.cache, args.main_commit, args.supplement_commit, args.baseline)
+            result = build_candidate(args.workspace, args.cache, args.main_commit, args.supplement_commit, args.baseline,
+                                     enrich=args.enrich, baseline_database=args.baseline_database)
         print(json.dumps(result, ensure_ascii=False))
     except (ValueError, OSError, RuntimeError, sqlite3.Error, subprocess.CalledProcessError) as exc:
         print(f'Catalog refresh failed: {exc}', file=sys.stderr)

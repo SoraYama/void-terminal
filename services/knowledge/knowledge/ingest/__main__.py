@@ -51,6 +51,14 @@ def verify_image_output(args):
             raise ValueError('Image verification input does not match the normalized source plan')
     # This operation produces a new unpublished identity; imported snapshots remain immutable.
     items=verify_images(list(read_documents(output/'items.jsonl')),Path(args.cache),args.workers)
+    if getattr(args,'asset_cache',None):
+        from knowledge.items.asset_fallback import enrich_missing_images
+
+        report.setdefault('enrichment',{})['images']=enrich_missing_images(
+            items,Path(args.asset_cache),workers=args.workers
+        )
+        for item in items:
+            item['icon'].pop('checkedAt',None)
     corpus=hashlib.sha256()
     summaries={document_id:item_summary(item) for item in items for document_id in item['documentIds']}
     temporary=output/'documents.jsonl.partial';hash_temporary=output/'document-hashes.jsonl.partial'
@@ -98,6 +106,11 @@ def build(args):
             supplement_acquisition=fixed_acquisition(supplementary,SUPPLEMENT_REPO,SUPPLEMENT_COMMIT,'No acquisition marker provided')
     output=Path(args.output);output.mkdir(parents=True,exist_ok=True)
     items,_=build_items(root,supplementary,main_commit=main_commit,supplement_commit=supplement_commit)
+    tcg_report=None
+    if getattr(args,'tcg_root',None):
+        from .tcg import enrich_tcg
+
+        tcg_report=enrich_tcg(items,root,Path(args.tcg_root),supplement_commit,main_commit=main_commit)
     summaries={document_id:item_summary(item) for item in items for document_id in item['documentIds']}
     document_file=output/'documents.jsonl'
     hash_file=output/'document-hashes.jsonl'
@@ -143,6 +156,7 @@ def build(args):
     else:
         snapshot_id=getattr(args,'snapshot_id',None) or f'agd-{main_commit[:12]}-{corpus.hexdigest()[:12]}'
     item_coverage=coverage_report(items);item_coverage['snapshotId']=snapshot_id
+    if tcg_report is not None:result.report['enrichment']={'tcg':tcg_report}
     result.report['acquisition']=acquisition
     if supplementary:result.report['supplementaryAcquisition']=supplement_acquisition
     if 'other' in counts:counts['other']['notes'].append('Verbatim resolved fields from tables without a semantic adapter; raw structure preserved, gameplay meaning not inferred.')
@@ -186,11 +200,14 @@ def main(argv=None):
         action=sub.add_parser(command,help='Normalize local source tree'+(' and import as a new snapshot' if command=='update' else ' to JSONL and coverage report'))
         action.add_argument('--input',required=True);action.add_argument('--supplementary');action.add_argument('--output',required=True);action.add_argument('--snapshot-id')
         if command=='update':action.add_argument('--database-url');action.add_argument('--no-activate',action='store_true')
-        else:action.add_argument('--source-plan',help='Verified plan that matches both acquisition markers')
+        else:
+            action.add_argument('--source-plan',help='Verified plan that matches both acquisition markers')
+            action.add_argument('--tcg-root',help='Verified optional localized TCG data')
     imp=sub.add_parser('import',help='Import normalized JSONL atomically. --no-activate stages a snapshot for review.')
     imp.add_argument('--normalized',required=True);imp.add_argument('--database-url');imp.add_argument('--no-activate',action='store_true');imp.add_argument('--snapshot-id')
     images=sub.add_parser('verify-images',help='Verify resource headers and write a new unpublished item snapshot identity')
     images.add_argument('--normalized',required=True);images.add_argument('--cache',required=True);images.add_argument('--workers',type=int,default=12)
+    images.add_argument('--asset-cache',help='Verify optional exact-identifier fallback images')
     for command in ('snapshots','activate','rollback'):
         action=sub.add_parser(command,help='List snapshots' if command=='snapshots' else 'Atomically activate a previously imported ready snapshot')
         action.add_argument('--database-url')

@@ -7,12 +7,15 @@ export interface ItemIcon {identifier:string;url:string|null;provider:string;sta
 export interface Stat {key:string;label:string;value:number;unit:string}
 export interface Ascension {phase:number;levelCap:number;coin:number;items:{id:string;name:string;count:number}[]}
 export interface Substat {key:string;label:string;unit:string;values:number[]}
+export interface TcgCost {type:string;count:number}
+export interface ItemTcg {cardId:number;face:'standard'|'gold'|'platinum';name?:string|null;effect?:string|null;storyTitle?:string|null;story?:string|null;acquisition?:string|null;costs?:TcgCost[]|null;hp?:number;skills?:{id:number;name?:string;effect?:string;costs?:TcgCost[]}[];sources:Record<string,Provenance>}
 export interface ItemSummary {id:string;language:Locale;name:string;category:ItemCategory;subtype:string;rarity:number|null;description:string;icon:ItemIcon;state:'source-record'|'internal'}
 export interface Item extends ItemSummary {
  story:string;rawIds:string[];documentIds:string[];sources:Provenance[];attributes:{label:string;value:string}[];acquisition:string[];
  coverage:Record<string,'complete'|'not-applicable'|'upstream-missing'|'unresolved'|'unreachable'>;
  weapon?:{type:string;levels:{level:number;ascension:number;stats:Stat[]}[];refinements:{rank:number;name:string;description:string}[];ascensions:Ascension[]};
  artifact?:{setId:number;setName:string;slot:string;setEffects:{pieces:number;text:string}[];rarities:number[];rules:{rarity:number;maxLevel:number;mainStats:{key:string;label:string;unit:string;values:{level:number;value:number}[]}[];substats:Substat[]}[]};
+ tcg?:ItemTcg;
 }
 export interface ItemListResult {items:ItemSummary[];total:number;page:number;pageSize:number;snapshotId:string|null;ready:boolean;counts:Record<string,number>}
 export interface ItemResult {item:Item;snapshotId:string}
@@ -47,6 +50,7 @@ export function allowedItemImage(icon:Pick<ItemIcon,'url'|'status'>):string|null
   if(u.hostname==='upload-os-bbs.mihoyo.com'&&/^\/game_record\/genshin\/equip\/[A-Za-z0-9_.-]+\.(png|webp|jpe?g)$/i.test(u.pathname))return u.href;
   if(u.hostname==='gi.yatta.moe'&&icon.url===u.href&&/^\/assets\/UI\/gcg\/UI_Gcg_CardFace_[A-Za-z0-9_]+\.(png|webp|jpe?g)$/.test(u.pathname))return u.href;
   if(u.hostname==='gi.yatta.moe'&&/^\/assets\/UI\/(?:(?:furniture|reliquary|namecard|monster)\/)?[A-Za-z0-9_.-]+\.(png|webp|jpe?g)$/i.test(u.pathname))return u.href;
+  if(u.hostname==='raw.githubusercontent.com'&&icon.url===u.href&&/^\/PathOfGenshin\/resources\/015a2493b5672b28576ab78ffbcffde2ea0c9844\/resources\/gi\/Sprite\/UI_[A-Za-z0-9_]+\.png$/.test(u.pathname))return u.href;
  }catch{}return null;
 }
 export function possibleSubstats(stats:Substat[],main:string){return stats.filter(s=>s.key!==main)}

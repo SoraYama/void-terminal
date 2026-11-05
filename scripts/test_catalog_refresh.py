@@ -48,6 +48,29 @@ class PublicationTest(unittest.TestCase):
             return subprocess.CompletedProcess(args, 1, stdout='', stderr=f'error: no such object: {JOB}\n')
         self.fail(f'unexpected command: {args}')
 
+    def test_keyboard_interrupt_during_acceptance_restores_public_registry(self):
+        with self.assertRaises(KeyboardInterrupt):
+            refresh.publish(self.root, self.before, self.after, unittest.mock.Mock(side_effect=KeyboardInterrupt))
+        self.assertEqual(self.current(), self.before)
+        self.assertFalse((self.state / 'pending.json').exists())
+
+    def test_same_commit_rebuilds_only_when_retry_probe_has_a_real_gain(self):
+        updater = unittest.mock.Mock(return_value=NEW)
+        refresh.run_once(self.root, lambda: BEFORE, updater, same_source_update=lambda *_: False)
+        updater.assert_not_called()
+        refresh.run_once(self.root, lambda: BEFORE, updater, same_source_update=lambda *_: True)
+        updater.assert_called_once_with(self.root, self.before, BEFORE)
+
+    def test_staged_legacy_or_degraded_candidate_cannot_block_new_enrichment(self):
+        good = {'enrichment': {'rulesVersion': 1, 'sources': AFTER,
+                               'tcg': {'matched': 1}, 'images': {'retry': 0}}}
+        self.assertTrue(refresh.enrichment_compatible(good, AFTER, allow_retry=False))
+        good['enrichment']['images']['retry'] = 5
+        self.assertFalse(refresh.enrichment_compatible(good, AFTER, allow_retry=False))
+        self.assertTrue(refresh.enrichment_compatible(good, AFTER, allow_retry=True))
+        self.assertFalse(refresh.enrichment_compatible({}, AFTER, allow_retry=True))
+        self.assertFalse(refresh.enrichment_compatible(good, BEFORE, allow_retry=True))
+
     def test_cleanup_removes_workspace_after_docker_auto_removes_worker(self):
         marker, work = self.stage_worker()
         with patch.object(refresh.subprocess, 'run', side_effect=self.docker_without_worker):
@@ -166,9 +189,12 @@ class PublicationTest(unittest.TestCase):
         self.assertFalse((self.state / 'pending.json').exists())
 
     def test_recovery_after_interrupted_publication(self):
+        class AbruptStop(BaseException):
+            pass
+
         def interrupt():
-            raise KeyboardInterrupt
-        with self.assertRaises(KeyboardInterrupt):
+            raise AbruptStop
+        with self.assertRaises(AbruptStop):
             refresh.publish(self.root, self.before, self.after, interrupt)
         self.assertEqual(self.current(), self.after)
         self.assertTrue(refresh.recover(self.root))
