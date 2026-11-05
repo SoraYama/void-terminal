@@ -181,11 +181,12 @@ def verify_candidate(scope, image, result):
         refresh.require(refresh.digest(database) == entry['databaseSha256'],
                         'private mounted database differs from the validated candidate')
         command = ['docker', 'run', '--rm', '--network', 'none', '--read-only',
+                   '--tmpfs', '/tmp:rw,nosuid,nodev,size=128m',
                    '--user', '10001:10001', '--cpus', '1', '--memory', '2800m',
                    '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
                    '--mount', f'type=bind,source={mount},target=/candidate,readonly',
                    image, 'python', '-m', 'knowledge.refresh_build', 'inspect',
-                   '--database', '/candidate/catalog.sqlite', '--snapshot', sid]
+                   '--database', '/candidate/catalog.sqlite', '--snapshot', sid, '--quick-check']
         observed = json.loads(refresh.output(command, timeout=1200))
         refresh.require(all(observed[k] == result[k] for k in IDENTITY_FIELDS),
                         'private container cannot read the verified candidate')
@@ -332,13 +333,105 @@ def rehearse(root, workspace, image, sources):
             refresh.atomic_json(workspace / 'rehearsal-report.json', report, 0o600)
 
 
+def resume_verification(root, source, workspace):
+    """Reverify an exact packed candidate, retaining the failed attempt unchanged."""
+    from catalog_promote import read_private
+
+    refresh.require(source.parent == root / 'rehearsals' and source == source.resolve(),
+                    'choose a private source rehearsal directory')
+    with refresh.task_lock(root):
+        original_path = source / 'rehearsal-report.json'
+        original = read_private(original_path)
+        original_sha = refresh.digest(original_path)
+        refresh.require((original.get('mode'), original.get('status'), original.get('phase'), original.get('published'))
+                        == ('report-only', 'failed', 'candidate-verification', False),
+                        'only a failed packed candidate verification can be resumed')
+        before = refresh.registry(root)
+        registry_sha = refresh.digest(root / 'state/registry.json')
+        refresh.require(original['baselineRegistrySha256'] == registry_sha
+                        and original['checks'].get('productionRegistryUnchanged') is True
+                        and not os.path.lexists(root / 'state/pending.json'),
+                        'production registry changed since the failed rehearsal')
+        result = read_private(source / 'result.json')
+        refresh.require(result == original['candidate'] and result['sources'] == original['sources']
+                        and before['active'] == original['baseline']['snapshotId'],
+                        'packed candidate differs from the failed rehearsal')
+        archive, _ = refresh.archive_metadata(source, result)
+        create_workspace(root, workspace)
+        started = time.monotonic()
+        meter = DiskPeak(workspace)
+        checks = {'productionRegistryUnchanged': False}
+        report = {key: original[key] for key in ('mode', 'published', 'sources', 'workerImage',
+                                                'baselineRegistrySha256', 'candidate', 'baseline')}
+        report.update(status='failed', checks=checks, artifacts={}, resumedFrom={
+            'workspace': source.name, 'reportSha256': original_sha, 'disk': original['disk'],
+            'durationSeconds': original['durationSeconds'],
+        })
+        phase = 'resume-preflight'
+
+        def unchanged():
+            return (refresh.digest(root / 'state/registry.json') == registry_sha
+                    and refresh.registry(root) == before and not os.path.lexists(root / 'state/pending.json'))
+
+        try:
+            with meter.tracking():
+                for path in (source / 'result.json', source / 'build-report.json', source / 'enrichment-delta.json',
+                             archive, archive.with_suffix('.json')):
+                    # Reject links and non-root writable receipts before linking any retained artifact.
+                    read_private(path) if path.suffix == '.json' else refresh.require(
+                        path.is_file() and not path.is_symlink(), 'unsafe packed archive')
+                    os.link(path, workspace / path.relative_to(source))
+                report['artifacts'] = {'result': 'result.json', 'buildReport': 'build-report.json',
+                                       'enrichmentDelta': 'enrichment-delta.json',
+                                       'archive': str(archive.relative_to(source)),
+                                       'archiveMetadata': str(archive.with_suffix('.json').relative_to(source))}
+                baseline_database(root, before)
+                baseline = refresh.inspect(before['active'])
+                refresh.require(baseline == report['baseline'], 'active baseline changed since rehearsal')
+                refresh.verify_public(baseline, baseline)
+                history_before = public_history(before, baseline)
+                phase = 'candidate-verification'
+                report['archive'] = verify_candidate(workspace, report['workerImage'], result)
+                checks['privateArchiveVerified'] = True
+                phase = 'rollback'
+                checks['rollback'] = simulate_rollback(workspace, before, result['snapshotId'], report['archive'])
+                phase = 'public-readback'
+                require_not_public(result['snapshotId'])
+                checks['candidateNotPublic'] = True
+                refresh.verify_public(baseline, baseline)
+                history_after = public_history(before, baseline)
+                refresh.require(history_before == history_after, 'historical citation samples changed')
+                checks['historicalCitations'] = history_after
+                phase = 'production-registry-readback'
+                refresh.require(unchanged(), 'production registry changed during verification')
+                refresh.require(refresh.digest(original_path) == original_sha, 'original failure receipt changed')
+                phase = 'complete'
+            report['status'] = 'passed'
+            return report
+        except BaseException as error:
+            report['failure'] = {'type': type(error).__name__, 'message': str(error)}
+            raise
+        finally:
+            checks['productionRegistryUnchanged'] = unchanged()
+            verification_disk = meter.report()
+            disk = {**original['disk'], 'endFreeBytes': verification_disk['endFreeBytes'],
+                    'minimumFreeBytes': min(original['disk']['minimumFreeBytes'], verification_disk['minimumFreeBytes']),
+                    'samples': original['disk']['samples'] + verification_disk['samples']}
+            disk['peakExtraBytes'] = disk['startFreeBytes'] - disk['minimumFreeBytes']
+            report.update(phase=phase, disk=disk, verificationDisk=verification_disk,
+                          at=datetime.now(timezone.utc).isoformat(),
+                          durationSeconds=round(original['durationSeconds'] + time.monotonic() - started, 3))
+            refresh.atomic_json(workspace / 'rehearsal-report.json', report, 0o600)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, default=refresh.ROOT)
     parser.add_argument('--workspace', type=Path, required=True)
-    parser.add_argument('--image', required=True)
-    parser.add_argument('--main-commit', required=True)
-    parser.add_argument('--supplement-commit', required=True)
+    parser.add_argument('--resume', type=Path, help='reverify the exact packed archive from a failed private run')
+    parser.add_argument('--image')
+    parser.add_argument('--main-commit')
+    parser.add_argument('--supplement-commit')
     args = parser.parse_args(argv)
 
     def interrupted(_signum, _frame):
@@ -346,8 +439,14 @@ def main(argv=None):
 
     signal.signal(signal.SIGTERM, interrupted)
     try:
-        report = rehearse(args.root.resolve(), args.workspace.absolute(), args.image,
-                          {'main': args.main_commit, 'supplement': args.supplement_commit})
+        if args.resume:
+            refresh.require(not any((args.image, args.main_commit, args.supplement_commit)),
+                            'resume uses the original pinned inputs')
+            report = resume_verification(args.root.resolve(), args.resume.absolute(), args.workspace.absolute())
+        else:
+            refresh.require(all((args.image, args.main_commit, args.supplement_commit)), 'pin the image and both sources')
+            report = rehearse(args.root.resolve(), args.workspace.absolute(), args.image,
+                              {'main': args.main_commit, 'supplement': args.supplement_commit})
     except KeyboardInterrupt:
         parser.exit(130, 'Rehearsal interrupted\n')
     print(json.dumps({'status': report['status'], 'published': report['published'],
