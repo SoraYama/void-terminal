@@ -31,6 +31,7 @@
 
 | Note | Summary |
 | --- | --- |
+| [2026-11-05-sidebar-history](bugfix/2026-11-05-sidebar-history.md) | 第四个导航入口导致手机历史列表 flex 压缩为 0px；保留 88px 可点击空间，由侧栏外层滚动 |
 | [2026-11-03-scroll-anchor](bugfix/2026-11-03-scroll-anchor.md) | use-conversation-scroll derives button visibility from paused follow and absolute tail distance: separate downward answer geometry from follow intent; hide at bottom/visible tail/references, refresh on streaming and resize |
 | [2026-11-02-postgres-prefix](bugfix/2026-11-02-postgres-prefix.md) | PostgreSQL en_US.utf8 Nahi misses Nahida: prefix+U+FFFF collation bound is invalid; escaped LIKE + text_pattern_ops index, live 87-test suite and 20k-posting query-plan regression |
 | [2026-11-02-chat-failures](bugfix/2026-11-02-chat-failures.md) | Empty failed assistants cause INVALID_REQUEST: normalize history; metadata/tool context exceeds 128KB: compact and synthesize within budget; preserve normalized chapter/node/part metadata and export error codes; 222 unit / 38 browser tests |

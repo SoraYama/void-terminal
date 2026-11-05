@@ -205,6 +205,8 @@
 .sidebar .ornament{transition:margin var(--sidebar-time) var(--sidebar-ease)}
 .sidebar .history-label{line-height:18px;max-height:18px;overflow:hidden;transition:max-height var(--sidebar-time) var(--sidebar-ease),margin var(--sidebar-time) var(--sidebar-ease),opacity .12s ease-out}
 .sidebar-bottom{flex-shrink:0}
+/* Keep recent chats reachable when navigation exceeds a short viewport. */
+.sidebar .history-list,.mobile-menu .history-list{min-height:88px}
 .sidebar .sidebar-tools{display:block;position:relative;height:44px;transition:height var(--sidebar-time) var(--sidebar-ease)}
 .sidebar .sidebar-tools>button:first-child{width:calc(100% - 52px);justify-content:flex-start;overflow:hidden}
 .sidebar .sidebar-tools>button:last-child{position:absolute;right:0;top:0;transition:transform var(--sidebar-time) var(--sidebar-ease),background .18s,color .18s}
