@@ -220,6 +220,33 @@ def _sidecars(database):
     return [database.with_name(database.name + suffix) for suffix in ('-wal', '-shm', '-journal')]
 
 
+def _validate_character_sources(character, expected):
+    def visit(value):
+        if isinstance(value, dict):
+            if {'repo', 'commit', 'path', 'locator', 'url'} <= value.keys():
+                _require_source(value, expected, f"character {character['id']}")
+            for child in value.values(): visit(child)
+        elif isinstance(value, list):
+            for child in value: visit(child)
+    visit(character)
+
+
+def _validate_normalized_characters(normalized, sources):
+    from knowledge.character_models import Character
+    path = normalized / 'characters.jsonl'
+    if not path.exists():
+        return 0
+    expected = {_MAIN_REPO: sources['main'], _SUPPLEMENT_REPO: sources['supplement']}
+    count = 0
+    with path.open(encoding='utf-8') as stream:
+        for line in stream:
+            record = json.loads(line)
+            Character.model_validate(record)
+            _validate_character_sources(record, expected)
+            count += 1
+    return count
+
+
 def _character_metrics(db, sid, expected):
     from knowledge.character_models import Character
     from knowledge.characters import character_summary, coverage_report
@@ -232,14 +259,6 @@ def _character_metrics(db, sid, expected):
     records, languages, identities = [], {}, set()
     images = audio = 0
 
-    def sources(value):
-        if isinstance(value, dict):
-            if {'repo', 'commit', 'path', 'locator', 'url'} <= value.keys():
-                _require_source(value, expected, 'character')
-            for child in value.values(): sources(child)
-        elif isinstance(value, list):
-            for child in value: sources(child)
-
     for row in db.execute('SELECT language,id,summary,data FROM characters WHERE snapshot_id=? ORDER BY language,id', (sid,)):
         record = json.loads(row['data'])
         Character.model_validate(record)
@@ -247,7 +266,7 @@ def _character_metrics(db, sid, expected):
             raise ValueError('Character row identity mismatch')
         if json.loads(row['summary']) != character_summary(record):
             raise ValueError('Character summary does not match detail')
-        sources(record)
+        _validate_character_sources(record, expected)
         for document_id in record['documentIds']:
             if not db.execute('SELECT 1 FROM documents WHERE snapshot_id=? AND id=? AND language=?',
                               (sid, document_id, record['language'])).fetchone():
@@ -521,6 +540,8 @@ def build_candidate(workspace, cache, main_commit, supplement_commit, baseline_p
     # Only the ingest tools need the per-document change inventory.
     for name in ('document-hashes.jsonl', 'deletions.jsonl'):
         (normalized / name).unlink(missing_ok=True)
+    characters = _validate_normalized_characters(normalized, sources)
+    print(f'Validated provenance for {characters} localized characters before import', file=sys.stderr, flush=True)
     _import_catalog(database, normalized, snapshot, report['corpusSha256'])
     metrics = inspect_database(database, snapshot['id'], quick_check=True, sealed=True, sources=sources)
     if metrics['documentCount'] != report.get('documents'):

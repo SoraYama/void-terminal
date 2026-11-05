@@ -71,6 +71,7 @@ def verify_character_media_output(args):
         raise ValueError('Character media input corpus digest does not match the normalized report')
     characters=verify_character_media(list(read_documents(output/'characters.jsonl')),Path(args.cache),args.workers,
         supplementary=Path(args.supplementary) if args.supplementary else None,
+        supplement_commit=supplement_commit,
         image_mapping=Path(args.image_mapping) if args.image_mapping else None,
         voice_index=Path(args.voice_index) if args.voice_index else None)
     corpus=hashlib.sha256()

@@ -144,10 +144,18 @@ def test_verified_media_uses_real_icon_map_and_bounded_voice_index(tmp_path, mon
     monkeypatch.setattr(media, 'read_directory', lambda *_: {'604297fe5889d620.wav': entry})
     monkeypatch.setattr(media, 'verify_images', lambda values, *_: [{**v, 'icon': {**v['icon'], 'url': 'https://gi.yatta.moe/assets/UI/'+v['icon']['identifier']+'.png', 'provider': 'yatta', 'status': 'verified'}} for v in values])
     records = [{'id': 'avatar:73', 'avatarId': 73, 'icon': {'identifier': 'UI_AvatarIcon_Nahida'}, 'portrait': {}, 'forms': [], 'coverage': {}, 'sources': [], 'voices': [{'id': '1', 'resource': '1006'}, {'id': '2', 'resource': '9999'}]}]
-    enriched = media.verify_character_media(records, tmp_path / 'cache', supplementary=tmp_path / 'source', voice_index=index)
+    commit = 'b' * 40
+    enriched = media.verify_character_media(records, tmp_path / 'cache', supplementary=tmp_path / 'source',
+        supplement_commit=commit, voice_index=index)
     assert enriched[0]['portrait']['identifier'] == 'UI_Gacha_AvatarImg_Nahida'
     assert enriched[0]['portrait']['status'] == 'verified'
+    # Trial/test avatars can have images without a matching supplemental character record.
+    assert enriched[0]['sources'] == [{'repo': 'theBowja/genshin-db', 'commit': commit,
+        'path': 'src/data/image/characters.json', 'locator': '/',
+        'url': f'https://github.com/theBowja/genshin-db/blob/{commit}/src/data/image/characters.json'}]
     assert enriched[0]['voices'][0]['audio']['zh-CN']['identifier'] == '604297fe5889d620'
     assert enriched[0]['voices'][1]['audio'] == {}
     assert enriched[0]['coverage']['audio'] != 'complete'
     assert 'audio' not in records[0]['voices'][0]
+    with pytest.raises(ValueError, match='pinned supplementary commit'):
+        media.verify_character_media(records, tmp_path / 'cache', supplementary=tmp_path / 'source', voice_index=index)

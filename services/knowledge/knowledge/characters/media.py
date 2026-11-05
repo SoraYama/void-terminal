@@ -111,7 +111,7 @@ def _portrait_mapping(path, *, external=False):
 
 
 def verify_character_media(characters, cache, workers=8, *, supplementary=None,
-                           image_mapping=None, voice_index=None):
+                           supplement_commit=None, image_mapping=None, voice_index=None):
     if type(workers) is not int or not 1 <= workers <= 32:
         raise ValueError('Character media workers must be between 1 and 32')
     cache = Path(cache)
@@ -119,12 +119,16 @@ def verify_character_media(characters, cache, workers=8, *, supplementary=None,
     result = copy.deepcopy(characters)
     mapping_path = image_mapping or (Path(supplementary) / 'src/data/image/characters.json' if supplementary else None)
     portraits = _portrait_mapping(mapping_path, external=image_mapping is not None)
+    if portraits and image_mapping is None and (
+            not isinstance(supplement_commit, str) or not re.fullmatch(r'[0-9a-f]{40}', supplement_commit)):
+        raise ValueError('Character image mapping requires a pinned supplementary commit')
     for character in result:
         identifier = portraits.get(character['icon'].get('identifier'))
         if identifier:
             character['portrait'] = {'identifier': identifier, 'url': None, 'provider': None, 'status': 'unverified'}
-            commit = IMAGE_COMMIT if image_mapping else next(
-                (s['commit'] for s in character['sources'] if s['repo'] == 'theBowja/genshin-db'), IMAGE_COMMIT)
+            # The mapping file has its own pin, including for trial/test avatars
+            # without any supplemental character record to infer a commit from.
+            commit = IMAGE_COMMIT if image_mapping is not None else supplement_commit
             evidence = {'repo': 'theBowja/genshin-db', 'commit': commit,
                         'path': 'src/data/image/characters.json', 'locator': '/',
                         'url': f'https://github.com/theBowja/genshin-db/blob/{commit}/src/data/image/characters.json'}

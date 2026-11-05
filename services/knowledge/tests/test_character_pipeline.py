@@ -26,6 +26,7 @@ def test_normalization_hashes_character_detail_and_media_rehash_preserves_order(
     characters = list(read_documents(output/'characters.jsonl'))
     assert len(characters) == 4 and characters[0]['forms']
     def verified(records, *args, **kwargs):
+        assert kwargs['supplement_commit'] == json.loads((output/'report.json').read_text())['source']['supplementCommit']
         records = copy.deepcopy(records)
         records[0]['portrait']['identifier'] = 'UI_Test_Media_Identity'
         return records
@@ -93,6 +94,24 @@ def test_candidate_inspection_validates_character_summary_provenance_and_coverag
         connection.execute('UPDATE characters SET summary=?', (json.dumps(summary),))
     with pytest.raises(ValueError, match='summary'):
         inspect_database(db, SID)
+
+
+def test_normalized_character_provenance_is_checked_before_database_import(tmp_path):
+    from knowledge.refresh_build import _validate_normalized_characters
+    from test_character_catalog import character
+    from test_refresh_build import MAIN, provenance
+    commit = 'b' * 40
+    image_source = {'repo': 'theBowja/genshin-db', 'commit': 'c' * 40,
+        'path': 'src/data/image/characters.json', 'locator': '/',
+        'url': f"https://github.com/theBowja/genshin-db/blob/{'c' * 40}/src/data/image/characters.json"}
+    record = character(sources=[provenance(), image_source])
+    path = tmp_path/'characters.jsonl'
+    path.write_text(json.dumps(record)+'\n')
+    with pytest.raises(ValueError, match=f"character {record['id']}.*unpinned"):
+        _validate_normalized_characters(tmp_path, {'main': MAIN, 'supplement': commit})
+    image_source.update(commit=commit, url=f'https://github.com/theBowja/genshin-db/blob/{commit}/src/data/image/characters.json')
+    path.write_text(json.dumps(record)+'\n')
+    assert _validate_normalized_characters(tmp_path, {'main': MAIN, 'supplement': commit}) == 1
 
 
 def test_candidate_cannot_drop_previously_present_character_catalog():
