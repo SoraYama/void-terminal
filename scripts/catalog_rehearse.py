@@ -370,8 +370,11 @@ def resume_verification(root, source, workspace):
         phase = 'resume-preflight'
 
         def unchanged():
-            return (refresh.digest(root / 'state/registry.json') == registry_sha
-                    and refresh.registry(root) == before and not os.path.lexists(root / 'state/pending.json'))
+            try:
+                return (refresh.digest(root / 'state/registry.json') == registry_sha
+                        and refresh.registry(root) == before and not os.path.lexists(root / 'state/pending.json'))
+            except (OSError, ValueError):
+                return False
 
         try:
             with meter.tracking():

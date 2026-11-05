@@ -135,6 +135,23 @@ class RehearsalTest(unittest.TestCase):
         rollback.assert_not_called()
         self.assertEqual(refresh.registry(self.root), self.before)
 
+        unreadable = self.root / 'rehearsals' / 'unreadable'
+        with patch('catalog_promote.read_private', side_effect=refresh.read_json), \
+             patch.object(refresh, 'inspect', return_value=failed['baseline']), \
+             patch.object(rehearsal, 'baseline_database'), \
+             patch.object(refresh, 'verify_public'), \
+             patch.object(rehearsal, 'public_history', return_value=history), \
+             patch.object(rehearsal, 'verify_candidate', return_value=ENTRY), \
+             patch.object(rehearsal, 'simulate_rollback', return_value={'previousRestored': True}), \
+             patch.object(rehearsal, 'require_not_public'), \
+             patch.object(refresh, 'registry', side_effect=[self.before, ValueError('bad registry'), ValueError('bad registry')]), \
+             self.assertRaisesRegex(refresh.RefreshError, 'registry changed'):
+            rehearsal.resume_verification(self.root, self.scope, unreadable)
+        failure = refresh.read_json(unreadable / 'rehearsal-report.json')
+        self.assertEqual(failure['status'], 'failed')
+        self.assertFalse(failure['checks']['productionRegistryUnchanged'])
+        self.assertIn('verificationDisk', failure)
+
     def test_resume_rejects_changed_production_without_creating_a_workspace(self):
         rehearsal.create_workspace(self.root, self.scope)
         refresh.atomic_json(self.scope / 'rehearsal-report.json', {
