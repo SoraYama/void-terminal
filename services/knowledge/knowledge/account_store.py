@@ -10,7 +10,7 @@ import sqlite3
 import time
 from uuid import UUID, uuid4
 
-from .account_credit_buckets import allocate_entitlement, credit_balances, shanghai_period
+from .account_credit_buckets import BEIJING, allocate_entitlement, credit_balances, shanghai_period
 from .account_risk import RiskCheck, RiskContext, configured_limits, prune_risk_state, record_risk_check
 from .account_schema import (
     MANUAL_REASONS, MAX_GRANT_UNITS, MAX_TOTAL_CREDITS, SCHEMA_VERSION,
@@ -196,13 +196,22 @@ class AccountStore:
             eligibility, granted = self._prepare(db, account_id, context, now, period)
             self._expire(db, account_id, now)
             credits = credit_balances(db, account_id, granted, period, resets_at)
-            rows = db.execute('''SELECT * FROM account_usage WHERE account_id=?
-                ORDER BY created_at DESC,rowid DESC LIMIT 20''', (account_id,)).fetchall()
+            rows = db.execute('''SELECT u.*, a.period, a.daily_units FROM account_usage AS u
+                JOIN account_credit_allocations AS a USING(reservation_id) WHERE u.account_id=?
+                ORDER BY u.created_at DESC,u.rowid DESC LIMIT 20''', (account_id,)).fetchall()
             usage = [{
                 'requestId': row['request_id'],
                 'createdAt': datetime.fromtimestamp(row['created_at'], timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z'),
                 'depth': row['depth'], 'units': row['units'], 'status': row['status'],
                 'usedTokens': row['used_tokens'], 'model': row['model'],
+                'allocation': {
+                    'dailyUnits': row['daily_units'],
+                    'reserveUnits': row['units'] - row['daily_units'],
+                    'dailyPeriod': (datetime.fromtimestamp(row['period'], BEIJING).date().isoformat()
+                                    if row['period'] is not None else None),
+                    # The window's current state does not imply when a past release happened.
+                    'dailyPeriodEnded': row['period'] is not None and row['period'] < period,
+                },
             } for row in rows]
             grants = db.execute('''SELECT id,created_at,source,units FROM credit_grants WHERE account_id=?
                 ORDER BY created_at DESC,rowid DESC LIMIT 20''', (account_id,)).fetchall()

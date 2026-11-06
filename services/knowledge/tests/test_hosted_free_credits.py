@@ -107,6 +107,44 @@ def test_midnight_preserves_original_hold_allocations(ledger, outcome, reserve_a
     assert after['held'] == 0
 
 
+@pytest.mark.parametrize('outcome', ['released', 'expired', 'same-day-release'])
+def test_summary_exposes_mixed_refund_allocation_and_original_period(tmp_path, monkeypatch, outcome):
+    client = configured_client(tmp_path, monkeypatch)
+    now = [MIDNIGHT - 60]
+    store = client.app.state.account_store
+    store.clock = lambda: now[0]
+    store.summary(ALICE, risk_context=context())
+    complete(store, 2)
+    request_id = str(uuid4())
+    hold = store.reserve(ALICE, request_id, 'deep', 'fixture', risk_context=context())['reservationId']
+
+    def read():
+        response = client.post('/v1/accounts/summary', headers=HEADERS,
+                               json={'accountId': ALICE, 'riskContext': context()})
+        assert response.status_code == 200
+        assert DEVICE not in response.text
+        data = response.json()
+        return next(row for row in data['usage'] if row['requestId'] == request_id), data['credits']
+
+    allocation = {'dailyUnits': 1, 'reserveUnits': 2, 'dailyPeriod': '2026-11-06'}
+    if outcome == 'same-day-release':
+        assert store.settle(ALICE, hold, 'released', None) == {'settled': True}
+        record, credits = read()
+        assert record['allocation'] == {**allocation, 'dailyPeriodEnded': False}
+        assert credits['daily']['available'] == 1
+        assert credits['reserve']['available'] == 20
+
+    now[0] = MIDNIGHT + (600 if outcome == 'expired' else 1)
+    if outcome == 'released':
+        assert store.settle(ALICE, hold, 'released', None) == {'settled': True}
+    record, credits = read()
+    assert record['status'] == ('expired' if outcome == 'expired' else 'released')
+    assert record['allocation'] == {**allocation, 'dailyPeriodEnded': True}
+    assert credits['daily']['available'] == 3
+    assert credits['reserve']['available'] == 20
+    assert credits['held'] == 0
+
+
 def test_same_device_welcome_and_daily_limits_are_independent(ledger):
     store, now = ledger
     store.summary(ALICE, risk_context=context())

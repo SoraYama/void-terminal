@@ -3,7 +3,7 @@ import {useEffect,useRef,useState} from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import {ArrowClockwise,CaretRight,Envelope,SignOut,X} from '@phosphor-icons/react';
 import {AccountRequestError,type AccountController} from '../lib/use-account';
-import {accountErrorText,type AccountFailure,type AccountGrant,type AccountSummary} from '../lib/account-contracts';
+import {accountErrorText,type AccountFailure,type AccountGrant,type AccountSummary,type AccountUsage} from '../lib/account-contracts';
 import {creditResetLabel} from '../lib/credit-reset';
 import {AccountRiskChallenge} from './account-risk-challenge';
 import {CopyField} from './support-panel';
@@ -47,8 +47,25 @@ function Balances({account,zh}:{account:AccountSummary;zh:boolean}){
  </dl>;
 }
 
+function RefundBreakdown({allocation,zh}:{allocation:AccountUsage['allocation'];zh:boolean}){
+ if(!allocation)return null;
+ const {dailyUnits,reserveUnits,dailyPeriod,dailyPeriodEnded}=allocation;
+ const credits=(units:number)=>units===1?'1 credit':`${units} credits`;
+ return <>
+  {reserveUnits>0&&<span>{zh?`已返还 ${reserveUnits} 点储备点数`:`${reserveUnits} reserve ${reserveUnits===1?'credit':'credits'} returned`}</span>}
+  {dailyUnits>0&&dailyPeriod&&<span>{dailyPeriodEnded
+   ?(zh?`${dailyPeriod} 的每日点数 ${dailyUnits} 点，周期已结束，不计入今日额度`:`${dailyPeriod} daily allocation: ${credits(dailyUnits)}. That period has ended; these credits do not carry over.`)
+   :(zh?`已返还至 ${dailyPeriod} 的每日额度：${dailyUnits} 点`:`${credits(dailyUnits)} returned to the daily allowance for ${dailyPeriod}`)}</span>}
+ </>;
+}
+
 function CreditRecords({account,zh}:{account:AccountSummary;zh:boolean}){
- const statusText=(status:string)=>status==='completed'?(zh?'已完成':'Completed'):status==='reserved'?(zh?'处理中':'In progress'):status==='expired'?(zh?'已返还（超时）':'Released after timeout'):(zh?'已返还':'Released');
+ const usageText=(item:AccountUsage)=>{
+  if(item.status==='completed')return zh?`已完成 · −${item.units} 点`:`Completed · −${item.units} credits`;
+  if(item.status==='reserved')return zh?`处理中 · 暂占 ${item.units} 点`:`In progress · Holding ${item.units} credits`;
+  if(item.status==='expired')return zh?'未扣点数（超时）':'No credits charged (timeout)';
+  return zh?'未扣点数':'No credits charged';
+ };
  const dateText=(value:string)=>{const date=new Date(value);return Number.isNaN(date.getTime())?'—':date.toLocaleString(zh?'zh-CN':'en',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})};
  const grantText=(source:AccountGrant['source'])=>({legacy:zh?'历史入账':'Legacy credits',trial:zh?'新人赠点':'Welcome credits',manual:zh?'人工入账':'Manual credits',payment:zh?'支付入账':'Payment credits'}[source]);
  const {credits}=account;
@@ -66,23 +83,43 @@ function CreditRecords({account,zh}:{account:AccountSummary;zh:boolean}){
   </section>
   <section className="account-usage" aria-label={zh?'最近用量':'Recent usage'}>
    <h3>{zh?'最近用量':'Recent usage'}</h3>
-   {!account.usage?.length?<p className="account-policy">{zh?'尚无使用记录。完成一次考据后，会在这里显示。':'No research yet. Your recent usage will appear here.'}</p>:<ul>{account.usage.map(item=><li key={item.requestId}><div><strong>{item.depth==='deep'?(zh?'深入考据':'Deep research'):(zh?'普通考据':'Standard research')}</strong><span>{statusText(item.status)} · {item.status==='completed'?`−${item.units} ${zh?'点':'credits'}`:item.status==='reserved'?`${zh?'暂占':'Holding'} ${item.units} ${zh?'点':'credits'}`:(zh?'未扣点数':'No credits used')}</span><span className="account-usage-meta">{item.model}{typeof item.usedTokens==='number'?` · ${item.usedTokens.toLocaleString(zh?'zh-CN':'en')} tokens`:item.status==='completed'?` · ${zh?'用量未知':'Token usage unknown'}`:''}</span></div><time dateTime={item.createdAt}>{dateText(item.createdAt)}</time></li>)}</ul>}
+   {!account.usage?.length?<p className="account-policy">{zh?'尚无使用记录。完成一次考据后，会在这里显示。':'No research yet. Your recent usage will appear here.'}</p>:<ul>{account.usage.map(item=><li key={item.requestId}>
+    <div>
+     <strong>{item.depth==='deep'?(zh?'深入考据':'Deep research'):(zh?'普通考据':'Standard research')}</strong>
+     <span>{usageText(item)}</span>
+     {(item.status==='released'||item.status==='expired')&&<RefundBreakdown allocation={item.allocation} zh={zh}/>}
+     <span className="account-usage-meta">{item.model}{typeof item.usedTokens==='number'?` · ${item.usedTokens.toLocaleString(zh?'zh-CN':'en')} tokens`:item.status==='completed'?` · ${zh?'用量未知':'Token usage unknown'}`:''}</span>
+    </div>
+    <time dateTime={item.createdAt}>{dateText(item.createdAt)}</time>
+   </li>)}</ul>}
   </section>
  </details>;
 }
 
-function CreditRequest({email,accountId,zh}:{email:string;accountId:string;zh:boolean}){
+function AccountEmailForm({email,accountId,zh}:{email:string;accountId?:string;zh:boolean}){
  const section=useRef<HTMLElement>(null);
  useEffect(()=>section.current?.scrollIntoView({block:'nearest'}),[]);
- const subject=zh?'虚空终端点数申请':'Void Terminal credit request';
- const body=zh?`账户识别码：${accountId}\n申请用途：\n期望点数：\n`:`Account ID: ${accountId}\nResearch purpose:\nRequested credits:\n`;
+ const verification=accountId===undefined;
+ const subject=verification?(zh?'虚空终端设备验证求助':'Void Terminal device verification help'):(zh?'虚空终端点数申请':'Void Terminal credit request');
+ const body=verification
+  ?(zh?'遇到的问题：\n':'Problem encountered:\n')
+  :(zh?`账户识别码：${accountId}\n申请用途：\n期望点数：\n`:`Account ID: ${accountId}\nResearch purpose:\nRequested credits:\n`);
  return <section className="credit-request" ref={section} aria-label={subject}>
-  <h3>{zh?'邮件申请额外点数':'Request extra credits by email'}</h3>
-  <p className="account-policy">{zh?'请说明考据用途。若与共享设备有关，也可在邮件中说明。请核对模板后自行发送。':'Describe your research purpose and mention any shared-device issue. Review the template and send the email yourself.'}</p>
+  <h3>{verification?(zh?'邮件求助':'Get help by email'):(zh?'邮件申请额外点数':'Request extra credits by email')}</h3>
+  <p className="account-policy">{verification
+   ?(zh?'如果设备验证一直无法完成，可发邮件说明遇到的问题，无需账户识别码。请核对模板后自行发送。':'If device verification keeps failing, email us about the problem. No account ID is needed. Review the template and send the email yourself.')
+   :(zh?'请说明考据用途。若与共享设备有关，也可在邮件中说明。请核对模板后自行发送。':'Describe your research purpose and mention any shared-device issue. Review the template and send the email yourself.')}</p>
   <a className="support-link" href={`mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`}><Envelope size={16}/>{zh?'打开邮件应用':'Open email app'}</a>
   <CopyField label={zh?'联系邮箱':'Contact email'} copyLabel={zh?'复制邮箱':'Copy email'} value={email} zh={zh}/>
-  <CopyField label={zh?'申请模板':'Request template'} copyLabel={zh?'复制模板':'Copy template'} value={body} zh={zh} rows={4}/>
+  <CopyField label={verification?(zh?'求助模板':'Help template'):(zh?'申请模板':'Request template')} copyLabel={zh?'复制模板':'Copy template'} value={body} zh={zh} rows={verification?2:4}/>
  </section>;
+}
+
+function VerificationHelp({email,zh}:{email:string;zh:boolean}){
+ const [open,setOpen]=useState(false);
+ return open?<AccountEmailForm email={email} zh={zh}/>:<button type="button" className="account-secondary" onClick={()=>setOpen(true)}>
+  <Envelope size={16}/>{zh?'设备验证遇到问题？邮件求助':'Trouble verifying your device? Get help by email'}<CaretRight size={15} className="push"/>
+ </button>;
 }
 
 export function AccountPanel({open,onOpenChange,onCloseFocus,session,zh,sharedEnabled,contactEmail,showRequest,onShowRequest,onSupport}:Props){
@@ -148,9 +185,9 @@ export function AccountPanel({open,onOpenChange,onCloseFocus,session,zh,sharedEn
      <button className="primary" disabled={busy} onClick={()=>onOpenChange(false)}>{zh?'返回提问':'Back to question'}</button>
      <button disabled={busy} onClick={()=>void refresh()}><ArrowClockwise size={17}/>{loading?(zh?'正在刷新…':'Refreshing…'):(zh?'刷新点数':'Refresh credits')}</button>
     </div>
-    {contactEmail&&account.user&&(showRequest?<CreditRequest email={contactEmail} accountId={account.user.id} zh={zh}/>:<button className="account-secondary" onClick={onShowRequest}><Envelope size={16}/>{zh?'邮件申请额外点数':'Request extra credits by email'}<CaretRight size={15} className="push"/></button>)}
+    {contactEmail&&account.user&&(showRequest?<AccountEmailForm email={contactEmail} accountId={account.user.id} zh={zh}/>:<button className="account-secondary" onClick={onShowRequest}><Envelope size={16}/>{zh?'邮件申请额外点数':'Request extra credits by email'}<CaretRight size={15} className="push"/></button>)}
     <CreditRecords account={account} zh={zh}/>
-   </>:account?.enabled?<form className="account-form" onSubmit={event=>{event.preventDefault();void perform(sent?'verify':'send')}}>
+   </>:account?.enabled?<><form className="account-form" onSubmit={event=>{event.preventDefault();void perform(sent?'verify':'send')}}>
     <label htmlFor="account-email">{zh?'邮箱':'Email'}<input id="account-email" type="email" autoComplete="email" inputMode="email" maxLength={254} required readOnly={sent} value={email} disabled={busy} onChange={event=>setEmail(event.target.value)}/></label>
     {challenge}{unavailable}
     {sent&&<><label htmlFor="account-code">{zh?'验证码':'Verification code'}<input id="account-code" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required autoFocus value={code} disabled={busy} onChange={event=>setCode(event.target.value.replace(/\D/g,''))} aria-describedby="account-code-help"/></label><p id="account-code-help" className="account-policy">{zh?'请填写邮件中的 6 位验证码。未收到时请检查垃圾邮件。':'Enter the six-digit email code. Check your spam folder if it is missing.'}</p></>}
@@ -159,7 +196,9 @@ export function AccountPanel({open,onOpenChange,onCloseFocus,session,zh,sharedEn
      <button className="primary" type="submit" disabled={busy||blocked||retryIn>0||(!sent&&resendIn>0)||!email.trim()||(sent&&code.length!==6)}>{action==='send'?(zh?'正在发送…':'Sending…'):action==='verify'?(zh?'正在验证…':'Verifying…'):sent?(zh?'验证并登录':'Verify & sign in'):(zh?'发送验证码':'Send code')}</button>
      {sent&&<><button type="button" disabled={busy||blocked||retryIn>0||resendIn>0} onClick={()=>void perform('send')}>{resendIn>0?(zh?`${resendIn} 秒后重发`:`Resend in ${resendIn}s`):(zh?'重新发送':'Resend code')}</button><button type="button" disabled={busy} onClick={()=>{setSent(false);setCode('');setFailure(null);setNotice(false);setResendUntil(0)}}>{zh?'更换邮箱':'Change email'}</button></>}
     </div>
-   </form>:error&&!loading?<button disabled={!!action} onClick={()=>void perform('logout')}><SignOut size={17}/>{zh?'登出':'Sign out'}</button>:null}
+   </form>
+    {blocked&&contactEmail&&<VerificationHelp email={contactEmail} zh={zh}/>}
+   </>:error&&!loading?<button disabled={!!action} onClick={()=>void perform('logout')}><SignOut size={17}/>{zh?'登出':'Sign out'}</button>:null}
    {onSupport&&<button className="account-secondary" onClick={onSupport}>{zh?'支持虚空终端':'Support the project'}<CaretRight size={15} className="push"/></button>}
   </Dialog.Content>
  </Dialog.Portal></Dialog.Root>;

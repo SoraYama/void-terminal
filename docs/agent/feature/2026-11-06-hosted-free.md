@@ -19,7 +19,8 @@
 - `services/knowledge/knowledge/account_store.py`、`account_credit_buckets.py`、`account_risk.py`：每日优先分配、不可变预留、设备/账号领取唯一约束、30 天风险事件与 180 天设备领取记录清理。设备豁免是单独审计操作，不等于赠送点数。
 - `apps/web/src/lib/server/account-risk.ts` 与账户/认证/聊天路由：统一构造可信风险上下文，缺少配置时关闭免费调用，不自动降级到无验证。自部署路径提前退出，不收集设备信息。
 - `use-account.ts`：设备验证无论成功失败都重新读取账户状态。设备续期不能清除同一账号的草稿；确认退出、切换账号或刷新失败仍隔离私有历史。
-- 账户 UI：每日点数和保留点数分别显示；发送、编辑或重新生成被额度/风控拒绝时保留输入与分支，不保存虚假的失败回答。
+- 账户 UI：每日点数和保留点数分别显示；发送、编辑或重新生成被额度/风控拒绝时保留输入与分支，不保存虚假的失败回答。失败或超时的用量记录分别显示返还的储备点数与原每日额度周期。周期状态按服务端汇总时间判断，不推断历史退款时刻。
+- 官网已配置公开联系邮箱时，登录前设备验证受阻可重试或邮件求助。求助模板不要求账户识别码，也不带登录邮箱、聊天内容或凭据；发信由用户自行完成，设备验证仍是发送验证码的前提。
 - 赞助配置只在官网序列化：国内二维码/爱发电、海外 Ko-fi、BSC 地址与接受币种均来自运营配置。无效或未提供的渠道隐藏。BSC 显示主网链 56、完整地址、复制与浏览器链接，不签名或自动到账。公开收款地址和测试 fixture 不可混用。
 - `store.py` / `config.py`：公共模型月度 token 预算按 UTC 月聚合现有预算日记录；显式 0 拒绝调用。token 上限不等同于精确货币账单上限。账户每日赠送仍采用 UTC+8。
 
@@ -31,8 +32,9 @@
 
 ## 5. Verification and Activation Boundary
 
-- Python final suite: 541 passed, 9 skipped, 19 subtests passed. PostgreSQL budget transactions explicitly select READ COMMITTED before the first query, so a queued reservation sees committed charges on other days in the same month. Local statement-order regressions ran RED/GREEN; the isolated live PostgreSQL concurrency case is gated by TEST_POSTGRES_URL and was skipped on this host. One existing Starlette/httpx deprecation warning remains.
+- Python final suite: 544 passed, 9 skipped, 19 subtests passed. API regressions cover mixed daily/reserve release and timeout across Shanghai midnight, a same-day release read again after midnight, and permanent-only legacy allocations. PostgreSQL budget transactions explicitly select READ COMMITTED before the first query, so a queued reservation sees committed charges on other days in the same month. Local statement-order regressions ran RED/GREEN; the isolated live PostgreSQL concurrency case is gated by TEST_POSTGRES_URL and was skipped on this host. One existing Starlette/httpx deprecation warning remains.
 - Web: 469 unit tests, typecheck and production build passed. The desktop/mobile account + deployment-mode + controller matrix had 98 passes, 4 deliberate mode skips and two identical locator ambiguities; the corrected locators and all 14 hosted feature cases then passed against the final build. Tests exercise actual React/browser behavior with mocked account/provider boundaries; no real email, model token charge or Turnstile receipt is implied.
+- Final review fixes: the focused Chromium suite passed 12 cases with 2 deliberate mode skips; the separate no-contact hosted run passed both desktop and mobile. Desktop and 390 px mobile screenshots of the revised usage rows and anonymous recovery panel were inspected in `artifacts/account-trial/` (`*-free-credits-refund-allocation.png` and `*-free-credits-anonymous-verification-help.png`).
 - Parent visually inspected desktop/mobile balance hierarchy, mobile dark mode, proof challenge, exhausted composer and BSC manual-copy fallback. Final 390 px exhausted layout exposes all send controls; 375 px BSC layout exposes the full wrapped address.
 - Actual CLI rehearsal migrated a synthetic v0 ledger with available 7 / held 1, retained zero-balance legacy eligibility history, replayed a manual grant once, and verified/restored both v0 and v3 backups to fresh targets. Evidence: `artifacts/hosted-free-credits/migration-mgr4418b/receipt.json`.
 - Compose YAML and exact hosted monthly-budget startup guards passed local checks. A production standalone Web process served an existing public/support fixture with HTTP 200 and byte-identical image contents. Docker itself was not available locally.

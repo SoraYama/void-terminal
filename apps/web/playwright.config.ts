@@ -9,7 +9,7 @@ export default defineConfig({
  // Playwright resolves command cwd from this config directory (apps/web).
  webServer:[
   ...process.env.PLAYWRIGHT_BASE_URL?[]:[{command:'npm run start -- --hostname 127.0.0.1 --port 3100',url:baseURL,env:{...isolatedEnv,DEPLOYMENT_MODE:'self-hosted'},reuseExistingServer:false,timeout:120_000}],
-  ...process.env.PLAYWRIGHT_HOSTED_BASE_URL?[]:[{command:'npm run start -- --hostname 127.0.0.1 --port 3101',url:hostedURL,env:{...isolatedEnv,DEPLOYMENT_MODE:'hosted'},reuseExistingServer:false,timeout:120_000}],
+  ...process.env.PLAYWRIGHT_HOSTED_BASE_URL?[]:[{command:'npm run start -- --hostname 127.0.0.1 --port 3101',url:hostedURL,env:{...isolatedEnv,DEPLOYMENT_MODE:'hosted',SUPPORT_CONTACT_EMAIL:process.env.PLAYWRIGHT_WITHOUT_CONTACT==='1'?'':isolatedEnv.SUPPORT_CONTACT_EMAIL},reuseExistingServer:false,timeout:120_000}],
  ],
  testDir:'./tests/e2e', timeout:45_000, fullyParallel:false, workers:1,
  expect:{timeout:10_000},reporter:[['list'],['html',{outputFolder:'../../artifacts/playwright-report',open:'never'}]],

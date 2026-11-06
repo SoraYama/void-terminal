@@ -1,10 +1,10 @@
 import {test,expect,type Page} from '@playwright/test';
 import path from 'node:path';
+import type {AccountUsage as Usage} from '../../src/lib/account-contracts';
 
 const screenshots=path.resolve(process.cwd(),'../../artifacts/account-trial');
 const status={ready:true,deployment:{mode:'hosted'},activeSnapshot:{id:'account-fixture',sourceRepo:'fixture',sourceCommit:'fixture',gameVersion:null,createdAt:'2026-11-06T00:00:00Z',label:'Account browser fixture',state:'ready'},documentCount:1,chunkCount:1,languages:['zh-CN','en'],retrieval:{lexical:true,semantic:false,model:null},coverage:[],provider:{model:'fixture-model',sharedEnabled:true,byok:false}};
 const frame=(event:string,data:unknown)=>`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-type Usage={requestId:string;createdAt:string;depth:'standard'|'deep';units:number;status:'reserved'|'completed'|'released'|'expired';usedTokens:number|null;model:string};
 type Risk={status:'verified'|'unavailable'}|{status:'verification_required';siteKey:string;challengeAction:'account_device'};
 const requiredProof:Risk={status:'verification_required',siteKey:'fixture-only',challengeAction:'account_device'};
 type Grant={id:string;createdAt:string;source:'legacy'|'trial'|'manual'|'payment';units:number};
@@ -123,7 +123,7 @@ test('account: usage distinguishes held, released, expired and unknown token cha
  const dialog=await account(page);await dialog.getByRole('button',{name:'刷新点数',exact:true}).click();
  await dialog.getByText('最近使用与获赠记录',{exact:true}).click();
  const usage=dialog.getByRole('region',{name:'最近用量',exact:true});await expect(usage.getByRole('listitem')).toHaveCount(4);
- await expect(usage).toContainText('处理中 · 暂占 3 点');await expect(usage).toContainText('已返还 · 未扣点数');await expect(usage).toContainText('已返还（超时） · 未扣点数');await expect(usage).toContainText('已完成 · −1 点');await expect(usage).toContainText('用量未知');await expect(usage.getByText('用量未知',{exact:false})).toHaveCount(1);
+ await expect(usage).toContainText('处理中 · 暂占 3 点');await expect(usage.getByRole('listitem').nth(1)).toContainText('未扣点数');await expect(usage.getByRole('listitem').nth(2)).toContainText('未扣点数（超时）');await expect(usage).toContainText('已完成 · −1 点');await expect(usage).toContainText('用量未知');await expect(usage.getByText('用量未知',{exact:false})).toHaveCount(1);
  expect(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);const box=await dialog.boundingBox(),viewport=page.viewportSize()!;expect(box!.x).toBeGreaterThanOrEqual(0);expect(box!.x+box!.width).toBeLessThanOrEqual(viewport.width);expect(box!.y+box!.height).toBeLessThanOrEqual(viewport.height);
  await screenshot(page,'account-usage-statuses-top',info.project.name);await dialog.evaluate(el=>{el.scrollTop=el.scrollHeight});await screenshot(page,'account-usage-statuses-bottom',info.project.name);
 });
@@ -368,6 +368,67 @@ test('free credits: verify an anonymous device before OTP and preserve the sign-
  await signIn(page,'alice@example.test');await closeAccount(page);
  await expect(page.locator('#question')).toHaveValue('验证设备后保留登录前草稿');
  expect(state.chatRequests).toHaveLength(0);
+});
+
+test('free credits: mixed usage explains the original daily period and returned reserve',async({page},info)=>{
+ const state=await setup(page,{email:'alice@example.test'});
+ const ended={dailyUnits:1,reserveUnits:2,dailyPeriod:'2026-11-06',dailyPeriodEnded:true};
+ state.usage=[
+  {requestId:'current',createdAt:'2026-11-06T16:01:00Z',depth:'deep',units:3,status:'released',usedTokens:null,model:'current-fixture',allocation:{...ended,dailyPeriod:'2026-11-07',dailyPeriodEnded:false}},
+  {requestId:'release',createdAt:'2026-11-06T15:59:00Z',depth:'deep',units:3,status:'released',usedTokens:null,model:'release-fixture',allocation:ended},
+  {requestId:'timeout',createdAt:'2026-11-06T15:58:00Z',depth:'deep',units:3,status:'expired',usedTokens:null,model:'timeout-fixture',allocation:ended},
+  {requestId:'legacy',createdAt:'2026-11-05T15:00:00Z',depth:'standard',units:1,status:'released',usedTokens:null,model:'legacy-fixture',allocation:{dailyUnits:0,reserveUnits:1,dailyPeriod:null,dailyPeriodEnded:false}},
+ ];
+ const dialog=await account(page);
+ await dialog.getByRole('button',{name:'刷新点数',exact:true}).click();
+ await dialog.getByText('最近使用与获赠记录',{exact:true}).click();
+ const usage=dialog.getByRole('region',{name:'最近用量',exact:true});
+ const records=usage.getByRole('listitem');
+ await expect(records.nth(1)).toContainText('未扣点数');
+ await expect(records.nth(2)).toContainText('未扣点数（超时）');
+ for(const row of [records.nth(1),records.nth(2)]){
+  await expect(row).toContainText('已返还 2 点储备点数');
+  await expect(row).toContainText('2026-11-06 的每日点数 1 点，周期已结束，不计入今日额度');
+  await expect(row).not.toContainText('已返还 ·');
+ }
+ await expect(records.nth(0)).toContainText('已返还至 2026-11-07 的每日额度：1 点');
+ await expect(records.nth(3)).toContainText('已返还 1 点储备点数');
+ await expect(records.nth(3)).not.toContainText('每日点数');
+ expect(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
+ await usage.evaluate(el=>el.scrollIntoView({block:'start'}));
+ await screenshot(page,'free-credits-refund-allocation',info.project.name);
+});
+
+test('free credits: anonymous challenge unavailable offers email recovery only when configured',async({page},info)=>{
+ await page.addInitScript(()=>Object.defineProperty(navigator,'clipboard',{value:{writeText:()=>Promise.reject(new Error('Fixture denial'))}}));
+ await page.route('https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit',route=>route.abort('failed'));
+ const state=await setup(page,{risk:requiredProof});
+ const dialog=await account(page);
+ await dialog.getByLabel('邮箱',{exact:true}).fill('alice@example.test');
+ const retry=dialog.getByRole('button',{name:'重新验证',exact:true});
+ await expect(retry).toBeVisible();
+ await retry.click();
+ await expect(retry).toBeVisible();
+ await expect(dialog.getByRole('button',{name:'发送验证码',exact:true})).toBeDisabled();
+ const help=dialog.getByRole('button',{name:'设备验证遇到问题？邮件求助',exact:true});
+ if(process.env.PLAYWRIGHT_WITHOUT_CONTACT==='1'){
+  await expect(help).toHaveCount(0);
+  await expect(dialog.getByRole('link',{name:'打开邮件应用',exact:true})).toHaveCount(0);
+ }else{
+  await expect(help).toBeVisible();
+  await help.click();
+  const link=dialog.getByRole('link',{name:'打开邮件应用',exact:true});
+  await expect(link).toHaveAttribute('href',/mailto:fixture@example.test\?subject=/);
+  const template=dialog.getByRole('textbox',{name:'求助模板',exact:true});
+  await expect(template).toHaveValue(/遇到的问题/);
+  await expect(template).not.toHaveValue(/账户识别码|alice@example.test/);
+  await dialog.getByRole('button',{name:'复制邮箱',exact:true}).click();
+  await expect(dialog.getByText('已选中文本，请手动复制。',{exact:true})).toBeVisible();
+  await expect(dialog.getByRole('textbox',{name:'联系邮箱',exact:true})).toHaveValue('fixture@example.test');
+  expect(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
+  await screenshot(page,'free-credits-anonymous-verification-help',info.project.name);
+ }
+ expect(state.sendCodes).toHaveLength(0);
 });
 
 test('free credits: server proof rejection restores an edited branch; revalidation keeps the same history',async({page})=>{

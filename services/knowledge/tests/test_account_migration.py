@@ -52,6 +52,9 @@ def test_legacy_migration_preserves_totals_usage_and_zero_grants_on_reopen(tmp_p
         assert balance(ledger.summary(BOB)) == {'available': 0, 'held': 0, 'totalGranted': 0}
         assert [(row['source'], row['units']) for row in ledger.summary(ALICE)['grants']] == [('legacy', 9)]
         assert [(row['source'], row['units']) for row in ledger.summary(BOB)['grants']] == [('legacy', 0)]
+        for row in ledger.summary(ALICE)['usage']:
+            assert row['allocation'] == {'dailyUnits': 0, 'reserveUnits': 1,
+                                         'dailyPeriod': None, 'dailyPeriodEnded': False}
     with sqlite3.connect(path) as db:
         assert db.execute('SELECT * FROM account_usage ORDER BY rowid').fetchall() == old_usage
         assert db.execute('PRAGMA user_version').fetchone()[0] == 3

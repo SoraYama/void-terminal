@@ -7,6 +7,12 @@ export interface AccountUsage {
  status:'reserved'|'completed'|'released'|'expired';
  usedTokens:number|null;
  model:string;
+ allocation?:{
+  dailyUnits:number;
+  reserveUnits:number;
+  dailyPeriod:string|null; // Asia/Shanghai date (YYYY-MM-DD), or null for reserve-only usage.
+  dailyPeriodEnded:boolean; // At summary time; does not describe when a release happened.
+ };
 }
 export interface AccountGrant {
  id:string;
