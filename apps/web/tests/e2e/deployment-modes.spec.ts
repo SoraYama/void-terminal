@@ -67,7 +67,7 @@ test('self-hosted: a failed account endpoint is never fetched and the first draf
  await page.route('**/api/chat',r=>{chats.push({headers:r.request().headers(),body:r.request().postDataJSON()});return r.fulfill({contentType:'text/event-stream',body:frame('text_delta',{text:'无需账户服务的自托管回答。'})+frame('done',{snapshotId:'mode-fixture',finishReason:'stop'})})});
  await page.goto('/');const question=page.locator('#question');await question.fill('自托管首条草稿');
  const dialog=await expectFixedSettings(page,false);await dialog.getByLabel('模型 API Key').fill('self-hosted-fixture-key');await dialog.getByRole('button',{name:'测试连接',exact:true}).click();await expect(dialog.getByRole('status')).toContainText('连接成功');
- await page.evaluate(()=>{window.dispatchEvent(new Event('focus'));document.dispatchEvent(new Event('visibilitychange'));const channel=new BroadcastChannel('void-account');channel.postMessage({type:'changed'});channel.close()});
+ await page.evaluate(()=>{window.dispatchEvent(new Event('focus'));document.dispatchEvent(new Event('visibilitychange'));const channel=new BroadcastChannel('void-terminal-account');channel.postMessage({type:'changed'});channel.close()});
  await expect(dialog.getByLabel('模型 API Key')).toHaveValue('self-hosted-fixture-key');await dialog.getByRole('button',{name:'关闭',exact:true}).click();await expect(question).toHaveValue('自托管首条草稿');
  await page.getByRole('button',{name:'发送',exact:true}).click();await expect(page.locator('.markdown')).toContainText('无需账户服务的自托管回答。');
  expect(accountCalls).toBe(0);expect(models).toHaveLength(1);expect(chats).toHaveLength(1);

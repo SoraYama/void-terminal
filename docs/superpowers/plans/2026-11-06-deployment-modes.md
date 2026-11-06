@@ -43,5 +43,5 @@
 ### Task 4: Verify and release
 - [x] Run typecheck, web tests, build and targeted browser suites; inspect real screenshots.
 - [x] Independent review of server boundaries, history/identity transitions and deployment migration.
-- [ ] Commit reviewed source and note/index; prepare a web-only release with explicit hosted env, durable source/config, rollback and no account/corpus changes.
-- [ ] Verify public hosted metadata, BYOK rejection, authenticated account balance unchanged and compact rendered UI; document exact evidence.
+- [x] Commit reviewed source and note/index; prepare a web-only release with explicit hosted env, durable source/config, rollback and no account/corpus changes.
+- [x] Verify public hosted metadata, BYOK rejection, authenticated account balance unchanged and compact rendered UI; document exact evidence.
