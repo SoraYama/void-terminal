@@ -1,3 +1,4 @@
+import type { DeploymentMode } from './deployment';
 export type Locale = 'zh-CN' | 'en';
 export type ContentType = 'quest'|'dialogue'|'book'|'weapon'|'artifact'|'material'|'furniture'|'character'|'voice'|'enemy'|'food'|'achievement'|'tcg'|'other';
 export const CONTENT_TYPES: ContentType[] = ['quest','dialogue','book','weapon','artifact','material','furniture','character','voice','enemy','food','achievement','tcg','other'];
@@ -9,7 +10,7 @@ export interface Source {id:string;documentId:string;title:string;type:ContentTy
 export interface Citation extends Source {citation:number}
 export interface DocumentSummary {id:string;title:string;type:ContentType;language:Locale;excerpt:string;snapshotId:string;metadata?:Record<string,unknown>}
 export interface KnowledgeStatus {ready:boolean;activeSnapshot:Snapshot|null;documentCount:number;chunkCount:number;languages:string[];retrieval:{lexical:boolean;semantic:boolean;model:string|null};coverage:CoverageRow[]}
-export interface AppStatus extends Partial<KnowledgeStatus> {ready:boolean;provider:{model:string;sharedEnabled:boolean;byok:boolean};error?:{code:string;message:string}}
+export interface AppStatus extends Partial<KnowledgeStatus> {ready:boolean;deployment:{mode:DeploymentMode};provider:{model:string;sharedEnabled:boolean;byok:boolean};error?:{code:string;message:string}}
 export interface SearchResult {sources:Source[];snapshotId:string|null;mode:'lexical'|'hybrid';total:number}
 export interface LibraryResult {items:DocumentSummary[];total:number;page:number;pageSize:number;snapshotId:string|null}
 export interface DocumentResult {document:Document;sources:Source[];snapshotId:string}

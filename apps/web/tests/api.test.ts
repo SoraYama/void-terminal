@@ -24,6 +24,7 @@ const req = (data: unknown = body, key: string | null = "test-user-key") =>
 describe("public API bounds and credential handling", () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
+    vi.stubEnv("DEPLOYMENT_MODE", "self-hosted");
     resetRateLimits();
   });
   afterEach(() => vi.unstubAllGlobals());
@@ -103,6 +104,7 @@ describe("public API bounds and credential handling", () => {
   ])(
     "rejects non-string $field before shared quota reservation",
     async ({ field, value }) => {
+      vi.stubEnv("DEPLOYMENT_MODE", "hosted");
       vi.stubEnv("SHARED_MODE_ENABLED", "true");
       vi.stubEnv("DEEPSEEK_API_KEY", "server-secret");
       vi.stubEnv("SESSION_SECRET", "long-random-secret-for-enum-regression");
@@ -157,10 +159,10 @@ describe("public API bounds and credential handling", () => {
     vi.stubEnv("SHARED_MODE_ENABLED", "true");
     expect((await chat(req(body, null))).status).toBe(401);
   });
-  it("does not activate shared mode merely because a shared key exists", async () => {
+  it("does not activate shared mode in self-hosted merely because a shared key exists", async () => {
     vi.stubEnv("DEEPSEEK_API_KEY", "server-secret");
     expect((await chat(req({ ...body, mode: "shared" }, null))).status).toBe(
-      503,
+      403,
     );
   });
   it("tests via model listing without generation and masks upstream authentication failure", async () => {
@@ -215,6 +217,7 @@ describe("public API bounds and credential handling", () => {
   ])(
     "rejects shared provider overrides before keys, quota or network: %j",
     async (provider) => {
+      vi.stubEnv("DEPLOYMENT_MODE", "hosted");
       vi.stubEnv("DEEPSEEK_API_KEY", "server-secret");
       const fetcher = vi.fn();
       stubFetch(fetcher);
@@ -252,6 +255,7 @@ describe("public API bounds and credential handling", () => {
     const data = await response.json();
     expect(data).toMatchObject({
       ready: false,
+      deployment: { mode: "self-hosted" },
       provider: { model: "deepseek-flash", byok: true, sharedEnabled: false },
       error: { code: "KNOWLEDGE_UNAVAILABLE" },
     });

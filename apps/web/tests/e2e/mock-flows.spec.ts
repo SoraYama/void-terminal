@@ -69,19 +69,17 @@ test('mock: themed dropdown supports pointer, keyboard, dismissal and settings p
  await type.click();await page.keyboard.press('Escape');await expect(menu).toHaveCount(0);await expect(type).toBeFocused();
  await page.getByRole('textbox',{name:'向虚空提问…'}).click();await expect(page.getByRole('button',{name:'停止生成',exact:true})).toHaveCount(0);
  const dialog=await settings(page);await dialog.getByRole('combobox',{name:'外观',exact:true}).click();await page.getByRole('option',{name:'深色',exact:true}).click();
- await dialog.getByRole('combobox',{name:'模型连接',exact:true}).click();await saveScreenshot(page,'dropdown-settings-dark',testInfo.project.name);await page.keyboard.press('Escape');
+ await dialog.getByRole('combobox',{name:'资料语言',exact:true}).click();await saveScreenshot(page,'dropdown-settings-dark',testInfo.project.name);await page.keyboard.press('Escape');
  await expect(dialog).toBeVisible();await dialog.getByRole('button',{name:'关闭',exact:true}).click();
  await type.click();await saveScreenshot(page,'dropdown-dark',testInfo.project.name);
  await page.mouse.click(1,1);await expect(menu).toHaveCount(0);
 });
-test('mock: unavailable shared service stays disabled in the custom menu',async({page})=>{
+test('mock: self-hosted settings retain BYOK when shared status is unavailable',async({page})=>{
  await setup(page);await page.route('**/api/status',r=>r.fulfill({json:{...status,provider:{...status.provider,sharedEnabled:false}}}));await page.reload();
- const dialog=await settings(page);const mode=dialog.getByRole('combobox',{name:'模型连接',exact:true});await mode.click();
- await expect(page.getByRole('option',{name:'共享服务（未启用）',exact:true})).toHaveAttribute('aria-disabled','true');
- await page.keyboard.press('End');await expect(page.getByRole('option',{name:'使用自己的密钥',exact:true})).toBeFocused();
- await page.keyboard.press('Enter');await expect(mode).toHaveText('使用自己的密钥');
+ const dialog=await settings(page);await expect(dialog.getByRole('combobox',{name:'模型连接',exact:true})).toHaveCount(0);await expect(dialog.getByLabel('模型 API Key')).toBeVisible();await expect(dialog.getByRole('button',{name:'账户与额度',exact:true})).toHaveCount(0);
 });
-test('mock: custom provider is used for testing and chat, survives refresh without a key, and never overrides shared mode',async({page},testInfo)=>{
+
+test('mock: self-hosted custom provider is used for testing and chat and survives refresh without a key',async({page},testInfo)=>{
  await setup(page);await configure(page);const dialog=await settings(page);
  await dialog.getByLabel('Base URL',{exact:true}).fill('https://models.example.com/api/v1');
  await expect(dialog.getByLabel('模型 API Key',{exact:true})).toHaveValue('');
@@ -94,8 +92,7 @@ test('mock: custom provider is used for testing and chat, survives refresh witho
  await dialog.getByRole('button',{name:'关闭',exact:true}).click();let asked:any;
  await page.route('**/api/chat',r=>{asked=r.request().postDataJSON();expect(r.request().headers()['x-model-api-key']).toBe('browser-test-key');return r.fulfill({contentType:'text/event-stream',body:frame('text_delta',{text:'自定义模型夹具回答。'})+frame('done',{snapshotId:'fixture-snapshot',finishReason:'stop'})})});
  await page.getByRole('textbox',{name:'向虚空提问…'}).fill('讲讲角色故事');await page.getByRole('button',{name:'发送',exact:true}).click();await expect(page.getByText('自定义模型夹具回答。',{exact:true})).toBeVisible();expect(asked.provider).toEqual(tested.provider);
- const d=await settings(page);await choose(page,'模型连接','共享服务');await d.getByRole('button',{name:'测试连接',exact:true}).click();await expect.poll(()=>tested).toEqual({mode:'shared'});
- await choose(page,'模型连接','使用自己的密钥');await d.getByRole('button',{name:'关闭',exact:true}).click();
+ const d=await settings(page);await expect(d.getByRole('combobox',{name:'模型连接',exact:true})).toHaveCount(0);expect(tested.mode).toBe('byok');expect(asked.mode).toBe('byok');await d.getByRole('button',{name:'关闭',exact:true}).click();
  const stored=await page.evaluate(()=>JSON.stringify({...localStorage}));expect(stored).not.toContain('browser-test-key');
  await page.reload();const restored=await settings(page);await expect(restored.getByLabel('Base URL',{exact:true})).toHaveValue('https://models.example.com/api/v1');await expect(restored.getByLabel('模型名称（Model name）',{exact:true})).toHaveValue('org/custom-model');await expect(restored.getByLabel('模型 API Key',{exact:true})).toHaveValue('');
 });

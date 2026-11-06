@@ -1,4 +1,4 @@
-> **Last updated**: 2026-11-06 (修复手机 Safari 首页中文标题白块)
+> **Last updated**: 2026-11-06 (自部署与官网运行模式、紧凑对话控件；保留账户与手机标题记录)
 
 # Agent Notes
 
@@ -16,6 +16,8 @@
 
 | Note | Summary |
 | --- | --- |
+| [2026-11-06-deployment-modes](feature/2026-11-06-deployment-modes.md) | 同一镜像运行时选择自部署 BYOK 或官网登录额度；服务端边界、历史隔离、登录草稿和紧凑对话控件；验证与发布证据见记录 |
+| [2026-11-06-account-trial](feature/2026-11-06-account-trial.md) | Supabase 邮箱 OTP、独立 SQLite 额度账本、登录后服务端代理、并发与重复扣减防护、账户本地历史隔离；邀请模式已上线；SMTP/DNS/模型凭证接通、真实邮箱登录、问答扣费与刷新持久化验收通过 |
 | [2026-11-05-character-release](feature/2026-11-05-character-release.md) | 群星图鉴与尘世文卷于 11 月 6 日上线；main 782f590、完整快照 26ae8d6dbac3、六组线上布局/四语播放通过，保留历史引用与每日刷新 |
 | [2026-11-05-navigation-elements](feature/2026-11-05-navigation-elements.md) | 尘世文卷 / Teyvat Archive、书籍/背包/角色图鉴原版导航图标、七元素符号与头像条下方角色身份区 |
 | [2026-11-05-character-archive](feature/2026-11-05-character-archive.md) | 群星图鉴：角色聚合、原图/四语原声、快照 API、游戏菜单 UI；真实本地 169 个源 ID、134 个正式来源记录，媒体覆盖与发布边界单独记录 |

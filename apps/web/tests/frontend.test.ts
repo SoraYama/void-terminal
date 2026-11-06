@@ -2,7 +2,7 @@ import {describe,it,expect} from 'vitest';
 import {parseSSE,remarkCitations} from '../src/lib/stream';
 import {branchConversation,conversationSnapshot,chatMessages,conversationMarkdown} from '../src/lib/history';
 import {contextWarning,branchContextNote} from '../src/lib/i18n';
-import {safePreferences,selectedProvider} from '../src/lib/preferences';
+import {safePreferences,selectedProvider,preferencesForDeployment} from '../src/lib/preferences';
 describe('frontend durable and transport behavior',()=>{
  it('omits failed and cancelled blank assistants from requests while keeping partial answers and local evidence',()=>{
   const messages=[
@@ -90,6 +90,21 @@ describe('frontend durable and transport behavior',()=>{
   expect(selectedProvider({...saved,mode:'shared'})).toBeUndefined();
   expect(safePreferences({modelBaseUrl:'https://host.example/v1?key=secret'})).not.toHaveProperty('modelBaseUrl');
   expect(safePreferences({modelBaseUrl:'https://user:secret@host.example/v1'})).not.toHaveProperty('modelBaseUrl');
+ });
+ it('overrides stale BYOK choices on hosted without deleting local provider preferences',()=>{
+  const saved=safePreferences({mode:'byok',locale:'en',theme:'dark',modelBaseUrl:'https://models.example.com/v1',modelName:'private-model',apiKey:'secret'});
+  const hosted=preferencesForDeployment(saved,'hosted');
+  expect(hosted).toMatchObject({mode:'shared',locale:'en',theme:'dark',modelBaseUrl:'https://models.example.com/v1',modelName:'private-model'});
+  expect(selectedProvider(hosted)).toBeUndefined();
+  expect(hosted).not.toHaveProperty('apiKey');
+  expect(saved.mode).toBe('byok');
+ });
+ it('restores BYOK on self-hosted even when shared was saved by an older release',()=>{
+  const saved=safePreferences({mode:'shared',modelBaseUrl:'https://models.example.com/v1',modelName:'my-model'});
+  const selfHosted=preferencesForDeployment(saved,'self-hosted');
+  expect(selfHosted.mode).toBe('byok');
+  expect(selectedProvider(selfHosted)).toEqual({baseUrl:'https://models.example.com/v1',model:'my-model'});
+  expect(saved.mode).toBe('shared');
  });
 });
 

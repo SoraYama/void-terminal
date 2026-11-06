@@ -24,7 +24,7 @@ type Options = {
 export async function runAgent(
   input: ChatRequest,
   options: Options,
-): Promise<{ usedTokens: number | null }> {
+): Promise<{ usedTokens: number | null; outcome: "completed" | "released" }> {
   const deadline = AbortSignal.timeout(180_000);
   const signal = AbortSignal.any([options.signal, deadline]);
   const emit = (event: ChatEvent) => {
@@ -44,7 +44,7 @@ export async function runAgent(
       (await resolveProvider(input.mode, input.provider, signal));
     transport = openProviderTransport(config, signal);
     const prepared = await prepareResearch(input, signal, emit);
-    if (!prepared) return { usedTokens: 0 };
+    if (!prepared) return { usedTokens: 0, outcome: "released" };
     const { evidence, researchSelections, contextReads, initialQuery } =
       prepared;
     const deliberateAnswer =
@@ -356,9 +356,10 @@ ${JSON.stringify({ snapshotId: evidence.snapshotId, sources: selected, selection
     });
     return {
       usedTokens: unknownBilling || earlierUnknownBilling ? null : usedTokens,
+      outcome: signal.aborted ? "released" : "completed",
     };
   } catch (error) {
-    if (options.signal.aborted) return { usedTokens: dispatched ? null : 0 };
+    if (options.signal.aborted) return { usedTokens: dispatched ? null : 0, outcome: "released" };
     const safe = deadline.aborted
       ? new AppError(
           "TIMEOUT",
@@ -376,6 +377,7 @@ ${JSON.stringify({ snapshotId: evidence.snapshotId, sources: selected, selection
       },
     });
     return {
+      outcome: "released",
       usedTokens:
         dispatched && (unknownBilling || earlierUnknownBilling)
           ? null

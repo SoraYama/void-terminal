@@ -14,7 +14,7 @@ RUN if [ "$INSTALL_SEMANTIC" = "true" ]; then \
       uv sync --frozen --no-dev --extra semantic; \
     else uv sync --frozen --no-dev; fi \
     && useradd --uid 10001 --create-home knowledge \
-    && mkdir -p /data/sources /app/models && chown -R knowledge:knowledge /data /app/models
+    && mkdir -p /data/sources /app/models /accounts && chown -R knowledge:knowledge /data /app/models /accounts
 ENV PATH=/app/services/knowledge/.venv/bin:$PATH
 USER knowledge
 EXPOSE 8000
