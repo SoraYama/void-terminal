@@ -1,3 +1,4 @@
+import { allowRisk, verifiedDeviceCookies } from "./helpers/account-risk";
 import { stubFetch as stubModelFetch } from "./helpers/model-fetch";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as testModel } from "../src/app/api/models/test/route";
@@ -18,6 +19,7 @@ vi.mock("../src/lib/server/account-auth", async (original) => ({
 // Keep the existing real DSH transport and external model fixtures intact.
 function stubFetch(mock: typeof fetch) {
   stubModelFetch((async (url, init) => {
+    if (String(url).endsWith("/v1/accounts/risk/check")) return allowRisk();
     if (String(url).endsWith("/v1/accounts/reserve"))
       return Response.json({ allowed: true, reservationId: "account-reservation" });
     if (String(url).endsWith("/v1/accounts/settle"))
@@ -26,6 +28,8 @@ function stubFetch(mock: typeof fetch) {
   }) as typeof fetch);
 }
 
+let proofCookies: string;
+const accountId = "aa000000-0000-4000-8000-000000000001";
 const requestId = "aa000000-0000-4000-8000-000000000002";
 const body = {
   messages: [{ role: "user", content: "test" }],
@@ -36,7 +40,7 @@ const body = {
 const req = (headers: Record<string, string> = {}) =>
   new Request("http://localhost/api/chat", {
     method: "POST",
-    headers: { "content-type": "application/json", origin: "http://localhost", "X-Request-Id": requestId, ...headers },
+    headers: { "content-type": "application/json", origin: "http://localhost", "X-Request-Id": requestId, cookie: proofCookies, ...headers },
     body: JSON.stringify(body),
   });
 describe("request-sized quota bounds", () => {
@@ -51,7 +55,7 @@ describe("request-sized quota bounds", () => {
   });
 });
 describe("shared budget and identity", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.unstubAllEnvs();
     vi.stubEnv("DEPLOYMENT_MODE", "hosted");
     vi.stubEnv("SHARED_MODE_ENABLED", "true");
@@ -63,6 +67,7 @@ describe("shared budget and identity", () => {
     vi.stubEnv("DEEPSEEK_API_KEY", "server-secret");
     vi.stubEnv("SESSION_SECRET", "a-long-random-secret-for-testing-session");
     resetRateLimits();
+    proofCookies = await verifiedDeviceCookies("http://localhost", accountId);
   });
   afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
   it("denies quota before any model generation", async () => {
@@ -105,7 +110,6 @@ describe("shared budget and identity", () => {
     );
     const response = await chat(req({ "X-Model-Api-Key": "other-user-key" }));
     await response.text();
-    expect(response.headers.get("set-cookie")).toContain("HttpOnly");
     expect(bodies.at(-1).body).toEqual({ reservationId: "r1", usedTokens: 0 });
     expect(bodies[0].body.identity).not.toContain("other-user-key");
     expect(bodies[0].body.tokens).toBeGreaterThan(4096);
@@ -297,6 +301,7 @@ describe("shared budget and identity", () => {
         headers: {
           "content-type": "application/json",
           "X-Request-Id": requestId,
+          cookie: proofCookies,
           host: "void.example.com",
           origin: "https://void.example.com",
           "x-forwarded-proto": "https",
@@ -307,7 +312,6 @@ describe("shared budget and identity", () => {
     );
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ ok: true });
-    expect(response.headers.get("set-cookie")).toContain("Secure");
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
   it("reserves and streams shared chat for the public origin through the standalone proxy", async () => {
@@ -341,6 +345,7 @@ describe("shared budget and identity", () => {
         headers: {
           "content-type": "application/json",
           "X-Request-Id": requestId,
+          cookie: proofCookies,
           host: "void.example.com",
           origin: "https://void.example.com",
           "x-forwarded-proto": "https",

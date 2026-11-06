@@ -1,7 +1,7 @@
 import type { ChatEvent } from "../../../lib/contracts";
 import { createHash, randomUUID } from "node:crypto";
 import { assertAccountOrigin, getAccountSession, applyAccountAuthCookies } from "../../../lib/server/account-auth";
-import { reserveAccount, settleAccount, type AccountReservation } from "../../../lib/server/account-budget";
+import { accountRequestId, reserveAccount, settleAccount, type AccountReservation } from "../../../lib/server/account-budget";
 import { runAgent } from "../../../lib/server/agent";
 import {
   credentials,
@@ -9,7 +9,7 @@ import {
 } from "../../../lib/server/config";
 import { AppError, errorResponse } from "../../../lib/server/errors";
 import { assertRequestMode } from "../../../lib/server/deployment";
-import { issueIdentity } from "../../../lib/server/identity";
+import { accountRisk, riskUnavailable, type AccountRiskContext } from "../../../lib/server/account-risk";
 import { knowledge } from "../../../lib/server/knowledge";
 import { invalid, parseChat, parseMode, readJson, record } from "../../../lib/server/validation";
 import { resolveProvider } from "../../../lib/server/provider";
@@ -26,26 +26,27 @@ export async function POST(request: Request): Promise<Response> {
     assertRequestMode(parseMode(body.mode));
     const input = parseChat(body);
     const key = credentials(input.mode, request);
-    let accountId: string | undefined;
+    let admission: { accountId: string; requestId: string; riskContext: AccountRiskContext } | undefined;
     if (input.mode === "shared") {
       assertAccountOrigin(request);
       const session = await getAccountSession(request);
       applyCookies = session.applyCookies;
       if (!session.user) throw new AppError("LOGIN_REQUIRED", "Sign in to use trial credits.", 401);
-      accountId = session.user.id;
+      const requestId = accountRequestId(request);
+      const risk = accountRisk(request);
+      if (!risk) throw riskUnavailable();
+      const riskContext = await risk.admit("request", session.user.id);
+      admission = { accountId: session.user.id, requestId, riskContext };
     }
     const provider = await resolveProvider(input.mode, input.provider, request.signal);
-    const identity =
-      input.mode === "shared" ? issueIdentity(request) : undefined;
     let reservationId: string | undefined;
-    if (accountId) {
-      accountReservation = await reserveAccount(accountId, request.headers.get("X-Request-Id"), input.depth, provider.model, request.signal);
-    }
-    if (identity) {
+    if (admission) {
+      const { accountId, requestId, riskContext } = admission;
+      accountReservation = await reserveAccount(accountId, requestId, input.depth, provider.model, request.signal, riskContext);
       const reserved = await knowledge<unknown>("/v1/budget/reserve", {
         body: {
           requestId: randomUUID(),
-          identity: createHash("sha256").update(accountId!).digest("hex"),
+          identity: createHash("sha256").update(accountId).digest("hex"),
           tokens: worstCaseTokens(input),
         },
         signal: request.signal,
@@ -157,7 +158,6 @@ export async function POST(request: Request): Promise<Response> {
         "Cache-Control": "no-cache, no-store, no-transform",
         Connection: "keep-alive",
         "X-Accel-Buffering": "no",
-        ...(identity?.cookie ? { "Set-Cookie": identity.cookie } : {}),
       },
     }));
   } catch (error) {

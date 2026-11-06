@@ -1,3 +1,4 @@
+import { allowRisk, verifiedDeviceCookies } from "./helpers/account-risk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CookieOptions } from "@supabase/ssr";
 
@@ -19,8 +20,9 @@ vi.mock("@supabase/ssr", async (original) => ({
 }));
 
 const verifiedUser = { id: "aa000000-0000-4000-8000-000000000001", email: "invited@example.com", email_confirmed_at: "2026-11-01T00:00:00Z", is_anonymous: false };
+let anonymousCookies: string;
 const request = (path: string, body?: unknown, headers: Record<string, string> = {}) => new Request(`https://app.example.com/api/auth/${path}`, {
-  method: "POST", headers: { origin: "https://app.example.com", "content-type": "application/json", ...headers },
+  method: "POST", headers: { origin: "https://app.example.com", "content-type": "application/json", cookie: anonymousCookies, ...headers },
   ...(body === undefined ? {} : { body: JSON.stringify(body) }),
 });
 let auth: typeof import("../src/lib/server/account-auth");
@@ -38,6 +40,8 @@ beforeEach(async () => {
   vi.stubEnv("TRIAL_ALLOWED_EMAILS", "invited@example.com");
   vi.stubEnv("PUBLIC_APP_ORIGIN", "https://app.example.com");
   vi.stubEnv("TRUST_PROXY", "false");
+  anonymousCookies = await verifiedDeviceCookies("https://app.example.com", null);
+  vi.stubGlobal("fetch", vi.fn(async () => allowRisk()));
   provider.options = undefined;
   provider.getUser.mockResolvedValue({ data: { user: verifiedUser }, error: null });
   provider.signInWithOtp.mockResolvedValue({ data: { user: null, session: null }, error: null });
@@ -191,34 +195,5 @@ describe("verified account sessions and logout", () => {
     const response = await logout(request("logout", undefined, { cookie: "void-account=existing" }));
     expect(response.status).toBe(503);
     expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
-  });
-});
-
-describe("independent bounded OTP limits", () => {
-  it("limits sends by normalized email even across different trusted IPs", async () => {
-    vi.stubEnv("TRUST_PROXY", "true");
-    const responses = [];
-    for (let i = 1; i <= 4; i++) responses.push(await send(request("send-code", { email: "INVITED@example.com" }, { "x-forwarded-for": `192.0.2.${i}` })));
-    expect(responses.map((response) => response.status)).toEqual([200, 200, 200, 429]);
-  });
-  it("limits sends by IP even across different disallowed emails", async () => {
-    const responses = [];
-    for (let i = 0; i < 11; i++) responses.push(await send(request("send-code", { email: `outside${i}@example.com` }, { "x-forwarded-for": `192.0.2.${i + 1}` })));
-    expect(responses.at(-1)!.status).toBe(429);
-    expect(provider.signInWithOtp).not.toHaveBeenCalled();
-  });
-  it("limits OTP guesses by email independently from send limits", async () => {
-    vi.stubEnv("TRUST_PROXY", "true");
-    provider.verifyOtp.mockResolvedValue({ data: { user: null, session: null }, error: { status: 403, message: "invalid" } });
-    const responses = [];
-    for (let i = 1; i <= 9; i++) responses.push(await verify(request("verify-code", { email: verifiedUser.email, code: "000000" }, { "x-forwarded-for": `192.0.2.${i}` })));
-    expect(responses.at(-1)!.status).toBe(429);
-  });
-  it("expires rate limit windows", async () => {
-    vi.useFakeTimers();
-    for (let i = 0; i < 3; i++) await send(request("send-code", { email: verifiedUser.email }));
-    expect((await send(request("send-code", { email: verifiedUser.email }))).status).toBe(429);
-    await vi.advanceTimersByTimeAsync(15 * 60_000 + 1);
-    expect((await send(request("send-code", { email: verifiedUser.email }))).status).toBe(200);
   });
 });

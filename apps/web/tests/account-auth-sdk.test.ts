@@ -1,3 +1,4 @@
+import { allowRisk, verifiedDeviceCookies } from "./helpers/account-risk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseCookieHeader } from "@supabase/ssr";
 import { applyAccountAuthCookies, getAccountSession } from "../src/lib/server/account-auth";
@@ -39,8 +40,10 @@ afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 describe("Supabase SDK integration with a simulated provider", () => {
   it("exchanges an email code, validates the user, reads the resulting cookie and logs out", async () => {
     const calls: string[] = [];
+    const anonymousCookies = await verifiedDeviceCookies("https://app.example.com", null);
     vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = new URL(String(input));
+      if (url.pathname === "/v1/accounts/risk/check") return allowRisk();
       calls.push(url.pathname);
       expect(init?.cache).toBe("no-store");
       expect(init?.redirect).toBe("error");
@@ -49,7 +52,7 @@ describe("Supabase SDK integration with a simulated provider", () => {
       if (url.pathname === "/auth/v1/logout") return new Response(null, { status: 204 });
       throw new Error("Unexpected provider request");
     }));
-    const verified = await verify(req("", { email: user.email, code: "123456" }));
+    const verified = await verify(req(anonymousCookies, { email: user.email, code: "123456" }));
     expect(verified.status).toBe(200);
     expect(await verified.json()).toEqual({ ok: true });
     const cookie = cookiesFromResponse(verified);

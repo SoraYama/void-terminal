@@ -1,3 +1,4 @@
+import { allowRisk, verifiedDeviceCookies } from "./helpers/account-risk";
 import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as chat } from "../src/app/api/chat/route";
@@ -17,6 +18,7 @@ vi.mock("../src/lib/server/agent", () => ({ runAgent: mocked.runAgent }));
 
 const origin = "https://app.example.com";
 const user = { id: "aa000000-0000-4000-8000-000000000001", email: "invited@example.com" };
+let proofCookies: string;
 const requestId = "aa000000-0000-4000-8000-000000000002";
 const input: ChatRequest = {
   messages: [{ role: "user", content: "Explain this source" }],
@@ -39,7 +41,7 @@ function sessionFor(accountUser: typeof user | null = user) {
 }
 function request(path = "/api/chat", body: unknown = input, headers: Record<string, string> = {}, signal?: AbortSignal) {
   return new Request(`${origin}${path}`, {
-    method: "POST", headers: { "content-type": "application/json", origin, "X-Request-Id": requestId, ...headers },
+    method: "POST", headers: { "content-type": "application/json", origin, "X-Request-Id": requestId, cookie: proofCookies, ...headers },
     body: JSON.stringify(body), ...(signal ? { signal } : {}),
   });
 }
@@ -53,7 +55,7 @@ function assertRefreshed(response: Response) {
   expect(response.headers.get("set-cookie")).toContain("void-account=refreshed-session");
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.resetAllMocks();
   vi.unstubAllEnvs();
   for (const [name, value] of Object.entries({
@@ -66,6 +68,7 @@ beforeEach(() => {
     KNOWLEDGE_URL: "http://knowledge.test", TRUST_PROXY: "false",
   })) vi.stubEnv(name, value);
   resetRateLimits();
+  proofCookies = await verifiedDeviceCookies(origin, user.id);
   mocked.getSession.mockResolvedValue(sessionFor());
   mocked.runAgent.mockResolvedValue({ usedTokens: 85, outcome: "completed" });
   calls = [];
@@ -79,6 +82,7 @@ beforeEach(() => {
   };
   vi.stubGlobal("fetch", vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     const call: Call = { path: new URL(String(url)).pathname, body: init?.body ? JSON.parse(String(init.body)) : {}, init };
+    if (call.path === "/v1/accounts/risk/check") return allowRisk();
     calls.push(call);
     return fixture(call);
   }));
@@ -153,7 +157,7 @@ describe("shared route account admission", () => {
     }));
     expect(response.status).toBe(200);
     await response.text();
-    expect(callsFor("/v1/accounts/reserve")[0].body).toEqual({ accountId: user.id, requestId, depth: "deep", model: "deepseek-flash" });
+    expect(callsFor("/v1/accounts/reserve")[0].body).toEqual({ accountId: user.id, requestId, depth: "deep", model: "deepseek-flash", riskContext: { deviceHash: expect.stringMatching(/^[a-f0-9]{64}$/), verified: true } });
     expect(settledAccount()).toEqual([{ accountId: user.id, reservationId: "account-hold", outcome: "completed", usedTokens: 85 }]);
     expect(callsFor("/v1/budget/reserve")[0].body.identity).toBe(createHash("sha256").update(user.id).digest("hex"));
     expect(mocked.runAgent.mock.calls[0][1].key).toBe("server-secret");
@@ -318,7 +322,7 @@ describe("private account summary", () => {
   it("returns signed-out state without granting credits", async () => {
     mocked.getSession.mockResolvedValue(sessionFor(null));
     const response = await account(new Request(`${origin}/api/account`));
-    expect(await response.json()).toEqual({ enabled: true, authenticated: false });
+    expect(await response.json()).toMatchObject({ enabled: true, authenticated: false, risk: { status: "verification_required" } });
     expect(calls).toEqual([]);
     assertRefreshed(response);
   });

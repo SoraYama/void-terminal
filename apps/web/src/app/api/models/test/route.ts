@@ -1,7 +1,7 @@
 import { assertAccountOrigin, getAccountSession, applyAccountAuthCookies } from "../../../../lib/server/account-auth";
 import { credentials } from "../../../../lib/server/config";
 import { AppError, safeError } from "../../../../lib/server/errors";
-import { issueIdentity } from "../../../../lib/server/identity";
+import { accountRisk, riskUnavailable } from "../../../../lib/server/account-risk";
 import { boundedJson } from "../../../../lib/server/knowledge";
 import { openProviderTransport, resolveProvider, type ProviderTransport } from "../../../../lib/server/provider";
 import { assertRequestMode } from "../../../../lib/server/deployment";
@@ -33,12 +33,15 @@ export async function POST(request: Request): Promise<Response> {
       const session = await getAccountSession(request);
       applyCookies = session.applyCookies;
       if (!session.user) throw new AppError("LOGIN_REQUIRED", "Sign in to use trial credits.", 401);
+      const risk = accountRisk(request);
+      if (!risk) throw riskUnavailable();
+      // GET /models only checks connectivity and never generates or reserves tokens.
+      await risk.admit("request", session.user.id);
     }
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(10000)]);
     const config = await resolveProvider(mode, provider, signal);
     model = config.model;
     transport = openProviderTransport(config, signal);
-    const identity = mode === "shared" ? issueIdentity(request) : undefined;
     let response: Response;
     try {
       response = await transport.fetch("/models", {
@@ -86,15 +89,14 @@ export async function POST(request: Request): Promise<Response> {
       {
         headers: {
           "Cache-Control": "no-store",
-          ...(identity?.cookie ? { "Set-Cookie": identity.cookie } : {}),
         },
       },
     ));
   } catch (error) {
     const e = safeError(error);
     return applyAccountAuthCookies(error, applyCookies(Response.json(
-      { ok: false, model, code: e.code, message: e.message },
-      { status: e.status, headers: { "Cache-Control": "no-store" } },
+      { ok: false, model, code: e.code, message: e.message, ...(e.retryAfter ? { retryAfter: e.retryAfter } : {}) },
+      { status: e.status, headers: { "Cache-Control": "no-store", ...(e.retryAfter ? { "Retry-After": String(e.retryAfter) } : {}) } },
     )));
   } finally { await transport?.close().catch(() => {}); }
 }

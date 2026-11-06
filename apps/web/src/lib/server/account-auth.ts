@@ -1,6 +1,4 @@
 import "server-only";
-import { createHash } from "node:crypto";
-import { isIP } from "node:net";
 import {
   createServerClient,
   parseCookieHeader,
@@ -9,15 +7,13 @@ import {
 } from "@supabase/ssr";
 import type { User } from "@supabase/supabase-js";
 import { z } from "zod";
+import { accountRisk, clearDeviceProof, riskUnavailable } from "./account-risk";
 import { configuredAppOrigin } from "./app-origin";
 import { AppError, errorResponse } from "./errors";
 import { deploymentMode } from "./deployment";
 import { exactKeys, invalid, readJson, record } from "./validation";
 
 const AUTH_TIMEOUT_MS = 10_000;
-const RATE_WINDOW_MS = 15 * 60_000;
-const MAX_RATE_BUCKETS = 10_000;
-const rateBuckets = new Map<string, { count: number; expires: number }>();
 const emailSchema = z.email().max(254);
 
 type AuthConfig = { url: string; key: string; allowed: Set<string> | "*" };
@@ -79,29 +75,6 @@ function verifiedAccount(config: AuthConfig, user: User | null): AccountUser | n
   const email = normalizeEmail(user?.email);
   if (!user?.id || !user.email_confirmed_at || user.is_anonymous || !email || !allowedEmail(config, email)) return null;
   return { id: user.id, email };
-}
-
-function limitAttempts(request: Request, email: string, action: "send" | "verify"): void {
-  const now = Date.now();
-  for (const [key, bucket] of rateBuckets) if (bucket.expires <= now) rateBuckets.delete(key);
-  // Forwarding headers have authority only behind a configured, header-sanitizing reverse proxy.
-  const forwarded = process.env.TRUST_PROXY === "true" ? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() : undefined;
-  const ip = forwarded && isIP(forwarded) ? forwarded : "direct";
-  const hash = (value: string) => createHash("sha256").update(value).digest("hex");
-  const limits: [string, number][] = [
-    [`${action}:ip:${hash(ip)}`, action === "send" ? 10 : 30],
-    [`${action}:email:${hash(email)}`, action === "send" ? 3 : 8],
-  ];
-  for (const [key, limit] of limits) {
-    if ((rateBuckets.get(key)?.count ?? 0) >= limit) throw rateLimited();
-  }
-  const newBuckets = limits.filter(([key]) => !rateBuckets.has(key)).length;
-  if (rateBuckets.size + newBuckets > MAX_RATE_BUCKETS) throw rateLimited();
-  for (const [key] of limits) {
-    const bucket = rateBuckets.get(key) ?? { count: 0, expires: now + RATE_WINDOW_MS };
-    bucket.count++;
-    rateBuckets.set(key, bucket);
-  }
 }
 
 function noStore(response: Response): Response {
@@ -234,14 +207,16 @@ export async function handleAccountAuth(request: Request, action: "send" | "veri
         const { error } = await context.run(() => context!.client.auth.signOut({ scope: "local" }));
         if (error) throw unavailable();
       } finally { context.clear(); }
-      return context.applyCookies(Response.json({ ok: true }));
+      return clearDeviceProof(context.applyCookies(Response.json({ ok: true })));
     }
     const body = await readJson(request);
     if (!record(body)) throw invalid();
-    exactKeys(body, action === "send" ? ["email"] : ["email", "code"]);
+    exactKeys(body, action === "send" ? ["email", "signals"] : ["email", "code", "signals"]);
     const email = normalizeEmail(body.email);
     if (!email || (action === "verify" && (typeof body.code !== "string" || !/^\d{6}$/.test(body.code)))) throw invalid();
-    limitAttempts(request, email, action);
+    const risk = accountRisk(request, body.signals);
+    if (!risk) throw riskUnavailable();
+    await risk.admit(action, null, email);
     if (!allowedEmail(config, email)) {
       if (action === "verify") throw invalidCode();
       return noStore(Response.json({ ok: true }));
@@ -264,10 +239,12 @@ export async function handleAccountAuth(request: Request, action: "send" | "veri
       if (result.error && !isInvalidSession(result.error)) throw unavailable();
       const user = result.error ? null : verifiedAccount(config, result.data.user);
       if (!user || user.email !== email) throw invalidCode();
+      risk.promoteOtpProof(user.id);
     }
-    return context.applyCookies(Response.json({ ok: true }));
+    return risk.applyCookies(context.applyCookies(Response.json({ ok: true })));
   } catch (error) {
     if (action === "verify") context?.clear();
-    return context ? context.applyCookies(errorResponse(error)) : noStore(errorResponse(error));
+    const response = context ? context.applyCookies(errorResponse(error)) : noStore(errorResponse(error));
+    return action === "logout" && context ? clearDeviceProof(response) : response;
   }
 }
