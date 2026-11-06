@@ -64,7 +64,7 @@ nano /opt/void-terminal/releases/account-trial-7193f3e/account-trial.env
 
 2026-11-06 已复用 `void-terminal` Supabase 项目（项目区域为首尔），Resend 发送域名 `auth.sorayama.moe`（爱尔兰）已 Verified。专用发送 Key 限制到该域名，SMTP 凭证仅保存在 Supabase；两种验证码模板均已保存并重新加载验证。OTP 为 6 位 / 600 秒，每小时最多 10 封，同一邮箱至少间隔 60 秒。首次真实邮件已进入指定试用邮箱的收件箱，SPF、DKIM 均通过。
 
-应用版本 `7193f3eacae5e41803b75f336302bc2bbf967911` 已按邀请名单启用账户与共享服务；候选镜像通过发布检查后切换，现有快照、历史引用、Caddy 和原 `/data` 保持不变，数据刷新 timer 已恢复 active。专用 DeepSeek Key 的余额可用状态及 `deepseek-flash` 模型权限已通过服务端只读检查；这不是实际生成验收。
+应用版本 `7193f3eacae5e41803b75f336302bc2bbf967911` 已按邀请名单启用账户与共享服务；候选镜像通过发布检查后切换，现有快照、历史引用、Caddy 和原 `/data` 保持不变，数据刷新 timer 已恢复 active。专用 DeepSeek Key 的余额可用状态及 `deepseek-flash` 模型权限已通过服务端只读检查；随后用户完成真实验证码登录，普通考据生成及结算验收通过：首次赠送 20 点，验收一次扣 1 点，剩余 19 点、占用 0；刷新页面后余额与用量不变，对话与引用可重开。
 
 生产 `/opt/void-terminal/app` 现在是校验过的源码归档，来源写入 `.account-trial-release.json`，并非 Git checkout。原完整目录及 `.git`、原 `.env` 保留在 `/opt/void-terminal/releases/account-trial-7193f3e/backup/app.before`。未来发布不能假定在新 app 目录执行 `git pull`；应准备校验后的版本并保持持久 Compose 配置与对应源码一致。
 
