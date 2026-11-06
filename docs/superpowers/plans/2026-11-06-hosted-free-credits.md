@@ -96,5 +96,5 @@
 - [x] Run focused browser matrix and inspect actual screenshots; verify route-level API calls cannot bypass risk or cross modes. Verify same-device collisions show useful UI and manual exemption remains distinct from gift.
 - [ ] Configure owner-provided sponsor contact/links/BSC address in an appropriate ignored runtime config; validate exact address readback and network label. Do not publish placeholders, invent private data, send money or contact others.
 - [x] Assess deployment requirements: ledger schema backup/migration, risk secret, challenge credentials, trusted proxy, day/month budgets. Complete authorized reversible setup; missing external credentials/recipient info remain explicit, never silently bypassed.
-- [ ] Independent whole-branch security/spec review, fix material findings, record validations and remaining external readiness separately. No unsupported claim of production deployment.
+- [x] Independent whole-branch security/spec review, fix material findings, record validations and remaining external readiness separately. No unsupported claim of production deployment.
 - [x] Update docs/agent/feature/2026-11-06-hosted-free.md and INDEX.md. Final user report states code changes, tests, sponsorship setup and any genuine blocked external step.
