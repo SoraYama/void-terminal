@@ -75,7 +75,7 @@
 
 **Files:** apps/web/src/components/account-panel.tsx, terminal.tsx, new support-panel.tsx and account-risk-challenge.tsx; app/globals.css; lib/server/support-config.ts and public support-contracts.ts; page wrappers passing hosted-only config; settings-panel.tsx/chat-errors.ts/i18n as needed; config env/compose docs; account/deployment/support unit and e2e tests.
 
-**Interfaces:** Consume Task 2 AccountController and Task 1 bucket/eligibility summaries. Public SupportConfig has contactEmail?:string, channels array of validated outbound/QR methods, bsc?:{address:string,assets:('BNB'|'USDT')[],chainId:56}; only serialize configured values in hosted mode.
+**Interfaces:** Consume Task 2 AccountController and Task 1 bucket/eligibility summaries. Public SupportConfig has contactEmail?:string, channels array of validated outbound/QR methods, bsc?:{address:string,assets:('BNB'|'USDT'|'USDC')[],chainId:56}; only serialize configured values in hosted mode.
 - Env names: SUPPORT_CONTACT_EMAIL, SUPPORT_WECHAT_QR_URL, SUPPORT_ALIPAY_QR_URL, SUPPORT_AFDIAN_URL, SUPPORT_KOFI_URL, SUPPORT_BSC_ADDRESS, SUPPORT_BSC_ASSETS. QR paths must be validated same-site static resources; external link hosts allowlisted for their provider. Reject malformed/zero BSC addresses; preserve complete configured address. Optional mixed-case checksum validation may use an already-present trustworthy implementation, otherwise do not claim checksum verification.
 - Runtime config only, no real contact/wallet identifiers hardcoded into open source. Invalid channel configuration is hidden with server-side diagnostic; never fail unrelated core browsing or expose secrets.
 - BSC panel explicitly labels BNB Smart Chain (BSC/BEP-20), mainnet chain 56 and accepted assets, shows full address, copy feedback/fallback and a verified bscscan.com/address/<address> link. Warn succinctly to use BSC when transferring; do not fabricate token contracts or automatically initiate payments.
@@ -98,3 +98,7 @@
 - [x] Assess deployment requirements: ledger schema backup/migration, risk secret, challenge credentials, trusted proxy, day/month budgets. Complete authorized reversible setup; missing external credentials/recipient info remain explicit, never silently bypassed.
 - [x] Independent whole-branch security/spec review, fix material findings, record validations and remaining external readiness separately. No unsupported claim of production deployment.
 - [x] Update docs/agent/feature/2026-11-06-hosted-free.md and INDEX.md. Final user report states code changes, tests, sponsorship setup and any genuine blocked external step.
+
+## Owner configuration follow-up (2026-11-07)
+
+USDC is now explicitly requested and implemented. Actual BSC recipient, accepted assets and public contact are configured in an ignored runtime overlay; a real Managed Turnstile widget and private keys are staged on the server with verified contents. Alipay remains pending its QR image, so the full real-channel activation checkbox stays open. The running site and account database are unchanged.

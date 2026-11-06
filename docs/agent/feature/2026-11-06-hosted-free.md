@@ -1,4 +1,4 @@
-> **Date / Revised**: 2026-11-06
+> **Date / Revised**: 2026-11-06 (created) / 2026-11-07 (revised)
 
 # 官网免费点数、设备风控与赞助
 
@@ -38,4 +38,4 @@
 - Parent visually inspected desktop/mobile balance hierarchy, mobile dark mode, proof challenge, exhausted composer and BSC manual-copy fallback. Final 390 px exhausted layout exposes all send controls; 375 px BSC layout exposes the full wrapped address.
 - Actual CLI rehearsal migrated a synthetic v0 ledger with available 7 / held 1, retained zero-balance legacy eligibility history, replayed a manual grant once, and verified/restored both v0 and v3 backups to fresh targets. Evidence: `artifacts/hosted-free-credits/migration-mgr4418b/receipt.json`.
 - Compose YAML and exact hosted monthly-budget startup guards passed local checks. A production standalone Web process served an existing public/support fixture with HTTP 200 and byte-identical image contents. Docker itself was not available locally.
-- Activation remains pending: owner-approved BSC address and assets, actual domestic/overseas links or QR assets, public contact email, and real Turnstile site/secret configuration. Examples remain empty; no test recipient was published. No production deployment, ledger migration, or sponsor transfer was performed.
+- Initial activation was pending operator details. On 2026-11-07 the real BSC recipient/assets, public contact and dedicated Turnstile widget were configured and staged securely; see [activation preparation](2026-11-07-sponsor-config.md). Alipay QR, merge/release and real external acceptance remain pending. Examples remain empty; no test recipient was published. No production deployment, ledger migration, or sponsor transfer was performed.
