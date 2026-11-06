@@ -333,9 +333,14 @@ def rehearse(root, workspace, image, sources):
             refresh.atomic_json(workspace / 'rehearsal-report.json', report, 0o600)
 
 
-def resume_verification(root, source, workspace):
-    """Reverify an exact packed candidate, retaining the failed attempt unchanged."""
-    from catalog_promote import read_private
+def resume_verification(root, source, workspace, *, revalidate=False):
+    """Reverify a packed candidate, retaining its original receipt unchanged.
+
+    Revalidation accepts a previously passed candidate against a newer active
+    snapshot only when both use the same pinned sources. All acceptance checks
+    run again; promotion still requires a fresh persisted-item audit.
+    """
+    from catalog_promote import read_private, require_rehearsal
 
     refresh.require(source.parent == root / 'rehearsals' and source == source.resolve(),
                     'choose a private source rehearsal directory')
@@ -343,19 +348,28 @@ def resume_verification(root, source, workspace):
         original_path = source / 'rehearsal-report.json'
         original = read_private(original_path)
         original_sha = refresh.digest(original_path)
-        refresh.require((original.get('mode'), original.get('status'), original.get('phase'), original.get('published'))
-                        == ('report-only', 'failed', 'candidate-verification', False),
-                        'only a failed packed candidate verification can be resumed')
+        if revalidate:
+            require_rehearsal(original, original.get('baselineRegistrySha256'))
+        else:
+            refresh.require((original.get('mode'), original.get('status'), original.get('phase'), original.get('published'))
+                            == ('report-only', 'failed', 'candidate-verification', False),
+                            'only a failed packed candidate verification can be resumed')
         before = refresh.registry(root)
         registry_sha = refresh.digest(root / 'state/registry.json')
-        refresh.require(original['baselineRegistrySha256'] == registry_sha
+        refresh.require((revalidate or original['baselineRegistrySha256'] == registry_sha)
                         and original['checks'].get('productionRegistryUnchanged') is True
                         and not os.path.lexists(root / 'state/pending.json'),
                         'production registry changed since the failed rehearsal')
+        if revalidate:
+            refresh.require(refresh.current_sources(before) == original['sources'],
+                            'revalidation requires the same source revisions as the active snapshot')
+            refresh.require(refresh.marked_worker(root) is None, 'production build needs cleanup before revalidation')
         result = read_private(source / 'result.json')
         refresh.require(result == original['candidate'] and result['sources'] == original['sources']
-                        and before['active'] == original['baseline']['snapshotId'],
+                        and (revalidate or before['active'] == original['baseline']['snapshotId']),
                         'packed candidate differs from the failed rehearsal')
+        refresh.require(result['snapshotId'] not in before['snapshots']
+                        and result['snapshotId'] != before['legacy']['snapshotId'], 'candidate is already registered')
         archive, _ = refresh.archive_metadata(source, result)
         create_workspace(root, workspace)
         started = time.monotonic()
@@ -363,11 +377,12 @@ def resume_verification(root, source, workspace):
         checks = {'productionRegistryUnchanged': False}
         report = {key: original[key] for key in ('mode', 'published', 'sources', 'workerImage',
                                                 'baselineRegistrySha256', 'candidate', 'baseline')}
-        report.update(status='failed', checks=checks, artifacts={}, resumedFrom={
+        report.update(status='failed', checks=checks, artifacts={})
+        report['revalidatedFrom' if revalidate else 'resumedFrom'] = {
             'workspace': source.name, 'reportSha256': original_sha, 'disk': original['disk'],
             'durationSeconds': original['durationSeconds'],
-        })
-        phase = 'resume-preflight'
+        }
+        phase = 'revalidate-preflight' if revalidate else 'resume-preflight'
 
         def unchanged():
             try:
@@ -390,11 +405,22 @@ def resume_verification(root, source, workspace):
                                        'archiveMetadata': str(archive.with_suffix('.json').relative_to(source))}
                 baseline_database(root, before)
                 baseline = refresh.inspect(before['active'])
-                refresh.require(baseline == report['baseline'], 'active baseline changed since rehearsal')
+                if revalidate:
+                    from knowledge.refresh_build import validate_coverage
+
+                    refresh.require(baseline['snapshotId'] == before['active']
+                                    and baseline['sourceCommit'] == result['sources']['main'], 'active baseline identity changed')
+                    validate_coverage(result, baseline)
+                    report.update(baseline=baseline, baselineRegistrySha256=registry_sha,
+                                  coverageDelta=coverage_delta(baseline, result))
+                else:
+                    refresh.require(baseline == report['baseline'], 'active baseline changed since rehearsal')
                 refresh.verify_public(baseline, baseline)
                 history_before = public_history(before, baseline)
                 phase = 'candidate-verification'
                 report['archive'] = verify_candidate(workspace, report['workerImage'], result)
+                if revalidate:
+                    refresh.require(report['archive'] == original['archive'], 'previously verified archive changed')
                 checks['privateArchiveVerified'] = True
                 phase = 'rollback'
                 checks['rollback'] = simulate_rollback(workspace, before, result['snapshotId'], report['archive'])
@@ -407,7 +433,7 @@ def resume_verification(root, source, workspace):
                 checks['historicalCitations'] = history_after
                 phase = 'production-registry-readback'
                 refresh.require(unchanged(), 'production registry changed during verification')
-                refresh.require(refresh.digest(original_path) == original_sha, 'original failure receipt changed')
+                refresh.require(refresh.digest(original_path) == original_sha, 'original rehearsal receipt changed')
                 phase = 'complete'
             report['status'] = 'passed'
             return report
@@ -431,7 +457,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, default=refresh.ROOT)
     parser.add_argument('--workspace', type=Path, required=True)
-    parser.add_argument('--resume', type=Path, help='reverify the exact packed archive from a failed private run')
+    reuse = parser.add_mutually_exclusive_group()
+    reuse.add_argument('--resume', type=Path, help='reverify the exact packed archive from a failed private run')
+    reuse.add_argument('--revalidate', type=Path, help='recheck a passed archive against the current same-source baseline')
     parser.add_argument('--image')
     parser.add_argument('--main-commit')
     parser.add_argument('--supplement-commit')
@@ -442,10 +470,11 @@ def main(argv=None):
 
     signal.signal(signal.SIGTERM, interrupted)
     try:
-        if args.resume:
+        if args.resume or args.revalidate:
             refresh.require(not any((args.image, args.main_commit, args.supplement_commit)),
                             'resume uses the original pinned inputs')
-            report = resume_verification(args.root.resolve(), args.resume.absolute(), args.workspace.absolute())
+            report = resume_verification(args.root.resolve(), (args.resume or args.revalidate).absolute(),
+                                         args.workspace.absolute(), revalidate=bool(args.revalidate))
         else:
             refresh.require(all((args.image, args.main_commit, args.supplement_commit)), 'pin the image and both sources')
             report = rehearse(args.root.resolve(), args.workspace.absolute(), args.image,

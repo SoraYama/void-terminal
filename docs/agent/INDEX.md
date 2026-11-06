@@ -1,4 +1,4 @@
-> **Last updated**: 2026-11-05 (Character Archive; approved navigation and elemental identity refinement)
+> **Last updated**: 2026-11-06 (同源候选在每日刷新后重新验收，保留发布校验与原始凭据)
 
 # Agent Notes
 
@@ -31,6 +31,7 @@
 
 | Note | Summary |
 | --- | --- |
+| [2026-11-06-rehearsal-revalidate](bugfix/2026-11-06-rehearsal-revalidate.md) | 每日刷新使通过的演练凭据过期；同源不可变候选在新目录完整重验，保留旧报告，重新审计当前基线 |
 | [2026-11-05-sidebar-history](bugfix/2026-11-05-sidebar-history.md) | 第四个导航入口导致手机历史列表 flex 压缩为 0px；保留 88px 可点击空间，由侧栏外层滚动 |
 | [2026-11-05-character-provenance](bugfix/2026-11-05-character-provenance.md) | 试用/测试角色只有图片映射时误用旧提交号；媒体处理显式接收来源提交，入库前先校验所有嵌套来源 |
 | [2026-11-03-scroll-anchor](bugfix/2026-11-03-scroll-anchor.md) | use-conversation-scroll derives button visibility from paused follow and absolute tail distance: separate downward answer geometry from follow intent; hide at bottom/visible tail/references, refresh on streaming and resize |
