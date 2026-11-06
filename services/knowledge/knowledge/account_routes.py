@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import Depends
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from .account_risk import RiskCheck, RiskContext
 from .account_store import AccountStore
 from .config import database_url
 from .store import StoreError
@@ -22,7 +23,11 @@ class AccountRequest(BaseModel):
         return str(UUID(value))
 
 
-class AccountReserveRequest(AccountRequest):
+class AccountSummaryRequest(AccountRequest):
+    riskContext: RiskContext | None = None
+
+
+class AccountReserveRequest(AccountSummaryRequest):
     requestId: str = Field(min_length=1, max_length=36)
     depth: Literal['standard', 'deep']
     model: str = Field(min_length=1, max_length=200)
@@ -97,13 +102,17 @@ def register_account_routes(api, authenticate):
     guards = [Depends(authenticate)]
 
     @api.post('/v1/accounts/summary', dependencies=guards)
-    def account_summary(body: AccountRequest, db=Depends(ledger)):
-        return db.summary(body.accountId)
+    def account_summary(body: AccountSummaryRequest, db=Depends(ledger)):
+        return db.summary(body.accountId, risk_context=body.riskContext)
 
     @api.post('/v1/accounts/reserve', dependencies=guards)
     def account_reserve(body: AccountReserveRequest, db=Depends(ledger)):
-        return db.reserve(body.accountId, body.requestId, body.depth, body.model)
+        return db.reserve(body.accountId, body.requestId, body.depth, body.model, risk_context=body.riskContext)
 
     @api.post('/v1/accounts/settle', dependencies=guards)
     def account_settle(body: AccountSettleRequest, db=Depends(ledger)):
         return db.settle(body.accountId, body.reservationId, body.outcome, body.usedTokens)
+
+    @api.post('/v1/accounts/risk/check', dependencies=guards)
+    def account_risk_check(body: RiskCheck, db=Depends(ledger)):
+        return db.check_risk(body)

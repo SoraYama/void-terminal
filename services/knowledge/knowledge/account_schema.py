@@ -1,20 +1,20 @@
 """Recognized ledger schemas and read-only validation for runtime and backups.
 
-Version zero is the exact pre-grants account schema. Migration to version two is
-one transaction; older binaries reject its extra tables and cannot reopen it.
+Versions zero and two are the recognized pre-bucket schemas. Migration to
+version three is atomic; older binaries reject the newer version.
 """
 from functools import lru_cache
 import re
 import sqlite3
 from uuid import uuid4
 
-from .payment_schema import BILLING_SCHEMA, BILLING_TABLES, validate_billing
+from .account_credit_buckets import BUCKET_SCHEMA, DAILY_LIMIT
+from .account_risk import RISK_SCHEMA
+from .payment_schema import BILLING_SCHEMA, validate_billing
 
 
-SCHEMA_VERSION = 2
-SUPPORTED_SCHEMA_VERSIONS = frozenset({0, SCHEMA_VERSION})
-LEGACY_TABLES = frozenset({'accounts', 'account_usage'})
-LEDGER_TABLES = LEGACY_TABLES | {'credit_grants'} | BILLING_TABLES
+SCHEMA_VERSION = 3
+SUPPORTED_SCHEMA_VERSIONS = frozenset({0, 2, SCHEMA_VERSION})
 MAX_GRANT_UNITS = 1000000
 # Public balances are JSON numbers consumed by JavaScript.
 MAX_TOTAL_CREDITS = 9007199254740991
@@ -96,20 +96,23 @@ def _schema_signature(db):
         "SELECT type,name,tbl_name,sql FROM sqlite_master WHERE sql IS NOT NULL")}
 
 
-@lru_cache(maxsize=2)
+@lru_cache(maxsize=len(SUPPORTED_SCHEMA_VERSIONS))
 def _expected_signature(version):
     db = sqlite3.connect(':memory:')
     try:
         execute_schema(db, LEGACY_SCHEMA)
-        if version == SCHEMA_VERSION:
+        if version >= 2:
             execute_schema(db, GRANT_SCHEMA)
             execute_schema(db, BILLING_SCHEMA)
+        if version == SCHEMA_VERSION:
+            execute_schema(db, BUCKET_SCHEMA)
+            execute_schema(db, RISK_SCHEMA)
         return _schema_signature(db)
     finally:
         db.close()
 
 
-def validate_account_projection(db, account_id, *, required=True):
+def validate_account_projection(db, account_id, *, required=True, allocations=True):
     """Return a validated account total; inspect only this account's grant rows."""
     row = db.execute('SELECT total_granted FROM accounts WHERE id=?', (account_id,)).fetchone()
     if row is None:
@@ -126,20 +129,41 @@ def validate_account_projection(db, account_id, *, required=True):
         raise RuntimeError('Account credit projection is invalid') from error
     if type(granted) is not int or total != granted:
         raise RuntimeError('Account credit projection does not match grant records')
-    _validate_account_usage(db, account_id, total)
+    _validate_account_usage(db, account_id, total, allocations=allocations)
     return total
 
 
-def _validate_account_usage(db, account_id, total):
+def _validate_account_usage(db, account_id, total, *, allocations=False):
     malformed = db.execute('''SELECT 1 FROM account_usage WHERE account_id=? AND (
         typeof(units)!='integer' OR units NOT BETWEEN 1 AND ?
         OR (used_tokens IS NOT NULL AND (typeof(used_tokens)!='integer' OR used_tokens NOT BETWEEN 0 AND ?))
         ) LIMIT 1''', (account_id, MAX_TOTAL_CREDITS, MAX_TOTAL_CREDITS)).fetchone()
     if malformed is not None:
         raise RuntimeError('Account usage contains invalid credit or token units')
+    if allocations:
+        invalid = db.execute('''SELECT 1 FROM account_usage AS u
+            LEFT JOIN account_credit_allocations AS a USING(reservation_id)
+            LEFT JOIN account_daily_credits AS d ON d.account_id=a.account_id AND d.period=a.period
+            WHERE u.account_id=? AND (
+                a.reservation_id IS NULL OR a.account_id!=u.account_id OR a.daily_units>u.units
+                OR (a.period IS NOT NULL AND (d.period IS NULL OR u.created_at<a.period OR u.created_at>=a.period+86400))
+            ) LIMIT 1''', (account_id,)).fetchone()
+        if invalid is not None:
+            raise RuntimeError('Account usage has invalid credit allocations')
+        overdrawn = db.execute('''SELECT 1 FROM account_usage AS u
+            JOIN account_credit_allocations AS a USING(reservation_id)
+            WHERE u.account_id=? AND a.period IS NOT NULL AND u.status IN ('reserved','completed')
+            GROUP BY a.period HAVING SUM(a.daily_units)>? LIMIT 1''', (account_id, DAILY_LIMIT)).fetchone()
+        if overdrawn is not None:
+            raise RuntimeError('Account usage exceeds granted daily credits')
+        committed_query = '''SELECT COALESCE(SUM(u.units-a.daily_units),0) FROM account_usage AS u
+            JOIN account_credit_allocations AS a USING(reservation_id)
+            WHERE u.account_id=? AND u.status IN ('reserved','completed')'''
+    else:
+        committed_query = '''SELECT COALESCE(SUM(units),0) FROM account_usage
+            WHERE account_id=? AND status IN ('reserved','completed')'''
     try:
-        committed = db.execute('''SELECT COALESCE(SUM(units),0) FROM account_usage
-            WHERE account_id=? AND status IN ('reserved','completed')''', (account_id,)).fetchone()[0]
+        committed = db.execute(committed_query, (account_id,)).fetchone()[0]
     except sqlite3.OperationalError as error:
         raise RuntimeError('Account usage exceeds granted credits') from error
     if type(committed) is not int or committed > total:
@@ -154,7 +178,7 @@ def validate_schema(db, *, allow_legacy=False):
     check the version and their affected account, avoiding a ledger-wide scan.
     """
     version = db.execute('PRAGMA user_version').fetchone()[0]
-    if version != SCHEMA_VERSION and not (allow_legacy and version == 0):
+    if version != SCHEMA_VERSION and not (allow_legacy and version in SUPPORTED_SCHEMA_VERSIONS):
         raise RuntimeError('Unsupported account ledger schema version')
     if _schema_signature(db) != _expected_signature(version):
         raise RuntimeError('ACCOUNT_DATABASE_PATH has an unrecognized account ledger schema')
@@ -165,11 +189,11 @@ def validate_schema(db, *, allow_legacy=False):
     for account_id, total in db.execute('SELECT id,total_granted FROM accounts'):
         if type(total) is not int or not 0 <= total <= MAX_TOTAL_CREDITS:
             raise RuntimeError('Account credit projection is invalid')
-        if version == SCHEMA_VERSION:
-            validate_account_projection(db, account_id)
+        if version >= 2:
+            validate_account_projection(db, account_id, allocations=version == SCHEMA_VERSION)
         else:
             _validate_account_usage(db, account_id, total)
-    if version == SCHEMA_VERSION:
+    if version >= 2:
         validate_billing(db)
     return version
 
@@ -184,14 +208,21 @@ def initialize_schema(db, *, now, create=True):
         execute_schema(db, LEGACY_SCHEMA)
     elif validate_schema(db, allow_legacy=True) == SCHEMA_VERSION:
         return
-    execute_schema(db, GRANT_SCHEMA)
-    execute_schema(db, BILLING_SCHEMA)
-    # Existing totals already contain the original trial. Capture them exactly,
-    # including zero, without replaying trial enrollment or changing usage.
-    for account_id, total in db.execute('SELECT id,total_granted FROM accounts'):
-        db.execute('''INSERT INTO credit_grants
-            (id,account_id,source,reference,units,created_at,reason_code)
-            VALUES (?,?,'legacy',?,?,?,'legacy')''',
-            (str(uuid4()), account_id, account_id, total, now))
+    if version == 0:
+        execute_schema(db, GRANT_SCHEMA)
+        execute_schema(db, BILLING_SCHEMA)
+        # Version zero totals already contain the original trial. Preserve
+        # the entire grant, including zero, and leave usage history untouched.
+        for account_id, total in db.execute('SELECT id,total_granted FROM accounts'):
+            db.execute('''INSERT INTO credit_grants
+                (id,account_id,source,reference,units,created_at,reason_code)
+                VALUES (?,?,'legacy',?,?,?,'legacy')''',
+                (str(uuid4()), account_id, account_id, total, now))
+    execute_schema(db, BUCKET_SCHEMA)
+    execute_schema(db, RISK_SCHEMA)
+    db.execute('INSERT INTO account_welcome SELECT id FROM accounts')
+    db.execute('''INSERT INTO account_credit_allocations
+        (reservation_id,account_id,period,daily_units)
+        SELECT reservation_id,account_id,NULL,0 FROM account_usage''')
     db.execute(f'PRAGMA user_version={SCHEMA_VERSION}')
     validate_schema(db)

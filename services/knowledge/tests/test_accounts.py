@@ -16,18 +16,26 @@ BOB = '10000000-0000-4000-8000-000000000002'
 HEADERS = {'X-Knowledge-Token': 'secret'}
 
 
+def verified_context(account=ALICE):
+    return {'deviceHash': account.replace('-', '') * 2, 'verified': True}
+
+
+def balance(result):
+    return {key: result['credits'][key] for key in ('available', 'held', 'totalGranted')}
+
+
 def test_internal_account_api_grants_once_and_preserves_balance_on_restart(tmp_path, monkeypatch):
     monkeypatch.setenv('ACCOUNT_TRIAL_ENABLED', 'true')
     monkeypatch.setenv('ACCOUNT_DATABASE_PATH', str(tmp_path / 'accounts.sqlite'))
     for _ in range(2):
         client = TestClient(create_app(api_token='secret'))
-        response = client.post('/v1/accounts/summary', headers=HEADERS, json={'accountId': ALICE})
+        response = client.post('/v1/accounts/summary', headers=HEADERS, json={'accountId': ALICE, 'riskContext': verified_context()})
         assert response.status_code == 200
         body = response.json()
-        assert {key: value for key, value in body.items() if key != 'grants'} == {
-            'credits': {'available': 20, 'held': 0, 'totalGranted': 20},
-            'trialCredits': 20, 'costs': {'standard': 1, 'deep': 3}, 'usage': [],
-        }
+        assert balance(body) == {'available': 23, 'held': 0, 'totalGranted': 20}
+        assert body['trialCredits'] == 20
+        assert body['costs'] == {'standard': 1, 'deep': 3}
+        assert body['usage'] == []
         assert len(body['grants']) == 1
         assert body['grants'][0]['source'] == 'trial'
         assert body['grants'][0]['units'] == 20
@@ -42,7 +50,7 @@ def configured_client(tmp_path, monkeypatch, *, credits=20, store=None):
 
 
 def summary(client, account=ALICE):
-    response = client.post('/v1/accounts/summary', headers=HEADERS, json={'accountId': account})
+    response = client.post('/v1/accounts/summary', headers=HEADERS, json={'accountId': account, 'riskContext': verified_context(account)})
     assert response.status_code == 200
     return response.json()
 
@@ -50,7 +58,7 @@ def summary(client, account=ALICE):
 def reserve(client, *, account=ALICE, request_id=None, depth='standard'):
     response = client.post('/v1/accounts/reserve', headers=HEADERS, json={
         'accountId': account, 'requestId': request_id or str(uuid4()),
-        'depth': depth, 'model': 'fixture-model',
+        'depth': depth, 'model': 'fixture-model', 'riskContext': verified_context(account),
     })
     assert response.status_code == 200
     return response.json()
@@ -67,10 +75,10 @@ def settle(client, reservation, *, account=ALICE, outcome='completed', tokens=10
 def test_reserve_grants_without_summary_and_completed_charge_survives_restart(tmp_path, monkeypatch):
     client = configured_client(tmp_path, monkeypatch, credits=4)
     reservation = reserve(client, depth='deep')['reservationId']
-    assert summary(client)['credits'] == {'available': 1, 'held': 3, 'totalGranted': 4}
+    assert balance(summary(client)) == {'available': 4, 'held': 3, 'totalGranted': 4}
     assert settle(client, reservation) == {'settled': True}
     restarted = TestClient(create_app(api_token='secret'))
-    assert summary(restarted)['credits'] == {'available': 1, 'held': 0, 'totalGranted': 4}
+    assert balance(summary(restarted)) == {'available': 4, 'held': 0, 'totalGranted': 4}
     row = summary(restarted)['usage'][0]
     assert row['depth'] == 'deep' and row['units'] == 3 and row['usedTokens'] == 100
     assert row['status'] == 'completed' and row['model'] == 'fixture-model'
@@ -98,7 +106,7 @@ def test_released_and_completed_request_ids_cannot_run_again_and_accounts_are_is
     assert settle(client, reservation, outcome='completed') == {'settled': False}
     assert settle(client, reservation, outcome='released') == {'settled': False}
     assert reserve(client, request_id=request_id) == {'allowed': False, 'reason': 'duplicate_request'}
-    assert summary(client)['credits'] == {'available': 20, 'held': 0, 'totalGranted': 20}
+    assert balance(summary(client)) == {'available': 23, 'held': 0, 'totalGranted': 20}
     bob = reserve(client, account=BOB, request_id=request_id)
     assert bob['allowed'] is True
     assert len(summary(client, BOB)['usage']) == 1
@@ -107,17 +115,19 @@ def test_released_and_completed_request_ids_cannot_run_again_and_accounts_are_is
     assert settle(client, completed) == {'settled': True}
     assert settle(client, completed, outcome='released') == {'settled': False}
     assert reserve(client, request_id=completed_request) == {'allowed': False, 'reason': 'duplicate_request'}
-    assert summary(client)['credits']['available'] == 19
+    assert summary(client)['credits']['available'] == 22
 
 
 def test_insufficient_balance_never_creates_hold_and_standard_uses_last_credit(tmp_path, monkeypatch):
     client = configured_client(tmp_path, monkeypatch, credits=1)
+    daily = reserve(client, depth='deep')['reservationId']
+    assert settle(client, daily) == {'settled': True}
     assert reserve(client, depth='deep') == {'allowed': False, 'reason': 'insufficient_credits'}
-    assert summary(client)['usage'] == []
+    assert len(summary(client)['usage']) == 1
     reservation = reserve(client)['reservationId']
     assert settle(client, reservation) == {'settled': True}
     assert reserve(client) == {'allowed': False, 'reason': 'insufficient_credits'}
-    assert summary(client)['credits'] == {'available': 0, 'held': 0, 'totalGranted': 1}
+    assert balance(summary(client)) == {'available': 0, 'held': 0, 'totalGranted': 1}
 
 
 def test_parallel_requests_and_grants_allow_only_one_active_hold(tmp_path, monkeypatch):
@@ -132,7 +142,7 @@ def test_parallel_requests_and_grants_allow_only_one_active_hold(tmp_path, monke
         outcomes = list(pool.map(attempt, range(12)))
     assert sum(result['allowed'] for result in outcomes) == 1
     assert [result.get('reason') for result in outcomes].count('in_progress') == 11
-    assert summary(client)['credits'] == {'available': 17, 'held': 3, 'totalGranted': 20}
+    assert balance(summary(client)) == {'available': 20, 'held': 3, 'totalGranted': 20}
 
 
 def test_parallel_settlement_charges_exactly_once(tmp_path, monkeypatch):
@@ -147,7 +157,7 @@ def test_parallel_settlement_charges_exactly_once(tmp_path, monkeypatch):
     with ThreadPoolExecutor(max_workers=8) as pool:
         outcomes = list(pool.map(complete, range(8)))
     assert sum(result['settled'] for result in outcomes) == 1
-    assert summary(client)['credits'] == {'available': 17, 'held': 0, 'totalGranted': 20}
+    assert balance(summary(client)) == {'available': 20, 'held': 0, 'totalGranted': 20}
 
 
 def test_expiration_refunds_at_ten_minutes_without_permitting_replay(tmp_path, monkeypatch):
@@ -156,11 +166,11 @@ def test_expiration_refunds_at_ten_minutes_without_permitting_replay(tmp_path, m
     now = [1000.0]
     ledger = AccountStore(tmp_path / 'accounts.sqlite', clock=lambda: now[0])
     request_id = str(uuid4())
-    reservation = ledger.reserve(ALICE, request_id, 'deep', 'fixture-model')['reservationId']
+    reservation = ledger.reserve(ALICE, request_id, 'deep', 'fixture-model', risk_context=verified_context())['reservationId']
     now[0] = 1599.99
     assert ledger.summary(ALICE)['credits']['held'] == 3
     now[0] = 1600.0
-    assert ledger.summary(ALICE)['credits'] == {'available': 20, 'held': 0, 'totalGranted': 20}
+    assert balance(ledger.summary(ALICE)) == {'available': 23, 'held': 0, 'totalGranted': 20}
     assert ledger.summary(ALICE)['usage'][0]['status'] == 'expired'
     assert ledger.settle(ALICE, reservation, 'completed', 100) == {'settled': False}
     assert ledger.reserve(ALICE, request_id, 'deep', 'fixture-model') == {'allowed': False, 'reason': 'duplicate_request'}
@@ -300,10 +310,10 @@ def test_ledger_refuses_catalog_lifecycle_paths(tmp_path, monkeypatch, target):
 
 def test_ledger_is_independent_from_catalog_and_outage_is_explicit(tmp_path, monkeypatch, store):
     client = configured_client(tmp_path, monkeypatch, store=store)
-    assert summary(client)['credits']['available'] == 20
+    assert summary(client)['credits']['available'] == 23
     catalog = Path(store.path)
     catalog.unlink()
-    assert summary(client)['credits']['available'] == 20
+    assert summary(client)['credits']['available'] == 23
     ledger = tmp_path / 'accounts.sqlite'
     ledger.unlink()
     ledger.mkdir()

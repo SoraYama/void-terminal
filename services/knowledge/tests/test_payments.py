@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from knowledge.account_store import AccountStore
+from test_accounts import balance
 from knowledge.store import StoreError
 
 
@@ -149,7 +150,7 @@ def test_verified_payment_commits_fact_receipt_paid_order_and_exact_credit_grant
     assert result['event']['event_id'] == 'event-1'
     assert result['payment']['amount_minor'] == 1234
     assert result['payment']['currency'] == 'CNY'
-    assert accounts.summary(ALICE)['credits'] == {'available': 50, 'held': 0, 'totalGranted': 50}
+    assert balance(accounts.summary(ALICE)) == {'available': 50, 'held': 0, 'totalGranted': 50}
     with sqlite3.connect(accounts.path) as db:
         assert db.execute("SELECT account_id,reference,units,reason_code FROM credit_grants WHERE source='payment'").fetchall() == [
             (ALICE, order['id'], 50, 'payment'),
@@ -182,10 +183,9 @@ print(json.dumps({'credited': result['credited'], 'replayed': result['replayed']
     process = subprocess.run([sys.executable, '-c', source, str(accounts.path), order['id'], ALICE],
                              env={**os.environ, 'PYTHONPATH': str(Path(__file__).resolve().parents[1])},
                              check=True, text=True, capture_output=True)
-    assert json.loads(process.stdout) == {
-        'credited': False, 'replayed': True,
-        'credits': {'available': 50, 'held': 0, 'totalGranted': 50},
-    }
+    response = json.loads(process.stdout)
+    assert response['credited'] is False and response['replayed'] is True
+    assert balance(response) == {'available': 50, 'held': 0, 'totalGranted': 50}
     assert counts(accounts) == (1, 1, 2)
 
 
@@ -314,7 +314,7 @@ def test_payment_and_reservations_share_atomic_balance_serialization(tmp_path):
     holds = sum(result.get('allowed', False) for result in results)
     assert results[0]['credited'] is True
     assert holds in (0, 1)
-    assert accounts.summary(ALICE)['credits'] == {
+    assert balance(accounts.summary(ALICE)) == {
         'available': 50 - 3 * holds, 'held': 3 * holds, 'totalGranted': 50,
     }
 

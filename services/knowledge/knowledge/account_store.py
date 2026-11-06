@@ -1,4 +1,4 @@
-"""Durable trial credits, isolated from replaceable corpus storage.
+"""Durable account credits, isolated from replaceable corpus storage.
 
 Each operation owns one SQLite IMMEDIATE transaction. Grant, expiry, balance
 checks and state transitions therefore serialize across threads and processes.
@@ -10,6 +10,8 @@ import sqlite3
 import time
 from uuid import UUID, uuid4
 
+from .account_credit_buckets import allocate_entitlement, credit_balances, shanghai_period
+from .account_risk import RiskCheck, RiskContext, configured_limits, prune_risk_state, record_risk_check
 from .account_schema import (
     MANUAL_REASONS, MAX_GRANT_UNITS, MAX_TOTAL_CREDITS, SCHEMA_VERSION,
     initialize_schema, validate_account_projection, validate_schema,
@@ -77,6 +79,7 @@ class AccountStore:
         self.path = path.resolve()
         self.trial_credits = trial_credits
         self.clock = clock or time.time
+        self.risk_limits = configured_limits()
         if create:
             self.path.parent.mkdir(parents=True, exist_ok=True)
         db = sqlite3.connect(self.path.as_uri() + ('?mode=rwc' if create else '?mode=rw'),
@@ -127,12 +130,14 @@ class AccountStore:
         finally:
             db.close()
 
-    def _grant(self, db, account_id):
-        created = db.execute('INSERT OR IGNORE INTO accounts(id,total_granted) VALUES (?,0)', (account_id,))
-        if created.rowcount:
-            _record_grant(db, account_id, 'trial', account_id, self.trial_credits, 'trial', self.clock())
-        else:
-            validate_account_projection(db, account_id)
+    def _prepare(self, db, account_id, context, now, period):
+        db.execute('INSERT INTO accounts(id,total_granted) VALUES (?,0) ON CONFLICT(id) DO NOTHING', (account_id,))
+        validate_account_projection(db, account_id)
+        prune_risk_state(db, now)
+        eligibility = allocate_entitlement(db, account_id, context, period, now, lambda: _record_grant(
+            db, account_id, 'trial', account_id, self.trial_credits, 'trial', now))
+        granted = db.execute('SELECT total_granted FROM accounts WHERE id=?', (account_id,)).fetchone()[0]
+        return eligibility, granted
 
     def grant(self, account_id, units, reference, reason_code):
         """Issue idempotent operator credits only to an enrolled account."""
@@ -146,23 +151,51 @@ class AccountStore:
             record, replayed = _record_grant(db, account_id, 'manual', reference, units, reason_code, self.clock())
             return {'grant': _public_grant(record), 'replayed': replayed}
 
+    def exempt(self, account_id, reference, reason):
+        """Authorize shared-device entitlement; never add or modify credits."""
+        if not isinstance(reference, str):
+            raise ValueError('Risk exemption reference must be a UUID')
+        try:
+            reference = str(UUID(reference))
+        except ValueError as error:
+            raise ValueError('Risk exemption reference must be a UUID') from error
+        if not isinstance(reason, str) or not 1 <= len(reason) <= 256 or not reason.strip() or not reason.isprintable():
+            raise ValueError('Risk exemption requires a short printable reason')
+        with self._tx() as db:
+            validate_account_projection(db, account_id)
+            existing = db.execute('SELECT account_id,reason FROM account_risk_exemptions WHERE reference=?',
+                                  (reference,)).fetchone()
+            if existing is not None:
+                if tuple(existing) != (account_id, reason):
+                    raise ValueError('Risk exemption reference conflict')
+                return {'replayed': True}
+            db.execute('INSERT INTO account_risk_exemptions VALUES (?,?,?,?)',
+                       (reference, account_id, reason, self.clock()))
+            return {'replayed': False}
+
+    def purge_risk(self):
+        with self._tx() as db:
+            return prune_risk_state(db, self.clock())
+
+    def check_risk(self, signals):
+        signals = RiskCheck.model_validate(signals)
+        with self._tx() as db:
+            now = self.clock()
+            prune_risk_state(db, now)
+            return record_risk_check(db, signals, now, self.risk_limits)
+
     def _expire(self, db, account_id, now):
         db.execute("UPDATE account_usage SET status='expired' WHERE account_id=? AND status='reserved' AND created_at<=?",
                    (account_id, now - RESERVATION_SECONDS))
 
-    def _credits(self, db, account_id):
-        granted = validate_account_projection(db, account_id)
-        row = db.execute('''SELECT
-            COALESCE(SUM(CASE WHEN status IN ('reserved','completed') THEN units ELSE 0 END),0) AS committed,
-            COALESCE(SUM(CASE WHEN status='reserved' THEN units ELSE 0 END),0) AS held
-            FROM account_usage WHERE account_id=?''', (account_id,)).fetchone()
-        return {'available': granted - row['committed'], 'held': row['held'], 'totalGranted': granted}
-
-    def summary(self, account_id):
+    def summary(self, account_id, *, risk_context=None):
+        context = RiskContext.model_validate(risk_context) if risk_context is not None else None
         with self._tx() as db:
-            self._grant(db, account_id)
-            self._expire(db, account_id, self.clock())
-            credits = self._credits(db, account_id)
+            now = self.clock()
+            period, resets_at = shanghai_period(now)
+            eligibility, granted = self._prepare(db, account_id, context, now, period)
+            self._expire(db, account_id, now)
+            credits = credit_balances(db, account_id, granted, period, resets_at)
             rows = db.execute('''SELECT * FROM account_usage WHERE account_id=?
                 ORDER BY created_at DESC,rowid DESC LIMIT 20''', (account_id,)).fetchall()
             usage = [{
@@ -174,13 +207,15 @@ class AccountStore:
             grants = db.execute('''SELECT id,created_at,source,units FROM credit_grants WHERE account_id=?
                 ORDER BY created_at DESC,rowid DESC LIMIT 20''', (account_id,)).fetchall()
             return {'credits': credits, 'trialCredits': self.trial_credits, 'costs': dict(COSTS),
-                    'usage': usage, 'grants': [_public_grant(row) for row in grants]}
+                    'usage': usage, 'grants': [_public_grant(row) for row in grants], 'eligibility': eligibility}
 
-    def reserve(self, account_id, request_id, depth, model):
+    def reserve(self, account_id, request_id, depth, model, *, risk_context=None):
+        context = RiskContext.model_validate(risk_context) if risk_context is not None else None
         units = COSTS[depth]
         with self._tx() as db:
             now = self.clock()
-            self._grant(db, account_id)
+            period, resets_at = shanghai_period(now)
+            _, granted = self._prepare(db, account_id, context, now, period)
             self._expire(db, account_id, now)
             duplicate = db.execute('SELECT 1 FROM account_usage WHERE account_id=? AND request_id=?',
                                    (account_id, request_id)).fetchone()
@@ -189,13 +224,17 @@ class AccountStore:
             active = db.execute("SELECT 1 FROM account_usage WHERE account_id=? AND status='reserved'", (account_id,)).fetchone()
             if active:
                 return {'allowed': False, 'reason': 'in_progress'}
-            if self._credits(db, account_id)['available'] < units:
+            credits = credit_balances(db, account_id, granted, period, resets_at)
+            if credits['available'] < units:
                 return {'allowed': False, 'reason': 'insufficient_credits'}
             reservation_id = str(uuid4())
             db.execute('''INSERT INTO account_usage
                 (reservation_id,request_id,account_id,created_at,depth,model,units,status)
                 VALUES (?,?,?,?,?,?,?,'reserved')''',
                 (reservation_id, request_id, account_id, now, depth, model, units))
+            daily_units = min(units, credits['daily']['available'])
+            db.execute('''INSERT INTO account_credit_allocations (reservation_id,account_id,period,daily_units)
+                VALUES (?,?,?,?)''', (reservation_id, account_id, period if daily_units else None, daily_units))
             return {'allowed': True, 'reservationId': reservation_id}
 
     def settle(self, account_id, reservation_id, outcome, used_tokens):

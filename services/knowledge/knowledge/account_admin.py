@@ -38,12 +38,21 @@ def _parser():
     restore.add_argument('--database', required=True, help='absolute fresh target with no database or SQLite sidecars')
     restore.add_argument('--allow-write', action='store_true', help='explicitly authorize creation of the restored ledger')
     grant = commands.add_parser('grant', help='idempotent manual credits for an existing account in a migrated ledger')
-    grant.add_argument('--database', required=True, help='absolute path to the existing version 2 ledger')
+    grant.add_argument('--database', required=True, help='absolute path to the existing current-version ledger')
     grant.add_argument('--account-id', required=True, help='existing account identifier; never printed')
     grant.add_argument('--units', required=True, type=int, help='positive integer credits, at most 1000000')
     grant.add_argument('--reference', required=True, help='stable UUID for this grant; reuse unchanged when retrying')
     grant.add_argument('--reason-code', required=True, choices=['support_adjustment', 'promotion', 'correction'])
     grant.add_argument('--allow-write', action='store_true', help='explicitly authorize a manual credit grant')
+    exempt = commands.add_parser('exempt', help='audit a shared-device credit exemption for an existing account')
+    exempt.add_argument('--database', required=True, help='absolute path to the existing current-version ledger')
+    exempt.add_argument('--account-id', required=True, help='existing account identifier; never printed')
+    exempt.add_argument('--reference', required=True, help='stable UUID for this exemption; reuse unchanged when retrying')
+    exempt.add_argument('--reason', required=True, help='short operator rationale without personal data; never printed')
+    exempt.add_argument('--allow-write', action='store_true', help='explicitly authorize a risk exemption')
+    purge = commands.add_parser('purge-risk', help='delete expired device claims and risk events')
+    purge.add_argument('--database', required=True, help='absolute path to the existing current-version ledger')
+    purge.add_argument('--allow-write', action='store_true', help='explicitly authorize deleting expired risk rows')
     return parser
 
 
@@ -91,7 +100,7 @@ def main(argv=None):
     """Return a process status; stdout is a small whitelist of operational facts."""
     try:
         args = _parser().parse_args(argv)
-        if args.command in {'init', 'migrate', 'restore', 'grant'} and not args.allow_write:
+        if args.command in {'init', 'migrate', 'restore', 'grant', 'exempt', 'purge-risk'} and not args.allow_write:
             raise BackupError('write refused; explicitly pass --allow-write')
         result = {'operation': args.command, 'status': 'ok'}
         if args.command == 'init':
@@ -121,11 +130,17 @@ def main(argv=None):
                 result['schemaVersion'] = account_backup.inspect_database(path)
             else:
                 if version != SCHEMA_VERSION:
-                    raise BackupError('manual grant requires an explicitly migrated version 2 ledger')
+                    raise BackupError('operator action requires an explicitly migrated ledger')
                 if _identity(path) != identity:
-                    raise BackupError('ledger identity changed; manual grant refused')
-                grant = AccountStore(path, create=False).grant(args.account_id, args.units, args.reference, args.reason_code)
-                result['replayed'] = grant['replayed']
+                    raise BackupError('ledger identity changed; operator action refused')
+                ledger = AccountStore(path, create=False)
+                if args.command == 'grant':
+                    result.update(replayed=ledger.grant(args.account_id, args.units, args.reference,
+                                                         args.reason_code)['replayed'])
+                elif args.command == 'exempt':
+                    result.update(ledger.exempt(args.account_id, args.reference, args.reason))
+                else:
+                    result.update(ledger.purge_risk())
         print(json.dumps(result, sort_keys=True))
         return 0
     except BackupError as error:

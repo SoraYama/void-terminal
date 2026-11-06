@@ -5,6 +5,7 @@ from uuid import uuid4
 import pytest
 
 from knowledge.account_store import AccountStore
+from test_accounts import balance, verified_context
 
 
 ALICE = '10000000-0000-4000-8000-000000000001'
@@ -47,15 +48,17 @@ def test_legacy_migration_preserves_totals_usage_and_zero_grants_on_reopen(tmp_p
     old_usage = make_legacy(path)
     for trial_credits in [20, 99]:
         ledger = AccountStore(path, trial_credits=trial_credits, clock=lambda: 1001)
-        assert ledger.summary(ALICE)['credits'] == {'available': 7, 'held': 1, 'totalGranted': 9}
-        assert ledger.summary(BOB)['credits'] == {'available': 0, 'held': 0, 'totalGranted': 0}
+        assert balance(ledger.summary(ALICE)) == {'available': 7, 'held': 1, 'totalGranted': 9}
+        assert balance(ledger.summary(BOB)) == {'available': 0, 'held': 0, 'totalGranted': 0}
         assert [(row['source'], row['units']) for row in ledger.summary(ALICE)['grants']] == [('legacy', 9)]
         assert [(row['source'], row['units']) for row in ledger.summary(BOB)['grants']] == [('legacy', 0)]
     with sqlite3.connect(path) as db:
         assert db.execute('SELECT * FROM account_usage ORDER BY rowid').fetchall() == old_usage
-        assert db.execute('PRAGMA user_version').fetchone()[0] == 2
+        assert db.execute('PRAGMA user_version').fetchone()[0] == 3
         assert {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")} == {
             'accounts', 'account_usage', 'credit_grants', 'orders', 'payments', 'payment_events',
+            'account_welcome', 'account_daily_credits', 'account_credit_allocations',
+            'account_device_welcome', 'account_device_daily', 'account_risk_exemptions', 'account_risk_events',
         }
 
 
@@ -67,7 +70,7 @@ def test_failed_final_migration_statement_rolls_back_all_new_tables_and_version(
     def failing_connect(*args, **kwargs):
         db = connect(*args, **kwargs)
         def authorize(action, arg1, arg2, _database, _trigger):
-            if action == sqlite3.SQLITE_PRAGMA and arg1 == 'user_version' and arg2 == '2':
+            if action == sqlite3.SQLITE_PRAGMA and arg1 == 'user_version' and arg2 == '3':
                 return sqlite3.SQLITE_DENY
             return sqlite3.SQLITE_OK
         db.set_authorizer(authorize)
@@ -85,7 +88,7 @@ def test_failed_final_migration_statement_rolls_back_all_new_tables_and_version(
     assert AccountStore(path).summary(ALICE)['credits']['totalGranted'] == 9
 
 
-@pytest.mark.parametrize('version', [1, 3, 99])
+@pytest.mark.parametrize('version', [1, 4, 99])
 def test_unknown_version_rejects_even_an_empty_database_without_creating_tables(tmp_path, version):
     path = tmp_path / 'accounts.sqlite'
     with sqlite3.connect(path) as db:
@@ -120,7 +123,7 @@ def test_unrecognized_or_corrupt_legacy_schema_is_not_repaired_implicitly(tmp_pa
 
 
 @pytest.mark.parametrize('damage', ['missing_table', 'missing_trigger', 'changed_trigger', 'missing_index'])
-def test_malformed_v2_schema_cannot_start(tmp_path, damage):
+def test_malformed_current_schema_cannot_start(tmp_path, damage):
     path = tmp_path / 'accounts.sqlite'
     AccountStore(path)
     with sqlite3.connect(path) as db:
@@ -173,7 +176,7 @@ def test_unrecognized_database_is_not_changed_before_rejection(tmp_path):
 
 def test_runtime_schema_change_cannot_bypass_append_only_guards(tmp_path):
     ledger = AccountStore(tmp_path / 'accounts.sqlite')
-    ledger.summary(ALICE)
+    ledger.summary(ALICE, risk_context=verified_context())
     with sqlite3.connect(ledger.path) as db:
         db.execute('DROP TRIGGER credit_grants_no_update')
     with pytest.raises(RuntimeError, match='schema'):
@@ -197,7 +200,7 @@ def test_legacy_invalid_usage_is_rejected_without_migration(tmp_path, units, tok
 @pytest.mark.parametrize('units,tokens', [(1.5, None), (50, None), (1, 1.5)])
 def test_runtime_invalid_usage_fails_before_changing_balance(tmp_path, units, tokens):
     ledger = AccountStore(tmp_path / 'accounts.sqlite')
-    reservation = ledger.reserve(ALICE, str(uuid4()), 'standard', 'fixture')['reservationId']
+    reservation = ledger.reserve(ALICE, str(uuid4()), 'standard', 'fixture', risk_context=verified_context())['reservationId']
     with sqlite3.connect(ledger.path) as db:
         db.execute('UPDATE account_usage SET units=?,used_tokens=?', (units, tokens))
     with pytest.raises(RuntimeError, match='usage'):

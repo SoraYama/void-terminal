@@ -158,6 +158,8 @@ def backup_database(source, backup_dir, *, progress=None):
 
 
 def _read_manifest(directory):
+    from .account_schema import SUPPORTED_SCHEMA_VERSIONS
+
     path = directory / MANIFEST_NAME
     _regular_file(path)
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
@@ -170,7 +172,7 @@ def _read_manifest(directory):
             or manifest['format'] != 'void-account-ledger-backup'
             or type(manifest['manifest_version']) is not int or manifest['manifest_version'] != 1
             or manifest['database'] != DATABASE_NAME
-            or type(manifest['schema_version']) is not int or manifest['schema_version'] not in {0, 2}
+            or type(manifest['schema_version']) is not int or manifest['schema_version'] not in SUPPORTED_SCHEMA_VERSIONS
             or type(manifest['size_bytes']) is not int or manifest['size_bytes'] <= 0
             or not isinstance(manifest['sha256'], str)
             or re.fullmatch(r'[0-9a-f]{64}', manifest['sha256']) is None

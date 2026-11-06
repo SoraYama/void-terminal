@@ -12,6 +12,7 @@ import pytest
 from knowledge import account_admin
 from knowledge.account_store import AccountStore
 from test_account_backup import legacy_database
+from test_accounts import balance, verified_context
 
 
 ACCOUNT = '10000000-0000-4000-8000-000000000001'
@@ -71,7 +72,7 @@ def test_migration_creates_and_verifies_new_legacy_backup_before_mutating(tmp_pa
     manifest = json.loads((backup / 'manifest.json').read_text())
     assert manifest['schema_version'] == 0
     with sqlite3.connect(path) as db:
-        assert db.execute('PRAGMA user_version').fetchone() == (2,)
+        assert db.execute('PRAGMA user_version').fetchone() == (3,)
         assert db.execute('SELECT total_granted FROM accounts').fetchone() == (17,)
         assert db.execute('SELECT status FROM account_usage').fetchone() == ('reserved',)
     with sqlite3.connect(backup / 'ledger.sqlite') as db:
@@ -104,7 +105,7 @@ def test_grant_requires_migrated_ledger_and_never_implicitly_migrates(tmp_path):
 def test_manual_grant_replays_across_processes_and_redacts_console(tmp_path):
     path = tmp_path / 'accounts.sqlite'
     ledger = AccountStore(path)
-    ledger.summary(ACCOUNT)
+    ledger.summary(ACCOUNT, risk_context=verified_context(ACCOUNT))
     reference = str(uuid4())
     args = [sys.executable, '-m', 'knowledge.account_admin', 'grant', '--database', str(path),
             '--account-id', ACCOUNT, '--units', '41', '--reference', reference, '--reason-code', 'promotion']
@@ -149,7 +150,7 @@ def test_restore_preserves_manual_and_payment_replay_guards(tmp_path):
 
     path = tmp_path / 'accounts.sqlite'
     ledger = AccountStore(path, clock=lambda: 1000)
-    ledger.summary(ACCOUNT)
+    ledger.summary(ACCOUNT, risk_context=verified_context(ACCOUNT))
     reference = str(uuid4())
     ledger.grant(ACCOUNT, 7, reference, 'correction')
     payments = PaymentStore(ledger)
@@ -165,6 +166,9 @@ def test_restore_preserves_manual_and_payment_replay_guards(tmp_path):
     new_ledger = AccountStore(restored, clock=lambda: 1000)
     assert new_ledger.grant(ACCOUNT, 7, reference, 'correction')['replayed'] is True
     PaymentStore(new_ledger).confirm_payment(**event)
-    assert new_ledger.summary(ACCOUNT)['credits'] == {'available': 35, 'held': 3, 'totalGranted': 38}
+    summary = new_ledger.summary(ACCOUNT)
+    assert balance(summary) == {'available': 38, 'held': 3, 'totalGranted': 38}
+    assert summary['credits']['reserve'] == {'available': 38, 'held': 0}
+    assert summary['credits']['daily']['held'] == 3
     assert new_ledger.reserve(ACCOUNT, 'request-held', 'deep', 'fixture') == {'allowed': False, 'reason': 'duplicate_request'}
     assert new_ledger.settle(ACCOUNT, reservation['reservationId'], 'completed', 10) == {'settled': True}
