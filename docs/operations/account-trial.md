@@ -2,6 +2,8 @@
 
 This release adds an opt-in invitation trial, without checkout, subscriptions or cash balances. Existing BYOK remains available. Operator-owned model calls require a verified email account; the former anonymous shared mode is removed.
 
+For the first hosted setup, follow the [Supabase + Resend onboarding guide](account-trial-onboarding.md).
+
 ## Enable after local acceptance
 
 1. Create a Supabase project and configure email authentication with a production SMTP sender. In the **Magic Link** email template, include `{{ .Token }}` as the code instead of requiring the user to follow a link. Keep the email OTP length at six digits (matching this UI) and set an appropriate short OTP expiry and provider email/verification rate limits. The site uses the official Supabase server SDK; no browser auth SDK or token storage is used.

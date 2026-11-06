@@ -25,6 +25,22 @@ Independent security/code review found and fixed terminal SSE/accounting order a
 
 ## Operation and limits
 
-See [account trial setup](../../operations/account-trial.md). Supply a Supabase project/publishable key, SMTP sender with a six-digit `{{ .Token }}` email template, invitation allowlist, exact origin, server model key and finite global budget before enabling. Single knowledge instance/local filesystem only in this version. The machine has no Docker executable; actual fresh-volume runtime validation remains unperformed. Real email delivery, live authenticated provider calls and deployment require configured external services and remain unverified.
+See [account trial setup](../../operations/account-trial.md). Supply a Supabase project/publishable key, SMTP sender with a six-digit `{{ .Token }}` email template, invitation allowlist, exact origin, server model key and finite global budget before enabling. Single knowledge instance/local filesystem only in this version. The local machine has no Docker executable; subsequent isolated server verification passed fresh-volume ownership, persistence and packaged Web startup checks (see preparation record below). Real email delivery, live authenticated provider calls and deployment require configured external services and remain unverified.
 
 Browser history partitioning is interface isolation, not encryption against someone with access to that browser profile. Questions still pass through the application and model provider. Trial credits are fixed service units without monetary value; token metadata is not a bill. No payment functionality is included.
+
+
+## Subsequent hosted setup preparation
+
+On 2026-11-06 the user confirmed there is no Supabase/SMTP setup yet and accepted preparing the recommended services. Chosen initial path: Supabase Auth Free + Resend Free, invitation-only, sending subdomain `auth.sorayama.moe`. The six-digit code template is `deploy/auth/email-otp.html`; account creation, DNS verification and actual mail delivery still require the user's external accounts. Follow [first setup instructions](../../operations/account-trial-onboarding.md).
+
+Server candidate directory: `/opt/void-terminal/releases/account-trial-7193f3e`. Candidate source was reconstructed from the deployed Git baseline plus the exact commit patch, then all 347 file blob hashes were checked against `7193f3eacae5e41803b75f336302bc2bbf967911`. This replaced a slow full-archive upload; the partial upload was removed.
+
+- Knowledge candidate: `sha256:55d19c885e8da84d36a330ff37b2612d3e0a8330aed2d263bcc5c1229b96ea99`.
+- Web candidate: `sha256:7ec9ff5ede4ada64a7fe3dc71c6515dd9eed6788a2d5f4bb14457980ee05b35d`.
+- Fresh disposable Docker volume, default UID 10001, network disabled: first process reserved 3 from the initial 20; second process preserved that account grant despite new configured gift 99, refused cross-account settlement, settled once, refused repeat settlement, and ended at 17 available / 0 held. Volume was removed after the check.
+- Actual packaged Web ran with fake credentials in a separate network-disabled container: home and account discovery returned 200; unauthenticated shared chat and model-test both returned 401. No mail/model call was possible. Temporary container was removed.
+- Running production container IDs/images/health and registry checksum were identical before and after preparation. Active corpus remained `agd-d7f2135c7eb0-26ae8d6dbac3`; no Compose up, tag replacement, timer change or registry promotion occurred.
+- Staged `account-trial.env` is mode 0600 inside the mode 0700 release directory. A fresh signing secret was generated only on the server. Account/shared toggles remain false. Supabase URL/publishable key, invited email list and server model key remain blank. SMTP Key belongs in Supabase, not this env file.
+
+Read-only deployment review found that the next real rollout must use the new base Compose, keep legacy `/data` RW for global budget, preserve both archive mounts, and atomically synchronize `state/settings.json.knowledgeImage` under `refresh.lock`. Rollback must disable shared mode before returning to the old anonymous-capable Web. These requirements are included in the setup guide. Candidate images are ready; live accounts, DNS/SMTP and activation are not complete. Evidence is in the server release's `preparation.json` and local `artifacts/deploy/account-trial-7193f3e/`.
