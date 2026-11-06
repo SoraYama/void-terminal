@@ -1,11 +1,15 @@
 """Public model budget across days/months, without changing the corpus schema."""
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+import os
+from time import monotonic, sleep
+from unittest.mock import Mock
+from uuid import uuid4
 
 import pytest
 
 from knowledge import config
-from knowledge.store import CatalogStore
+from knowledge.store import CatalogStore, SCHEMA
 
 
 @pytest.fixture
@@ -92,3 +96,90 @@ def test_invalid_monthly_setting_fails_closed(value, monkeypatch):
     monkeypatch.setenv('SHARED_MONTHLY_TOKEN_BUDGET', value)
     with pytest.raises(ValueError):
         config.monthly_budget_cap()
+
+
+def _postgres_budget_store(database_url):
+    # Exercise the real connection/transaction code without initializing the catalog.
+    store = CatalogStore.__new__(CatalogStore)
+    store.database_url = database_url
+    store.postgres = True
+    store.readonly = False
+    return store
+
+
+@pytest.mark.parametrize(('operation', 'args'), [
+    ('reserve_budget', ('request', 'account', 1)),
+    ('settle_budget', ('reservation', 1)),
+])
+def test_postgres_budget_selects_read_committed_before_first_query(operation, args, clock, monkeypatch):
+    class ReachedFirstQuery(Exception):
+        pass
+
+    isolation = 'REPEATABLE READ'
+
+    def execute(query, params):
+        nonlocal isolation
+        if query.startswith('SET TRANSACTION ISOLATION LEVEL '):
+            isolation = query.removeprefix('SET TRANSACTION ISOLATION LEVEL ')
+            return
+        assert isolation == 'READ COMMITTED', f'First budget query uses {isolation}: {query}'
+        raise ReachedFirstQuery
+
+    store = _postgres_budget_store(None)
+    monkeypatch.setattr(store, '_connect', lambda: Mock(execute=execute))
+    with pytest.raises(ReachedFirstQuery):
+        getattr(store, operation)(*args)
+
+
+@pytest.mark.skipif(
+    not os.getenv('TEST_POSTGRES_URL'),
+    reason='TEST_POSTGRES_URL not supplied; live budget locking not verified',
+)
+def test_live_postgres_waiting_reservation_sees_charge_on_another_day(clock):
+    import psycopg
+    from psycopg import sql
+    from psycopg.conninfo import make_conninfo
+
+    url = os.environ['TEST_POSTGRES_URL']
+    schema = 'budget_test_' + uuid4().hex
+    namespace = sql.Identifier(schema)
+    options = f'-c search_path={schema} -c default_transaction_isolation=repeatable\\ read -c statement_timeout=15000'
+    store = _postgres_budget_store(make_conninfo(url, options=options, application_name=schema))
+    clock.current = datetime(2026, 11, 7, tzinfo=timezone.utc)
+
+    with psycopg.connect(url, autocommit=True, connect_timeout=10) as admin:
+        admin.execute(sql.SQL('CREATE SCHEMA {}').format(namespace))
+        try:
+            with store._connect() as setup:
+                for statement in SCHEMA.split(';'):
+                    if statement.strip().startswith('CREATE TABLE IF NOT EXISTS budget_'):
+                        setup.execute(statement)
+                setup.execute("INSERT INTO budget_days(day,charged) VALUES ('2026-11-06',0), ('2026-11-07',0)")
+
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                with store._connect() as blocker:
+                    assert blocker.execute('SHOW default_transaction_isolation').fetchone() == {
+                        'default_transaction_isolation': 'repeatable read',
+                    }
+                    store._lock_budget_month(blocker, '2026-11-06')
+                    waiting = pool.submit(store.reserve_budget, 'queued', 'account', 60)
+                    # Observe the waiter in PostgreSQL before changing a different day row.
+                    deadline = monotonic() + 5
+                    while not admin.execute(
+                        "SELECT 1 FROM pg_stat_activity WHERE application_name=%s "
+                        "AND wait_event_type='Lock' AND wait_event='advisory' "
+                        "AND %s=ANY(pg_blocking_pids(pid))",
+                        (schema, blocker.info.backend_pid),
+                    ).fetchone():
+                        if waiting.done():
+                            pytest.fail(f'Reservation completed before waiting on the month lock: {waiting.result()}')
+                        if monotonic() >= deadline:
+                            pytest.fail('Reservation did not reach the month lock')
+                        sleep(0.02)
+                    blocker.execute("UPDATE budget_days SET charged=100 WHERE day='2026-11-06'")
+
+                result = waiting.result(timeout=15)
+                assert not result['allowed']
+                assert result['remaining'] == 50
+        finally:
+            admin.execute(sql.SQL('DROP SCHEMA {} CASCADE').format(namespace))

@@ -642,6 +642,14 @@ class CatalogStore(CharacterStore):
             sources = [self._source(db, self._execute(db, 'SELECT * FROM chunks WHERE id=?', (key,)).fetchone(), scores[key]) for key in ranked[:limit]]
             return {'sources': sources, 'snapshotId': sid, 'mode': 'hybrid' if semantic else 'lexical', 'total': len(ranked)}
 
+    @contextmanager
+    def _budget_tx(self):
+        with self._tx(write=True) as db:
+            if self.postgres:
+                # The month total must see charges committed while waiting for its lock.
+                self._execute(db, 'SET TRANSACTION ISOLATION LEVEL READ COMMITTED')
+            yield db
+
     def _lock_budget_month(self, db, day):
         if self.postgres:
             year, month = map(int, day[:7].split('-'))
@@ -656,7 +664,7 @@ class CatalogStore(CharacterStore):
         year, month = map(int, day[:7].split('-'))
         month_start = f'{year:04}-{month:02}-01'
         month_end = f'{year + (month == 12):04}-{month % 12 + 1:02}-01'
-        with self._tx(write=True) as db:
+        with self._budget_tx() as db:
             if self.postgres:
                 request_lock = int.from_bytes(hashlib.sha256(request_id.encode()).digest()[:8], 'big', signed=True)
                 self._execute(db, 'SELECT pg_advisory_xact_lock(?)', (request_lock,))
@@ -684,7 +692,7 @@ class CatalogStore(CharacterStore):
     def settle_budget(self, reservation_id, used_tokens):
         if used_tokens is not None and (isinstance(used_tokens, bool) or not isinstance(used_tokens, int) or not 0 <= used_tokens <= 10000000):
             raise StoreError('INVALID_SETTLEMENT', 'Invalid token usage')
-        with self._tx(write=True) as db:
+        with self._budget_tx() as db:
             row = self._execute(db, 'SELECT * FROM budget_reservations WHERE id=?' + (' FOR UPDATE' if self.postgres else ''), (reservation_id,)).fetchone()
             if not row:
                 raise StoreError('RESERVATION_NOT_FOUND', 'Reservation not found', 404)
