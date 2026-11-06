@@ -338,7 +338,7 @@ test('free credits: hosted BSC support labels the network and falls back to sele
  const dialog=page.getByRole('dialog',{name:'Support the project',exact:true});
  await expect(dialog).toContainText('BNB Smart Chain (BSC/BEP-20)');
  await expect(dialog).toContainText('Mainnet · Chain ID 56');
- await expect(dialog).toContainText('BNB · USDT');
+ await expect(dialog).toContainText('USDT · USDC · BNB');
  await expect(dialog.getByRole('link',{name:'BscScan',exact:false})).toHaveAttribute('href',`https://bscscan.com/address/${fixtureOnlyBsc}`);
  await expect(dialog.getByRole('link',{name:'Open Ko-fi',exact:true})).toHaveAttribute('href','https://ko-fi.com/fixture-only');
  await expect(dialog.getByText('WeChat',{exact:true})).toHaveCount(0);

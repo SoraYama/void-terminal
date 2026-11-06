@@ -3,7 +3,7 @@ import {realpathSync,statSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {z} from 'zod';
 import type {DeploymentMode} from '../deployment';
-import type {SupportChannel,SupportConfig} from '../support-contracts';
+import {BSC_SUPPORT_ASSETS,type BscSupportAsset,type SupportChannel,type SupportConfig} from '../support-contracts';
 
 function localQr(value:string,publicDir:string){
  if(!/^\/support\/[a-z0-9][a-z0-9._-]{0,95}\.(?:png|webp|jpe?g)$/i.test(value)||!value.startsWith('/support/'))return false;
@@ -52,7 +52,7 @@ export function supportConfig(mode:DeploymentMode,env:Readonly<Record<string,str
  const address=read('SUPPORT_BSC_ADDRESS'),assetList=read('SUPPORT_BSC_ASSETS');
  if(address||assetList){
   const assets=assetList?.split(',').map(asset=>asset.trim())||[];
-  const validAssets=assets.length>0&&assets.every((asset):asset is 'BNB'|'USDT'=>asset==='BNB'||asset==='USDT');
+  const validAssets=assets.length>0&&assets.every((asset):asset is BscSupportAsset=>BSC_SUPPORT_ASSETS.some(allowed=>allowed===asset));
   const validAddress=address&&/^0x[0-9a-fA-F]{40}$/.test(address)&&!/^0x0{40}$/i.test(address);
   if(!validAddress)invalid('SUPPORT_BSC_ADDRESS');
   if(!validAssets)invalid('SUPPORT_BSC_ASSETS');

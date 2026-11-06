@@ -57,7 +57,7 @@ Only valid configured channels appear on the hosted site. Leave anything unverif
 | `SUPPORT_WECHAT_QR_URL`, `SUPPORT_ALIPAY_QR_URL` | Same-site path under `/support/` pointing to an existing PNG, WebP or JPEG file. Verify QR contents, supported use, recipient, and the same-phone save-and-scan workflow. |
 | `SUPPORT_AFDIAN_URL` | HTTPS Afdian creator link at `afdian.com/a/…` or `afdian.net/a/…`. Confirm the creator and actual receiving/withdrawal support. |
 | `SUPPORT_KOFI_URL` | HTTPS Ko-fi creator link at `ko-fi.com/…`. Confirm the receiving account and withdrawal support in its region. |
-| `SUPPORT_BSC_ADDRESS`, `SUPPORT_BSC_ASSETS` | Operator-provided public receiving address on BNB Smart Chain mainnet, chain ID 56, plus a comma-separated list from `BNB` and `USDT`. Verify ownership, network, accepted asset choices and exact address out of band. The site checks address shape, not checksum or control. Never supply a private key or seed phrase. |
+| `SUPPORT_BSC_ADDRESS`, `SUPPORT_BSC_ASSETS` | Operator-provided public receiving address on BNB Smart Chain mainnet, chain ID 56, plus a comma-separated list from `BNB`, `USDT` and `USDC`. These are operator-selected labels. Verify the exact asset, network, receiving address and ownership out of band. The site checks address shape, not checksum or control. Never supply a private key or seed phrase. |
 
 For a non-container setup, put the images under `apps/web/public/support/` before starting Web. For Docker, put only the public QR files in a read-only operator directory, then mount it via a local Compose override. For example:
 

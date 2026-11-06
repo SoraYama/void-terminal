@@ -3,7 +3,7 @@ const baseURL=process.env.PLAYWRIGHT_BASE_URL||'http://127.0.0.1:3100';
 const hostedURL=process.env.PLAYWRIGHT_HOSTED_BASE_URL||'http://127.0.0.1:3101';
 // Both servers use the same production build. Keep credentials empty even if the
 // developer shell contains live ones; account/model successes are browser fixtures.
-const isolatedEnv={ACCOUNT_TRIAL_ENABLED:'false',SUPABASE_URL:'',SUPABASE_PUBLISHABLE_KEY:'',TRIAL_ALLOWED_EMAILS:'',SHARED_MODE_ENABLED:'false',DEEPSEEK_API_KEY:'',SESSION_SECRET:'',KNOWLEDGE_URL:'http://127.0.0.1:9',KNOWLEDGE_API_TOKEN:'',SUPPORT_CONTACT_EMAIL:'fixture@example.test',SUPPORT_KOFI_URL:'https://ko-fi.com/fixture-only',SUPPORT_BSC_ADDRESS:'0x1111111111111111111111111111111111111111',SUPPORT_BSC_ASSETS:'BNB,USDT'};
+const isolatedEnv={ACCOUNT_TRIAL_ENABLED:'false',SUPABASE_URL:'',SUPABASE_PUBLISHABLE_KEY:'',TRIAL_ALLOWED_EMAILS:'',SHARED_MODE_ENABLED:'false',DEEPSEEK_API_KEY:'',SESSION_SECRET:'',KNOWLEDGE_URL:'http://127.0.0.1:9',KNOWLEDGE_API_TOKEN:'',SUPPORT_CONTACT_EMAIL:'fixture@example.test',SUPPORT_KOFI_URL:'https://ko-fi.com/fixture-only',SUPPORT_BSC_ADDRESS:'0x1111111111111111111111111111111111111111',SUPPORT_BSC_ASSETS:'USDT,USDC,BNB'};
 const hostedTests=/(account-trial|deployment-modes)\.spec\.ts/;
 export default defineConfig({
  // Playwright resolves command cwd from this config directory (apps/web).

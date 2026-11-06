@@ -35,6 +35,17 @@ it("returns only public configured details from a hosted runtime", async () => {
  });
 });
 
+it("accepts USDT, USDC and BNB once each and preserves the complete BSC address", async () => {
+ const {supportConfig}=await import("../src/lib/server/support-config");
+ const address = "0xAbC0123456789deF000000000000000000000001";
+ const env = { SUPPORT_BSC_ADDRESS: address, SUPPORT_BSC_ASSETS: "USDT, USDC, BNB, USDC, USDT" };
+ expect(supportConfig("hosted",env,root)).toEqual({
+  channels:[],
+  bsc:{address,assets:["USDT","USDC","BNB"],chainId:56},
+ });
+ expect(supportConfig("self-hosted",env,root)).toBeUndefined();
+});
+
 it.each([
  ["SUPPORT_WECHAT_QR_URL","//attacker.example/support/fixture.png"],
  ["SUPPORT_WECHAT_QR_URL","/support/%2e%2e/fixture.png"],
