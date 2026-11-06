@@ -46,12 +46,12 @@
 - New-account entitlement: stable device welcome claim once per 180 days; account welcome once for lifetime. Device/day automatic daily grant unique, account/day unique; manual exemption can authorize shared device accounts and is audited separately from manual gifts.
 - Operator CLI adds an auditable exemption command with stable reference and reason; existing grant/backup/verify/restore work with new schema. Purge risk events at 30 days and device claim data at 180 days without deleting lifetime account grant history.
 
-- [ ] Write failing tests for first-day 23, daily-first spend, mixed 1 daily + 2 permanent deep spend, no accumulation, repeated read/login, no-context no gift, device duplicate welcome/daily, exception authorization, risk counters surviving reopen, cleanup and malformed context.
-- [ ] Run focused tests and capture meaningful RED evidence.
-- [ ] Implement explicit migration from baseline schema, allocation-aware reservation/settlement and risk storage in transactions. Legacy remaining credits become permanent history reserve; preserve held allocation and late-release semantics. Unknown schemas fail closed; update backup verification.
-- [ ] Add tests for midnight release/completion, concurrent stores/grants, duplicate settlement, legacy migration with held rows and replayed manual gifts; cover model budget monthly rollover if changed.
-- [ ] Run focused tests then Python full suite with .venv/bin/python -m pytest tests -q (covers both pytest functions and unittest classes). Fix only task-related regressions and report all other failures.
-- [ ] Self-review, commit only owned files and record exact interface decisions/test evidence in task report.
+- [x] Write failing tests for first-day 23, daily-first spend, mixed 1 daily + 2 permanent deep spend, no accumulation, repeated read/login, no-context no gift, device duplicate welcome/daily, exception authorization, risk counters surviving reopen, cleanup and malformed context.
+- [x] Run focused tests and capture meaningful RED evidence.
+- [x] Implement explicit migration from baseline schema, allocation-aware reservation/settlement and risk storage in transactions. Legacy remaining credits become permanent history reserve; preserve held allocation and late-release semantics. Unknown schemas fail closed; update backup verification.
+- [x] Add tests for midnight release/completion, concurrent stores/grants, duplicate settlement, legacy migration with held rows and replayed manual gifts; cover model budget monthly rollover if changed.
+- [x] Run focused tests then Python full suite with .venv/bin/python -m pytest tests -q (covers both pytest functions and unittest classes). Fix only task-related regressions and report all other failures.
+- [x] Self-review, commit only owned files and record exact interface decisions/test evidence in task report.
 
 ### Task 2: Trusted Web risk context, auth and API integration
 
@@ -64,12 +64,12 @@
 - Canonical network identity only from TRUST_PROXY-enabled sanitized headers. No real client IP available must not make every visitor share a single hard-limit bucket.
 - Self-hosted returns disabled for risk endpoints and does not mint device cookies, contact Supabase/risk service or perform collection.
 
-- [ ] Write failing tests for absent/forged/expired proof, supplied client verified flag, direct identity-session bypass, trusted/untrusted proxy headers, persistent limit rejection, challenge failures and retry cookies.
-- [ ] Run focused tests and record RED evidence.
-- [ ] Implement shared risk helper and wire account/auth/chat routes to server-derived context; ensure all model-bearing hosted routes require login and budget. Preserve HttpOnly session properties, same-origin validation and public errors with retry metadata.
-- [ ] Add use-account challenge completion API and bounded collection helper, with no fingerprint collection in self-hosted or ordinary archive browsing. Supabase SDK usage remains existing version; consult official auth docs as needed.
-- [ ] Run Web full unit suite and typecheck; exercise route tests against real risk helper (mock only network boundaries), including self-hosted no-cookie/no-contact assertions.
-- [ ] Self-review, commit owned files and report final exact API/Controller interface to Task 3.
+- [x] Write failing tests for absent/forged/expired proof, supplied client verified flag, direct identity-session bypass, trusted/untrusted proxy headers, persistent limit rejection, challenge failures and retry cookies.
+- [x] Run focused tests and record RED evidence.
+- [x] Implement shared risk helper and wire account/auth/chat routes to server-derived context; ensure all model-bearing hosted routes require login and budget. Preserve HttpOnly session properties, same-origin validation and public errors with retry metadata.
+- [x] Add use-account challenge completion API and bounded collection helper, with no fingerprint collection in self-hosted or ordinary archive browsing. Supabase SDK usage remains existing version; consult official auth docs as needed.
+- [x] Run Web full unit suite and typecheck; exercise route tests against real risk helper (mock only network boundaries), including self-hosted no-cookie/no-contact assertions.
+- [x] Self-review, commit owned files and report final exact API/Controller interface to Task 3.
 
 ### Task 3: Account UI, real configurable sponsorship and BSC entry
 
@@ -92,9 +92,9 @@
 
 **Files:** only integration fixes/tests/config/docs justified by prior tasks; docs/agent feature note + INDEX.md; local artifacts.
 
-- [ ] Run final complete Python and Web suites, typecheck/build; perform migration/backup/restore rehearsal on synthetic legacy accounts including held reservations.
-- [ ] Run focused browser matrix and inspect actual screenshots; verify route-level API calls cannot bypass risk or cross modes. Verify same-device collisions show useful UI and manual exemption remains distinct from gift.
+- [x] Run final complete Python and Web suites, typecheck/build; perform migration/backup/restore rehearsal on synthetic legacy accounts including held reservations.
+- [x] Run focused browser matrix and inspect actual screenshots; verify route-level API calls cannot bypass risk or cross modes. Verify same-device collisions show useful UI and manual exemption remains distinct from gift.
 - [ ] Configure owner-provided sponsor contact/links/BSC address in an appropriate ignored runtime config; validate exact address readback and network label. Do not publish placeholders, invent private data, send money or contact others.
-- [ ] Assess deployment requirements: ledger schema backup/migration, risk secret, challenge credentials, trusted proxy, day/month budgets. Complete authorized reversible setup; missing external credentials/recipient info remain explicit, never silently bypassed.
+- [x] Assess deployment requirements: ledger schema backup/migration, risk secret, challenge credentials, trusted proxy, day/month budgets. Complete authorized reversible setup; missing external credentials/recipient info remain explicit, never silently bypassed.
 - [ ] Independent whole-branch security/spec review, fix material findings, record validations and remaining external readiness separately. No unsupported claim of production deployment.
-- [ ] Update docs/agent/feature/2026-11-06-hosted-free.md and INDEX.md. Final user report states code changes, tests, sponsorship setup and any genuine blocked external step.
+- [x] Update docs/agent/feature/2026-11-06-hosted-free.md and INDEX.md. Final user report states code changes, tests, sponsorship setup and any genuine blocked external step.

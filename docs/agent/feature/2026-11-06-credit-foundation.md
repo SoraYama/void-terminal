@@ -4,6 +4,8 @@
 
 ## Background
 
+Current direction (2026-11-06): paid checkout is paused. The later [hosted free-credit change](2026-11-06-hosted-free.md) supersedes the future Stripe direction below with daily-first free credits and voluntary sponsorship. This note retains the earlier foundation and its validation history.
+
 Hosted email login and trial credits needed auditable credit additions, safe account-ledger recovery and an insufficient-balance flow that preserved a question. The selected future payment channel is Stripe; this milestone implements the internal foundation without public checkout or live collection. Self-hosted BYOK remains independent of accounts and billing.
 
 ## Implementation
