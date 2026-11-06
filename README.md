@@ -19,7 +19,7 @@
 
 自托管版不显示登录、积分或账户入口，也不会使用服务器共享 Key。官方托管版不提供 BYOK、接口/模型覆盖或模式切换；认证、模型或预算配置缺失时拒绝生成，不会降级为 BYOK。服务端也会拒绝不属于当前部署模式的请求。
 
-仅未设置 `DEPLOYMENT_MODE` 时默认 `self-hosted`；显式空值、拼写错误或其他值均按配置错误拒绝服务。两个 Compose 文件都在容器运行时传入该变量；改值后需重新创建 Web 容器。**已有官方托管实例升级前必须显式设置 `DEPLOYMENT_MODE=hosted`，并保留原 `accounts` 卷。** 托管配置与升级步骤见 [账户与积分运维指南](docs/operations/account-trial.md)。目前没有支付或订阅功能。
+仅未设置 `DEPLOYMENT_MODE` 时默认 `self-hosted`；显式空值、拼写错误或其他值均按配置错误拒绝服务。两个 Compose 文件都在容器运行时传入该变量；改值后需重新创建 Web 容器。**已有官方托管实例升级前必须显式设置 `DEPLOYMENT_MODE=hosted`，并保留原 `accounts` 卷。** 托管配置见 [账户与积分运维指南](docs/operations/account-trial.md)。内部订单、入账流水和恢复工具已提供；Stripe 为后续支付渠道，目前未开放真实充值或订阅。升级账本前先阅读 [额度账本迁移与恢复](docs/operations/credit-ledger.md)。
 
 ## 本地开发
 
@@ -153,7 +153,7 @@ DSH 的预览版本接口可能变化。升级时统一修改根 `package.json` 
 
 先做备份并记录当前代码提交、活动 snapshot ID 和模型 manifest。通过自己的发布流程取回并检出已审查的新提交，执行 `bash scripts/update.sh`；脚本要求干净工作区、构建当前代码并等待 Web/知识服务健康。脚本不拉取未知更新，不自动更新语料，也不替换数据库主版本。
 
-已有托管部署需在启动新镜像前将 `DEPLOYMENT_MODE=hosted` 加入原 `.env`；不要用示例文件覆盖现有凭据。保留 Compose 项目名、原 `accounts` 卷和 ledger 路径，升级与回滚均使用同一账本。发布后核对 `/api/status.deployment.mode` 与浏览器入口：托管版应显示账户/积分且无 Key 设置，自托管版则应只有 BYOK。模式切换不会迁移或合并本机访客与账户聊天历史。
+已有托管部署需在启动新镜像前将 `DEPLOYMENT_MODE=hosted` 加入原 `.env`；不要用示例文件覆盖现有凭据。保留 Compose 项目名、原 `accounts` 卷和 ledger 路径。**本版知识服务会把旧账户账本升级为 schema v2，旧二进制不能直接读取升级后的库；先停写、备份并按 [迁移与恢复流程](docs/operations/credit-ledger.md) 演练。** 发布后核对 `/api/status.deployment.mode` 与浏览器入口：托管版应显示账户/积分且无 Key 设置，自托管版则应只有 BYOK。模式切换不会迁移或合并本机访客与账户聊天历史。
 
 语料更新应导入新的快照，检查 coverage 和抽样来源后再激活；旧快照保留用于回滚。代码回滚时检出之前记录的提交，重建并启动对应镜像。若新版本更改了数据结构，先在隔离环境验证旧代码兼容性；不兼容时需要恢复对应数据库备份，不能只回滚容器。模型或预处理改变时必须建立匹配的新索引。
 
@@ -170,7 +170,7 @@ docker compose up -d --wait knowledge web
 
 脚本生成逻辑 SQL、来源归档、代码提交和 `runtime.env`。备份包含密钥与数据，应加密后离机保存；模型缓存可按固定 revision 重新下载。不要只复制运行中的数据库卷。SQLite 开发库可在停止开发服务后连同 `data/`、来源、模型 manifest 和 `.env` 一起备份。
 
-上述 `backup.sh` / `restore.sh` 仅处理 PostgreSQL 语料与来源，**不包含 `accounts` 卷**。托管版必须另外按 [账户账本备份要求](docs/operations/account-trial.md#privacy-and-operation) 备份和恢复 `/accounts/accounts.sqlite`；语料快照、PostgreSQL 备份与账户账本不能互相替代。
+上述 `backup.sh` / `restore.sh` 仅处理 PostgreSQL 语料与来源，**不包含 `accounts` 卷**。托管版必须另外使用 [账户账本专用工具](docs/operations/credit-ledger.md) 备份、验证和恢复 `/accounts/accounts.sqlite`；语料快照、PostgreSQL 备份与账户账本不能互相替代。
 
 定期在全新 Compose 项目/空数据库做恢复演练，不覆盖在线实例。先准备受保护的 `.env` 并按记录检出兼容代码，然后执行：
 

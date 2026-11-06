@@ -8,6 +8,12 @@ export interface AccountUsage {
  usedTokens:number|null;
  model:string;
 }
+export interface AccountGrant {
+ id:string;
+ createdAt:string;
+ source:'legacy'|'trial'|'manual'|'payment';
+ units:number;
+}
 export interface AccountSummary {
  enabled:boolean;
  authenticated:boolean;
@@ -16,6 +22,7 @@ export interface AccountSummary {
  trialCredits?:number;
  costs?:{standard:number;deep:number};
  usage?:AccountUsage[];
+ grants?:AccountGrant[];
 }
 export type AccountIdentity=string|null|undefined; // undefined: unverified, null: signed out (guest history only in self-hosted)
 export interface AccountFailure {code:string;message:string}

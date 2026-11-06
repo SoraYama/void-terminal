@@ -5,17 +5,18 @@ const screenshots=path.resolve(process.cwd(),'../../artifacts/account-trial');
 const status={ready:true,deployment:{mode:'hosted'},activeSnapshot:{id:'account-fixture',sourceRepo:'fixture',sourceCommit:'fixture',gameVersion:null,createdAt:'2026-11-06T00:00:00Z',label:'Account browser fixture',state:'ready'},documentCount:1,chunkCount:1,languages:['zh-CN','en'],retrieval:{lexical:true,semantic:false,model:null},coverage:[],provider:{model:'fixture-model',sharedEnabled:true,byok:false}};
 const frame=(event:string,data:unknown)=>`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 type Usage={requestId:string;createdAt:string;depth:'standard'|'deep';units:number;status:'reserved'|'completed'|'released'|'expired';usedTokens:number|null;model:string};
+type Grant={id:string;createdAt:string;source:'legacy'|'trial'|'manual'|'payment';units:number};
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-async function setup(page:Page,options:{enabled?:boolean;email?:string;theme?:'light'|'dark';mode?:'shared'|'byok';accountGate?:Promise<void>}={}){
- const state={enabled:options.enabled??true,email:options.email??'',available:20,held:0,usage:null as Usage[]|null,accountReads:0,accountError:false,sendCodes:[] as unknown[],verifyCodes:[] as unknown[],chatRequests:[] as {headers:Record<string,string>;body:any}[]};
- await page.addInitScript(({theme,mode})=>localStorage.setItem('void.preferences',JSON.stringify({theme,mode,locale:'zh-CN',sourceLanguage:'zh-CN'})),{theme:options.theme??'light',mode:options.mode??'shared'});
+async function setup(page:Page,options:{enabled?:boolean;email?:string;theme?:'light'|'dark';locale?:'zh-CN'|'en';mode?:'shared'|'byok';accountGate?:Promise<void>;available?:number;totalGranted?:number;costs?:{standard:number;deep:number}|null;grants?:Grant[]}={}){
+ const state={enabled:options.enabled??true,email:options.email??'',available:options.available??20,totalGranted:options.totalGranted??20,costs:options.costs===null?undefined:options.costs??{standard:1,deep:3},grants:options.grants,held:0,usage:null as Usage[]|null,accountReads:0,accountError:false,sendCodes:[] as unknown[],verifyCodes:[] as unknown[],chatRequests:[] as {headers:Record<string,string>;body:any}[]};
+ await page.addInitScript(({theme,mode,locale})=>localStorage.setItem('void.preferences',JSON.stringify({theme,mode,locale,sourceLanguage:'zh-CN'})),{theme:options.theme??'light',mode:options.mode??'shared',locale:options.locale??'zh-CN'});
  await page.route('**/api/status',r=>r.fulfill({json:status}));
  await page.route('**/api/account',async r=>{
   state.accountReads++;if(options.accountGate)await options.accountGate;
   if(state.accountError)return r.fulfill({status:503,json:{error:{code:'ACCOUNT_UNAVAILABLE',message:'额度暂时无法读取，请重试。'}}});
   if(!state.enabled||!state.email)return r.fulfill({json:{enabled:state.enabled,authenticated:false}});
-  return r.fulfill({json:{enabled:true,authenticated:true,user:{id:accountId(state.email),email:state.email},credits:{available:state.available,held:state.held,totalGranted:20},trialCredits:20,costs:{standard:1,deep:3},usage:state.usage??(state.available===20?[]:[{requestId:'00000000-0000-4000-8000-000000000001',createdAt:'2026-11-06T08:00:00Z',depth:'standard',units:1,status:'completed',usedTokens:92,model:'fixture-model'}])}});
+  return r.fulfill({json:{enabled:true,authenticated:true,user:{id:accountId(state.email),email:state.email},credits:{available:state.available,held:state.held,totalGranted:state.totalGranted},trialCredits:20,costs:state.costs,...(state.grants===undefined?{}:{grants:state.grants}),usage:state.usage??(state.available===20?[]:[{requestId:'00000000-0000-4000-8000-000000000001',createdAt:'2026-11-06T08:00:00Z',depth:'standard',units:1,status:'completed',usedTokens:92,model:'fixture-model'}])}});
  });
  await page.route('**/api/auth/send-code',r=>{state.sendCodes.push(r.request().postDataJSON());return r.fulfill({json:{ok:true}})});
  await page.route('**/api/auth/verify-code',r=>{
@@ -26,7 +27,7 @@ async function setup(page:Page,options:{enabled?:boolean;email?:string;theme?:'l
  await page.route('**/api/auth/logout',r=>{state.email='';return r.fulfill({json:{ok:true}})});
  await page.route('**/api/models/test',r=>r.fulfill({json:{ok:true,model:'fixture-model'}}));
  await page.route('**/api/chat',async r=>{
-  state.chatRequests.push({headers:r.request().headers(),body:r.request().postDataJSON()});state.available--;
+  const body=r.request().postDataJSON();state.chatRequests.push({headers:r.request().headers(),body});state.available-=body.depth==='deep'?(state.costs?.deep??3):(state.costs?.standard??1);
   await r.fulfill({contentType:'text/event-stream',body:frame('text_delta',{text:'账户隔离测试回答。'})+frame('done',{snapshotId:'account-fixture',finishReason:'stop'})});
  });
  await page.goto('/');
@@ -160,4 +161,122 @@ test('account: logout clears a private draft while a fresh anonymous draft survi
  await signIn(page,'bob@example.test');await closeAccount(page);await expect(question).toHaveValue('退出后新写的匿名草稿');
  await expect(page.locator('.sidebar .history-row').filter({hasText:'Bob 私有对话'})).toHaveCount(1);await expect(page.locator('.sidebar .history-row').filter({hasText:'Alice 私有对话'})).toHaveCount(0);
  await page.getByRole('button',{name:'发送',exact:true}).click();await expect.poll(()=>state.chatRequests.length).toBe(1);expect(state.chatRequests[0].body.messages).toEqual([{role:'user',content:'退出后新写的匿名草稿'}]);
+});
+
+for(const theme of ['light','dark'] as const){
+ test(`credits: incoming grants are separate from research usage (${theme})`,async({page},info)=>{
+  const grants:Grant[]=[
+   {id:'grant-payment',createdAt:'2026-11-06T08:00:00Z',source:'payment',units:40},
+   {id:'grant-manual',createdAt:'2026-11-05T08:00:00Z',source:'manual',units:7},
+   {id:'grant-trial',createdAt:'2026-11-04T08:00:00Z',source:'trial',units:20},
+   {id:'grant-legacy',createdAt:'2026-11-03T08:00:00Z',source:'legacy',units:13},
+  ];
+  await setup(page,{email:'alice@example.test',theme,available:79,totalGranted:80,grants});
+  const dialog=await account(page),incoming=dialog.getByRole('region',{name:'最近入账',exact:true}),usage=dialog.getByRole('region',{name:'最近用量',exact:true});
+  await expect(dialog.locator('.account-balance')).toContainText('累计入账');await expect(dialog).not.toContainText('已获试用额度');
+  await expect(incoming.getByRole('listitem')).toHaveCount(4);
+  for(const [index,label] of ['支付入账','人工入账','试用额度','历史入账'].entries())await expect(incoming.getByRole('listitem').nth(index)).toContainText(label);
+  for(const grant of grants)await expect(incoming).toContainText(`+${grant.units}`);
+  await expect(incoming).not.toContainText('普通考据');await expect(usage).toContainText('普通考据');await expect(usage).not.toContainText('人工入账');
+  await expect(dialog.getByRole('button',{name:/充值|购买|支付|checkout|buy/i})).toHaveCount(0);
+  expect(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+  await screenshot(page,`credit-history-${theme}-top`,info.project.name);await incoming.scrollIntoViewIfNeeded();await screenshot(page,`credit-history-${theme}-records`,info.project.name);
+ });
+}
+
+test('credits: an older account response never invents incoming grant records',async({page})=>{
+ await setup(page,{email:'alice@example.test',totalGranted:80});
+ const dialog=await account(page),incoming=dialog.getByRole('region',{name:'最近入账',exact:true});
+ await expect(dialog.locator('.account-balance')).toContainText('80');await expect(incoming).toContainText('暂无入账明细');await expect(incoming.getByRole('listitem')).toHaveCount(0);
+});
+
+test('credits: English account labels describe total credits and incoming records',async({page})=>{
+ await setup(page,{email:'alice@example.test',locale:'en',grants:[{id:'grant-trial',createdAt:'2026-11-06T08:00:00Z',source:'trial',units:20}]});
+ await navigation(page,'Account & credits');const dialog=page.getByRole('dialog',{name:'Account & credits',exact:true});
+ await expect(dialog.locator('.account-balance')).toContainText('Total credited');await expect(dialog.getByRole('region',{name:'Recent credits',exact:true}).getByRole('listitem')).toHaveCount(1);await expect(dialog.getByRole('region',{name:'Recent usage',exact:true})).toBeVisible();
+});
+
+test('credits: zero balance preserves the raw draft before creating a request or history',async({page},info)=>{
+ const state=await setup(page,{email:'alice@example.test',available:0});await expect(page.locator('.composer-cost')).toBeVisible();
+ const draft='  零额度时保留完整问题\n第二行仍在  ';await page.locator('#question').fill(draft);await page.getByRole('button',{name:'发送',exact:true}).click();
+ const shortage=page.locator('.credit-shortage');await expect(shortage).toContainText('可用额度为 0');await expect(shortage).toContainText('充值尚未开放');await expect(page.locator('#question')).toHaveValue(draft);
+ expect(state.chatRequests).toHaveLength(0);await expect(page.locator('.sidebar .history-row')).toHaveCount(0);await expect(page.locator('.message')).toHaveCount(0);await expect(shortage.getByRole('button',{name:'切换为普通考据',exact:true})).toHaveCount(0);
+ const action=shortage.getByRole('button',{name:'查看账户',exact:true});expect((await action.boundingBox())!.height).toBeGreaterThanOrEqual(44);expect(await shortage.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+ await screenshot(page,'credit-zero-shortage',info.project.name);await action.click();const dialog=page.getByRole('dialog',{name:'账户与额度',exact:true});await expect(dialog).toBeVisible();await expect(dialog.getByRole('button',{name:/充值|购买|支付/})).toHaveCount(0);await closeAccount(page);await expect(page.locator('#question')).toHaveValue(draft);
+ await page.reload();await expect(page.locator('.sidebar .history-row')).toHaveCount(0);
+});
+
+for(const available of [1,2]){
+ test(`credits: ${available} remaining credits offer standard research without automatically sending`,async({page},info)=>{
+  const state=await setup(page,{email:'alice@example.test',available});await expect(page.locator('.composer-cost')).toBeVisible();const draft=`保留 ${available} 额度的深入问题`;
+  await page.locator('#question').fill(draft);await page.getByRole('button',{name:'深入考据',exact:true}).click();await page.getByRole('button',{name:'发送',exact:true}).click();
+  const shortage=page.locator('.credit-shortage');await expect(shortage).toContainText('充值尚未开放');await expect(shortage).toContainText(String(available));await expect(shortage).toContainText('3');await expect(shortage).not.toContainText('可用额度为 0');await expect(page.locator('#question')).toHaveValue(draft);expect(state.chatRequests).toHaveLength(0);await expect(page.locator('.sidebar .history-row')).toHaveCount(0);
+  const switchDepth=shortage.getByRole('button',{name:'切换为普通考据',exact:true});expect((await switchDepth.boundingBox())!.height).toBeGreaterThanOrEqual(44);expect(await shortage.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+  await screenshot(page,`credit-deep-shortage-${available}`,info.project.name);await switchDepth.click();await expect(page.getByRole('button',{name:'深入考据',exact:true})).toHaveAttribute('aria-pressed','false');await expect(page.locator('#question')).toHaveValue(draft);expect(state.chatRequests).toHaveLength(0);
+  await page.getByRole('button',{name:'发送',exact:true}).click();await expect.poll(()=>state.chatRequests.length).toBe(1);expect(state.chatRequests[0].body.depth).toBe('standard');expect(state.chatRequests[0].body.messages).toEqual([{role:'user',content:draft}]);
+ });
+}
+
+test('credits: precheck follows configured costs and waits for the server when costs are unknown',async({page})=>{
+ const state=await setup(page,{email:'alice@example.test',available:2,costs:{standard:2,deep:5}});await expect(page.locator('.composer-cost')).toContainText('2');await page.locator('#question').fill('读取站点实际计费额度');await page.getByRole('button',{name:'深入考据',exact:true}).click();await page.getByRole('button',{name:'发送',exact:true}).click();
+ const shortage=page.locator('.credit-shortage');await expect(shortage).toContainText('5');expect(state.chatRequests).toHaveLength(0);await expect(shortage.getByRole('button',{name:'切换为普通考据',exact:true})).toBeVisible();
+ await page.route('**/api/chat',r=>{state.chatRequests.push({headers:r.request().headers(),body:r.request().postDataJSON()});return r.fulfill({status:402,json:{error:{code:'CREDITS_EXHAUSTED',message:'Insufficient credits.'}}})});
+ state.costs=undefined;const dialog=await account(page);await dialog.getByRole('button',{name:'刷新额度',exact:true}).click();await expect(page.locator('.composer-cost')).toHaveCount(0);await closeAccount(page);
+ await page.getByRole('button',{name:'发送',exact:true}).click();await expect.poll(()=>state.chatRequests.length).toBe(1);
+});
+
+test('credits: a server admission race restores the raw draft and uses the refreshed balance',async({page})=>{
+ const state=await setup(page,{email:'alice@example.test'});await expect(page.locator('.composer-cost')).toBeVisible();const initialReads=state.accountReads,draft='  服务器拒绝后仍可编辑\n完整草稿  ';let requested=false;
+ await page.route('**/api/chat',r=>{requested=true;state.available=2;return r.fulfill({status:402,json:{error:{code:'CREDITS_EXHAUSTED',message:'Insufficient credits.'}}})});
+ await page.getByRole('button',{name:'深入考据',exact:true}).click();await page.locator('#question').fill(draft);await page.getByRole('button',{name:'发送',exact:true}).click();
+ await expect.poll(()=>requested).toBe(true);await expect.poll(()=>state.accountReads).toBeGreaterThan(initialReads);await expect(page.locator('#question')).toHaveValue(draft);await expect(page.getByRole('button',{name:'停止生成',exact:true})).toHaveCount(0);
+ const shortage=page.locator('.credit-shortage');await expect(shortage).toContainText('2');await expect(shortage).not.toContainText('可用额度为 0');await expect(shortage).toContainText('充值尚未开放');await expect(page.locator('.message')).toHaveCount(0);await expect(page.locator('.sidebar .history-row')).toHaveCount(0);
+ const dialog=await account(page);await expect(dialog.locator('.account-balance>div').filter({hasText:'可用额度'}).locator('dd')).toHaveText('2');await closeAccount(page);await page.reload();await expect(page.locator('.sidebar .history-row')).toHaveCount(0);
+});
+
+test('credits: an edited question rejected by precheck preserves both it and the composer draft',async({page})=>{
+ const state=await setup(page,{email:'alice@example.test',available:0});await seedHistory(page);await page.reload();await navigation(page,'Alice 私有对话');await expect(page.locator('.composer-cost')).toBeVisible();
+ const composerDraft='保留已有追问草稿',editedQuestion='  Alice 修改后的问题\n原始空格  ';await page.locator('#question').fill(composerDraft);
+ await page.locator('.message.user').getByRole('button',{name:'编辑并分支',exact:true}).click();const editor=page.locator('.edit-box');await editor.locator('textarea').fill(editedQuestion);await editor.getByRole('button',{name:'编辑并分支',exact:true}).click();
+ await expect(editor.locator('textarea')).toHaveValue(editedQuestion);await expect(page.locator('.credit-shortage')).toContainText('可用额度为 0');expect(state.chatRequests).toHaveLength(0);await expect(page.locator('#question')).toHaveValue(composerDraft);await expect(page.locator('.message.user')).toHaveCount(1);await expect(page.locator('.markdown')).toHaveText('Alice 私有对话私有正文');await expect(page.locator('.sidebar .history-row')).toHaveCount(1);
+});
+
+for(const branchAction of ['edit','regenerate'] as const){
+test(`credits: a rejected ${branchAction} branch retries only its prefix and preserves the composer draft`,async({page})=>{
+ const state=await setup(page,{email:'alice@example.test'});await seedHistory(page);
+ await page.evaluate(async()=>{await new Promise<void>((resolve,reject)=>{
+  const request=indexedDB.open('void-terminal:account:account-alice',1);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,tx=db.transaction('conversations','readwrite');tx.objectStore('conversations').put({id:'Alice 私有对话',title:'Alice 私有对话',updatedAt:Date.now(),messages:[{role:'user',content:'Q1'},{role:'assistant',content:'A1'},{role:'user',content:'Q2'},{role:'assistant',content:'A2'}]});tx.oncomplete=()=>{db.close();resolve()};tx.onerror=()=>reject(tx.error)};
+ })});
+ await page.reload();await navigation(page,'Alice 私有对话');await expect(page.locator('.composer-cost')).toBeVisible();
+ await page.route('**/api/chat',r=>{state.chatRequests.push({headers:r.request().headers(),body:r.request().postDataJSON()});return state.chatRequests.length===1?r.fulfill({status:402,json:{error:{code:'CREDITS_EXHAUSTED',message:'Insufficient credits.'}}}):r.fulfill({contentType:'text/event-stream',body:frame('text_delta',{text:'编辑后的分支回答。'})+frame('done',{snapshotId:'account-fixture',finishReason:'stop'})})});
+ const composerDraft='  Alice 已有追问草稿  ',retryQuestion=branchAction==='edit'?'  Q1 修改后的问题\n保留原始空格  ':'Q1';await page.locator('#question').fill(composerDraft);const editor=page.locator('.edit-box');
+ if(branchAction==='edit'){await page.locator('.message.user').first().getByRole('button',{name:'编辑并分支',exact:true}).click();await editor.locator('textarea').fill(retryQuestion);await editor.getByRole('button',{name:'编辑并分支',exact:true}).click()}
+ else await page.locator('.message.assistant').first().getByRole('button',{name:'重新生成',exact:true}).click();
+ await expect.poll(()=>state.chatRequests.length).toBe(1);await expect(editor.locator('textarea')).toHaveValue(retryQuestion);await expect(page.locator('#question')).toHaveValue(composerDraft);await expect(page.getByRole('button',{name:'停止生成',exact:true})).toHaveCount(0);await expect(page.locator('.message.user')).toHaveCount(2);await expect(page.locator('.markdown')).toHaveText(['A1','A2']);
+ await editor.getByRole('button',{name:'编辑并分支',exact:true}).click();await expect.poll(()=>state.chatRequests.length).toBe(2);expect(state.chatRequests[1].body.messages).toEqual([{role:'user',content:retryQuestion}]);await expect(page.locator('.markdown').last()).toHaveText('编辑后的分支回答。');
+});
+}
+
+test('credits: a delayed admission rejection keeps newly typed text and the prior conversation',async({page})=>{
+ await setup(page,{email:'alice@example.test'});await seedHistory(page);await page.reload();await navigation(page,'Alice 私有对话');
+ let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve});let requested=false;
+ await page.route('**/api/chat',async r=>{requested=true;await gate;await r.fulfill({status:402,json:{error:{code:'CREDITS_EXHAUSTED',message:'Insufficient credits.'}}})});
+ await page.locator('#question').fill('刚提交但未被接受的追问');await page.getByRole('button',{name:'发送',exact:true}).click();await expect.poll(()=>requested).toBe(true);await page.locator('#question').fill('等待期间新写的草稿');release();
+ await expect(page.locator('.credit-shortage')).toBeVisible();await expect(page.locator('#question')).toHaveValue('等待期间新写的草稿');await expect(page.locator('.message.user')).toHaveCount(1);await expect(page.locator('.message.user')).toContainText('Alice 私有对话');await expect(page.locator('.markdown')).toHaveText('Alice 私有对话私有正文');
+ const rejectedDraft=page.locator('.credit-rejected-draft');await expect(rejectedDraft).toContainText('刚提交但未被接受的追问');await rejectedDraft.getByText('查看未发送问题',{exact:true}).click();await rejectedDraft.getByRole('button',{name:'恢复未发送问题',exact:true}).click();await expect(page.locator('#question')).toHaveValue('刚提交但未被接受的追问');await expect(rejectedDraft).toContainText('等待期间新写的草稿');
+ await expect(page.locator('.credit-shortage')).not.toContainText('可用额度为 0');await page.reload();await navigation(page,'Alice 私有对话');await expect(page.locator('.message.user')).toHaveCount(1);await expect(page.locator('.markdown')).toHaveText('Alice 私有对话私有正文');
+});
+
+test('credits: a delayed 402 cannot restore a rejected draft into another identity',async({page})=>{
+ await setup(page,{email:'alice@example.test'});await expect(page.locator('.composer-cost')).toBeVisible();let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve});let requested=false,fulfilled=false;
+ await page.route('**/api/chat',async r=>{requested=true;await gate;await r.fulfill({status:402,json:{error:{code:'CREDITS_EXHAUSTED',message:'Insufficient credits.'}}}).catch(()=>{});fulfilled=true});
+ await page.locator('#question').fill('Alice 不得恢复给 Bob 的问题');await page.getByRole('button',{name:'发送',exact:true}).click();await expect.poll(()=>requested).toBe(true);
+ const dialog=await account(page);await dialog.getByRole('button',{name:'登出',exact:true}).click();await expect(dialog.getByLabel('邮箱',{exact:true})).toBeVisible();await signIn(page,'bob@example.test');await closeAccount(page);await page.locator('#question').fill('Bob 的新草稿');release();
+ await expect.poll(()=>fulfilled).toBe(true);await expect(page.locator('#question')).toHaveValue('Bob 的新草稿');await expect(page.locator('.credit-shortage')).toHaveCount(0);await expect(page.locator('.credit-rejected-draft')).toHaveCount(0);await expect(page.locator('.message')).toHaveCount(0);await expect(page.locator('.sidebar .history-row')).toHaveCount(0);
+});
+
+test('credits: ordinary model failures keep existing error and history behavior',async({page})=>{
+ await setup(page,{email:'alice@example.test'});await expect(page.locator('.composer-cost')).toBeVisible();await page.route('**/api/chat',r=>r.fulfill({status:503,json:{error:{code:'MODEL_UNAVAILABLE',message:'The model provider is unavailable.'}}}));
+ await page.locator('#question').fill('正常模型错误仍保留对话');await page.getByRole('button',{name:'发送',exact:true}).click();await expect(page.locator('.inline-error')).toContainText('模型服务暂时不可用');await expect(page.locator('.credit-shortage')).toHaveCount(0);await expect(page.locator('#question')).toHaveValue('');await expect(page.locator('.message.user')).toContainText('正常模型错误仍保留对话');await expect(page.locator('.sidebar .history-row')).toHaveCount(1);
+ await page.reload();await navigation(page,'正常模型错误仍保留对话');await expect(page.locator('.inline-error')).toContainText('模型服务暂时不可用');
 });

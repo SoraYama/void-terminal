@@ -1,4 +1,4 @@
-> **Last updated**: 2026-11-06 (自部署与官网运行模式、紧凑对话控件；保留账户与手机标题记录)
+> **Last updated**: 2026-11-06 (额度账本与支付基础；保留双版本、账户与手机标题记录)
 
 # Agent Notes
 
@@ -16,6 +16,7 @@
 
 | Note | Summary |
 | --- | --- |
+| [2026-11-06-credit-foundation](feature/2026-11-06-credit-foundation.md) | schema v2 追加式入账、订单与支付幂等核心、独立账本备份恢复 CLI、额度不足草稿及分支恢复；未来选 Stripe，本轮不接真实收款或迁移线上账本 |
 | [2026-11-06-deployment-modes](feature/2026-11-06-deployment-modes.md) | 同一镜像运行时选择自部署 BYOK 或官网登录额度；服务端边界、历史隔离、登录草稿和紧凑对话控件；验证与发布证据见记录 |
 | [2026-11-06-account-trial](feature/2026-11-06-account-trial.md) | Supabase 邮箱 OTP、独立 SQLite 额度账本、登录后服务端代理、并发与重复扣减防护、账户本地历史隔离；邀请模式已上线；SMTP/DNS/模型凭证接通、真实邮箱登录、问答扣费与刷新持久化验收通过 |
 | [2026-11-05-character-release](feature/2026-11-05-character-release.md) | 群星图鉴与尘世文卷于 11 月 6 日上线；main 782f590、完整快照 26ae8d6dbac3、六组线上布局/四语播放通过，保留历史引用与每日刷新 |

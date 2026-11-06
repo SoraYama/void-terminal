@@ -23,10 +23,14 @@ def test_internal_account_api_grants_once_and_preserves_balance_on_restart(tmp_p
         client = TestClient(create_app(api_token='secret'))
         response = client.post('/v1/accounts/summary', headers=HEADERS, json={'accountId': ALICE})
         assert response.status_code == 200
-        assert response.json() == {
+        body = response.json()
+        assert {key: value for key, value in body.items() if key != 'grants'} == {
             'credits': {'available': 20, 'held': 0, 'totalGranted': 20},
             'trialCredits': 20, 'costs': {'standard': 1, 'deep': 3}, 'usage': [],
         }
+        assert len(body['grants']) == 1
+        assert body['grants'][0]['source'] == 'trial'
+        assert body['grants'][0]['units'] == 20
         assert response.headers['cache-control'] == 'no-store'
 
 

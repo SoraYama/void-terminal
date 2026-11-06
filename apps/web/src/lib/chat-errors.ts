@@ -1,5 +1,6 @@
 import type {Locale} from './contracts';
 import type {DeploymentMode} from './deployment';
+import type {AccountSummary} from './account-contracts';
 
 export interface ChatFailure {message:string;code?:string}
 export class ChatRequestError extends Error {
@@ -16,7 +17,7 @@ export function responseErrorCode(value:unknown):string|undefined{
 // errors already received or restored from history.
 const messages:Record<string,[string,string]>={
  LOGIN_REQUIRED:['请登录账户后开始考据。','Sign in to start research.'],
- CREDITS_EXHAUSTED:['账户额度不足，请在账户中查看余额。','Your account has insufficient credits. Check your balance in Account & credits.'],
+ CREDITS_EXHAUSTED:['账户额度不足，请查看账户余额。充值尚未开放。','Your account has insufficient credits. Check your balance in Account & credits. Top-ups are not available yet.'],
  ACCOUNT_BUSY:['此账户已有考据正在进行，请等待完成后重试。','This account already has research in progress. Wait for it to finish and retry.'],
  REQUEST_REPLAY:['此请求已处理，请重新发起考据。','This request was already processed. Start a new research request.'],
  REQUEST_ID_REQUIRED:['请求标识无效，请刷新页面后重试。','The request identifier is invalid. Reload the page and retry.'],
@@ -56,6 +57,8 @@ const codeAliases:Record<string,string>={
  OUTPUT_LIMIT:'CONTEXT_LIMIT',INVALID_TOOL_CALL:'TOOL_LIMIT',
 };
 const legacy:Record<string,string>={
+ '账户额度不足，请在账户中查看余额。':'CREDITS_EXHAUSTED',
+ 'Your account has insufficient credits. Check your balance in Account & credits.':'CREDITS_EXHAUSTED',
  'The requested evidence was not found.':'NOT_FOUND',
  'The model API key was not accepted.':'MODEL_AUTH',
  'Enter a valid model API key.':'MODEL_KEY_REQUIRED',
@@ -73,6 +76,21 @@ const legacy:Record<string,string>={
  'Empty response':'MODEL_STREAM_INCOMPLETE',
 };
 for(const [code,pair] of Object.entries(messages))for(const value of pair)legacy[value]=code;
+
+export interface CreditShortage {available:number;required:number;standardCost:number;depth:'standard'|'deep';canUseStandard:boolean}
+/** A missing/invalid balance is unknown, never an invented zero. */
+export function accountCreditShortage(account:AccountSummary|null,depth:'standard'|'deep'):CreditShortage|null{
+ if(!account?.enabled||!account.authenticated||!account.credits||!account.costs)return null;
+ const {available}=account.credits,{standard,deep}=account.costs,required=account.costs[depth];
+ if(!Number.isSafeInteger(available)||available<0||![standard,deep].every(cost=>Number.isSafeInteger(cost)&&cost>0)||available>=required)return null;
+ return {available,required,standardCost:standard,depth,canUseStandard:depth==='deep'&&available>=standard};
+}
+export function creditShortageText(shortage:CreditShortage|null,locale:Locale):string{
+ if(!shortage)return messages.CREDITS_EXHAUSTED[locale==='zh-CN'?0:1];
+ const {available,required,depth,standardCost,canUseStandard}=shortage;
+ if(locale==='zh-CN')return `${available===0?'可用额度为 0':`当前可用 ${available} 额度`}，${depth==='deep'?'深入':'普通'}考据需要 ${required} 额度。${canUseStandard?`可切换为普通考据（${standardCost} 额度）。`:''}充值尚未开放。`;
+ return `You have ${available} ${available===1?'credit':'credits'}; ${depth==='deep'?'deep':'standard'} research needs ${required}. ${canUseStandard?`You can switch to standard research (${standardCost} ${standardCost===1?'credit':'credits'}). `:''}Top-ups are not available yet.`;
+}
 
 export function chatFailure(error:unknown):ChatFailure{
  if(error instanceof ChatRequestError)return {message:error.message,code:error.code};
