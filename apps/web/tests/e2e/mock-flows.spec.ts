@@ -82,6 +82,8 @@ test('mock: unavailable shared service stays disabled in the custom menu',async(
  await page.keyboard.press('Enter');await expect(mode).toHaveText('使用自己的密钥');
 });
 test('mock: custom provider is used for testing and chat, survives refresh without a key, and never overrides shared mode',async({page},testInfo)=>{
+ // Shared access now requires an eligible signed-in account; keep this provider-isolation fixture authenticated.
+ await page.route('**/api/account',r=>r.fulfill({json:{enabled:true,authenticated:true,user:{id:'b7bbfd53-63c2-4ef0-8aab-cb5e3a2931e6',email:'provider-test@example.com'},credits:{available:20,held:0,totalGranted:20},costs:{standard:1,deep:3},usage:[]}}));
  await setup(page);await configure(page);const dialog=await settings(page);
  await dialog.getByLabel('Base URL',{exact:true}).fill('https://models.example.com/api/v1');
  await expect(dialog.getByLabel('模型 API Key',{exact:true})).toHaveValue('');

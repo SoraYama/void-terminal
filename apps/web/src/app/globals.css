@@ -317,3 +317,42 @@
 .museum-restore-draft{font-size:12px;color:var(--composer-text);padding:4px 8px;min-height:36px;border:1px solid var(--line);margin-bottom:8px}
 
 .game-icon{display:inline-block;flex-shrink:0;mask-position:center;mask-repeat:no-repeat;mask-size:contain;-webkit-mask-position:center;-webkit-mask-repeat:no-repeat;-webkit-mask-size:contain}.game-navigation-icon{width:25px;height:25px;background:currentColor}
+
+/* Account trial extends the existing settings surface and its paper/slate palette. */
+.account-dialog{width:min(520px,calc(100vw - 32px));max-height:calc(100dvh - 40px)}
+.account-description,.account-policy{font-size:12px;line-height:1.8;color:var(--text);margin:0 0 16px;opacity:.85}
+.account-description{max-width:58ch;padding-right:8px}
+.account-form{display:flex;flex-direction:column;gap:18px}
+.account-form>label{display:flex;flex-direction:column;gap:8px;font-size:13px}
+.account-form input{width:100%;min-width:0;font-size:16px;caret-color:var(--accent)}
+.account-form input[readonly]{background:var(--paper)}
+.account-form input::selection{background:var(--accent-soft);color:var(--text)}
+.account-form .account-policy,.account-form .account-notice{margin:0}
+.account-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:18px 0}
+.account-actions button,.account-identity button{font-size:12px}
+.account-actions .primary:disabled{cursor:not-allowed}
+.account-form .account-actions{margin:0}
+.account-notice,.account-loading{font-size:12px;line-height:1.8}
+.account-error{padding:12px 14px;margin-bottom:18px;background:var(--paper);border:1px solid var(--border);border-radius:var(--radius-control);color:var(--text);font-size:12px}
+.account-error p{margin:0;line-height:1.8}
+.account-error button{margin:6px 0 -3px;padding-left:0}
+.account-identity{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:22px;font-size:13px}
+.account-identity>span{min-width:0;overflow-wrap:anywhere}
+.account-identity>button{flex-shrink:0}
+.account-balance{margin:0 0 18px}
+.account-balance>div{display:flex;justify-content:space-between;align-items:baseline;gap:20px;padding:10px 0;border-bottom:1px solid var(--line)}
+.account-balance dt{font-size:13px}
+.account-balance dd{margin:0;font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
+.account-usage{border-top:1px solid var(--line);padding-top:22px;margin-top:22px}
+.account-usage h3{font-size:16px;margin:0 0 14px}
+.account-usage ul{list-style:none;padding:0;margin:0}
+.account-usage li{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 0;border-bottom:1px solid var(--line);font-size:12px}
+.account-usage li>div{display:flex;flex-direction:column;gap:5px;min-width:0}.account-usage-meta{overflow-wrap:anywhere}
+.account-usage li strong{font-weight:500}
+.account-usage li span,.account-usage time{font-size:11px;color:var(--text);opacity:.85}
+.account-usage time{flex-shrink:0;font-variant-numeric:tabular-nums}
+.account-nav-balance{font-size:11px;font-variant-numeric:tabular-nums;margin-left:auto}
+.sidebar[data-collapsed=true] .account-nav-balance{display:none}
+.account-settings-help{margin:18px 0 0}
+.account-settings-help button{padding:2px 7px;font-size:12px;text-decoration:underline;text-underline-offset:3px}
+@media(max-width:650px){.account-dialog{padding:25px 22px;max-height:calc(100dvh - 28px);width:calc(100vw - 28px)}.account-description{padding-right:12px}.account-usage li{gap:8px}.account-usage time{max-width:95px;text-align:right}.account-identity{gap:8px}.account-actions{gap:5px}}

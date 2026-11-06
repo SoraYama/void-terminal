@@ -1,3 +1,4 @@
+import { assertAccountOrigin, getAccountSession, applyAccountAuthCookies } from "../../../../lib/server/account-auth";
 import { credentials } from "../../../../lib/server/config";
 import { AppError, safeError } from "../../../../lib/server/errors";
 import { issueIdentity } from "../../../../lib/server/identity";
@@ -15,6 +16,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function POST(request: Request): Promise<Response> {
   let model = "deepseek-flash";
+  let applyCookies = (response: Response) => response;
   let transport: ProviderTransport | undefined;
   try {
     const body = await readJson(request);
@@ -24,6 +26,12 @@ export async function POST(request: Request): Promise<Response> {
     const provider = parseProvider(body.provider, mode);
     model = provider?.model || model;
     const key = credentials(mode, request);
+    if (mode === "shared") {
+      assertAccountOrigin(request);
+      const session = await getAccountSession(request);
+      applyCookies = session.applyCookies;
+      if (!session.user) throw new AppError("LOGIN_REQUIRED", "Sign in to use trial credits.", 401);
+    }
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(10000)]);
     const config = await resolveProvider(mode, provider, signal);
     model = config.model;
@@ -66,7 +74,7 @@ export async function POST(request: Request): Promise<Response> {
         "The configured model is not available for this key.",
         503,
       );
-    return Response.json(
+    return applyCookies(Response.json(
       {
         ok: true,
         model,
@@ -79,12 +87,12 @@ export async function POST(request: Request): Promise<Response> {
           ...(identity?.cookie ? { "Set-Cookie": identity.cookie } : {}),
         },
       },
-    );
+    ));
   } catch (error) {
     const e = safeError(error);
-    return Response.json(
+    return applyAccountAuthCookies(error, applyCookies(Response.json(
       { ok: false, model, code: e.code, message: e.message },
       { status: e.status, headers: { "Cache-Control": "no-store" } },
-    );
+    )));
   } finally { await transport?.close().catch(() => {}); }
 }

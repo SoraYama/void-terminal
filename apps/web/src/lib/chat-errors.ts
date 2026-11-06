@@ -8,6 +8,12 @@ export class ChatRequestError extends Error {
 // Display text is selected at render time so switching languages also updates
 // errors already received or restored from history.
 const messages:Record<string,[string,string]>={
+ LOGIN_REQUIRED:['请登录账户后使用共享服务。','Sign in to use shared research.'],
+ CREDITS_EXHAUSTED:['账户额度不足，可在账户中查看余额，或使用自己的模型密钥。','Your account has insufficient credits. Check your balance or use your own model key.'],
+ ACCOUNT_BUSY:['此账户已有考据正在进行，请等待完成后重试。','This account already has research in progress. Wait for it to finish and retry.'],
+ REQUEST_REPLAY:['此请求已处理，请重新发起考据。','This request was already processed. Start a new research request.'],
+ REQUEST_ID_REQUIRED:['请求标识无效，请刷新页面后重试。','The request identifier is invalid. Reload the page and retry.'],
+ ACCOUNT_UNAVAILABLE:['账户额度服务暂不可用，请稍后重试。','The account credit service is temporarily unavailable. Please retry.'],
  INVALID_REQUEST:['请求内容无效或超过限制，请检查问题后重试。','The request is invalid or exceeds the allowed limits. Check your question and retry.'],
  INVALID_PROVIDER:['模型地址或名称无效，请检查设置。','The model endpoint or name is invalid. Check settings.'],
  PROVIDER_ADDRESS_BLOCKED:['仅支持公网 HTTPS 模型接口，不能访问本站内网或 localhost。','Use a public HTTPS model endpoint; private networks and localhost are unavailable.'],

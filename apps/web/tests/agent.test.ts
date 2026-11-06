@@ -337,6 +337,7 @@ describe("context-budget recovery", () => {
       data: { usage: { inputTokens: 22, outputTokens: 9 } },
     });
     expect(result.usedTokens).toBe(31);
+    expect(result.outcome).toBe("completed");
     expect(providerCalls).toBe(2);
   });
   it("does not accept a citation omitted from the final bounded context as supported", async () => {
@@ -528,7 +529,9 @@ describe("retrieval-first bounded agent", () => {
   it("does not call provider when retrieval is empty", async () => {
     const fetcher = vi.fn(async () => search([]));
     stubFetch(fetcher);
-    const events = await collect();
+    const events: ChatEvent[] = [];
+    const result = await runAgent(request, { key: "private-test-key", signal: new AbortController().signal, emit: event => events.push(event) });
+    expect(result).toEqual({ usedTokens: 0, outcome: "released" });
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(events.at(-1)).toMatchObject({
       event: "done",
@@ -615,6 +618,7 @@ describe("retrieval-first bounded agent", () => {
       emit: (e) => events.push(e),
     });
     expect(aborted).toBe(true);
+    expect(result.outcome).toBe("released");
     expect(result.usedTokens).toBeNull();
     expect(events.some((e) => e.event === "done")).toBe(false);
   });

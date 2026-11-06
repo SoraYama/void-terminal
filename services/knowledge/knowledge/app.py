@@ -10,6 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from starlette.exceptions import HTTPException
 from pydantic import ValidationError
+from .account_routes import configured_account_store, register_account_routes
 from .catalog_router import CatalogRouter
 from .config import require_production_token
 from .models import ContentType, ItemDetailQuery, ItemListQuery, Locale, ReserveRequest, SearchRequest, SettleRequest
@@ -33,6 +34,7 @@ def create_app(store=None, api_token=None):
 
     api = FastAPI(title='Void Knowledge', lifespan=lifespan)
     api.state.store = store
+    api.state.account_store = configured_account_store(token, store)
 
     def legacy_catalog():
         # Also supports ASGI callers that don't drive lifespan themselves.
@@ -63,7 +65,8 @@ def create_app(store=None, api_token=None):
     async def unexpected_error(request, exc):
         # Do not log exception text: connection errors can contain connection strings.
         logger.error('Knowledge request failed (%s)', type(exc).__name__)
-        return JSONResponse(status_code=503, content={'error': {'code': 'KNOWLEDGE_UNAVAILABLE', 'message': 'Knowledge service is unavailable'}})
+        headers = {'Cache-Control': 'no-store'} if request.url.path.startswith('/v1/accounts/') else None
+        return JSONResponse(status_code=503, content={'error': {'code': 'KNOWLEDGE_UNAVAILABLE', 'message': 'Knowledge service is unavailable'}}, headers=headers)
 
     guards = [Depends(authenticate)]
 
@@ -180,6 +183,7 @@ def create_app(store=None, api_token=None):
     def settle(body: SettleRequest, db=Depends(legacy_catalog)):
         return db.settle_budget(body.reservationId, body.usedTokens)
 
+    register_account_routes(api, authenticate)
     return api
 
 

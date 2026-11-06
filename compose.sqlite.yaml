@@ -15,9 +15,13 @@ services:
       ENVIRONMENT: production
       DATABASE_URL: sqlite:////data/catalog.sqlite
       KNOWLEDGE_API_TOKEN: ${KNOWLEDGE_API_TOKEN:?Set KNOWLEDGE_API_TOKEN in .env}
-      SHARED_DAILY_TOKEN_BUDGET: '0'
+      SHARED_DAILY_TOKEN_BUDGET: ${SHARED_DAILY_TOKEN_BUDGET:-0}
+      ACCOUNT_TRIAL_ENABLED: ${ACCOUNT_TRIAL_ENABLED:-false}
+      ACCOUNT_DATABASE_PATH: /accounts/accounts.sqlite
+      ACCOUNT_TRIAL_CREDITS: ${ACCOUNT_TRIAL_CREDITS:-20}
       EMBEDDING_ENABLED: 'false'
     volumes:
+      - accounts:/accounts
       - type: bind
         source: ${CATALOG_DATA_DIR:-./data}
         target: /data
@@ -43,7 +47,13 @@ services:
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       DEEPSEEK_ALLOWED_BASE_URLS: ${DEEPSEEK_ALLOWED_BASE_URLS:-}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-flash}
-      SHARED_MODE_ENABLED: 'false'
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      SHARED_MODE_ENABLED: ${SHARED_MODE_ENABLED:-false}
+      ACCOUNT_TRIAL_ENABLED: ${ACCOUNT_TRIAL_ENABLED:-false}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:-}
+      TRIAL_ALLOWED_EMAILS: ${TRIAL_ALLOWED_EMAILS:-}
+      SESSION_SECRET: ${SESSION_SECRET:-}
       PUBLIC_APP_ORIGIN: https://${SITE_DOMAIN:?Set SITE_DOMAIN to a bare public hostname}
       TRUST_PROXY: 'true'
     depends_on:
@@ -75,5 +85,6 @@ services:
     logging: *logging
     restart: unless-stopped
 volumes:
+  accounts:
   caddy_data:
   caddy_config:

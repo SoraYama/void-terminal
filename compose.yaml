@@ -30,8 +30,13 @@ services:
       dockerfile: deploy/Dockerfile.knowledge
       args:
         INSTALL_SEMANTIC: ${KNOWLEDGE_SEMANTIC_BUILD:-false}
-    environment: *knowledge-environment
+    environment:
+      <<: *knowledge-environment
+      ACCOUNT_TRIAL_ENABLED: ${ACCOUNT_TRIAL_ENABLED:-false}
+      ACCOUNT_DATABASE_PATH: /accounts/accounts.sqlite
+      ACCOUNT_TRIAL_CREDITS: ${ACCOUNT_TRIAL_CREDITS:-20}
     volumes:
+      - accounts:/accounts
       - sources:/data/sources
       - models:/app/models
     depends_on:
@@ -58,6 +63,10 @@ services:
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-flash}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       SHARED_MODE_ENABLED: ${SHARED_MODE_ENABLED:-false}
+      ACCOUNT_TRIAL_ENABLED: ${ACCOUNT_TRIAL_ENABLED:-false}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:-}
+      TRIAL_ALLOWED_EMAILS: ${TRIAL_ALLOWED_EMAILS:-}
       SESSION_SECRET: ${SESSION_SECRET:-}
       PUBLIC_APP_ORIGIN: ${PUBLIC_APP_ORIGIN:-}
       TRUST_PROXY: ${TRUST_PROXY:-false}
@@ -87,6 +96,7 @@ services:
     entrypoint: [python, -m, knowledge.ingest]
     command: [--help]
 volumes:
+  accounts:
   database:
   sources:
   models:

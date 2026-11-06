@@ -190,3 +190,7 @@ PostgreSQL 原文库的英文前缀检索使用 `LIKE` 与 `text_pattern_ops` �
 测试不使用真实模型密钥，不等于真实数据全量导入、远程模型计费验证或生产验收。完整 Compose 部署、重启、导入与恢复仍需在有 Docker 的机器上演练；开发工作机没有 Docker 时不能声称容器部署已通过。
 
 原神风景为官方原图素材，权利归原权利人；详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 与[素材来源](docs/design/genshin-v2/assets/scenery-sources.md)。项目原创代码采用 MIT；游戏文本、第三方数据和模型不因此获得 MIT 授权。
+
+### Optional email-code trial
+
+Email-code accounts, one-time trial credits and authenticated shared model access are available behind default-off configuration. BYOK remains available. See [account trial setup](docs/operations/account-trial.md) for Supabase/SMTP, invitations, the separate ledger volume and backup requirements. This includes no payment integration.
