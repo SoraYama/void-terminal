@@ -42,7 +42,7 @@
 - Risk context JSON: {deviceHash: 64-lowercase-hex, fingerprintHash?: 64-lowercase-hex, networkHash?: 64-lowercase-hex, verified: boolean}. All hashes and verified status are constructed by trusted Web code; never exposed as public metadata. Invalid input rejected.
 - Summary preserves credits.available/held/totalGranted and costs; adds credits.daily {available,held,limit:3,resetsAt}, credits.reserve {available,held}, and eligibility {status:'ready'|'verification_required'|'device_limit', reason?: string}. Public grants/usage remain compatible; daily history may be separate from permanent grants.
 - POST /v1/accounts/summary and /reserve accept optional riskContext and retain authentication dependency. Missing context cannot allocate new grants. /settle remains compatible.
-- POST /v1/accounts/risk/check accepts {action:'send'|'verify'|'request',deviceHash,networkHash?,emailHash?,fingerprintHash?}; returns {allowed:boolean,challengeRequired:boolean,retryAfter:number}. Use atomic persistent counters. Actions require valid hashes and internal API authentication.
+- POST /v1/accounts/risk/check accepts {action:'send'|'verify'|'request',deviceHash,networkHash?,emailHash?,fingerprintHash?,verified?:boolean}; returns {allowed:boolean,challengeRequired:boolean,retryAfter:number}. Use atomic persistent counters. Actions require valid hashes and internal API authentication. Soft challenge without verified proof does not consume an admitted send cooldown; a same-second verified retry may proceed, then normal cooldown applies. Hard limits apply even with verified proof.
 - New-account entitlement: stable device welcome claim once per 180 days; account welcome once for lifetime. Device/day automatic daily grant unique, account/day unique; manual exemption can authorize shared device accounts and is audited separately from manual gifts.
 - Operator CLI adds an auditable exemption command with stable reference and reason; existing grant/backup/verify/restore work with new schema. Purge risk events at 30 days and device claim data at 180 days without deleting lifetime account grant history.
 
@@ -50,7 +50,7 @@
 - [ ] Run focused tests and capture meaningful RED evidence.
 - [ ] Implement explicit migration from baseline schema, allocation-aware reservation/settlement and risk storage in transactions. Legacy remaining credits become permanent history reserve; preserve held allocation and late-release semantics. Unknown schemas fail closed; update backup verification.
 - [ ] Add tests for midnight release/completion, concurrent stores/grants, duplicate settlement, legacy migration with held rows and replayed manual gifts; cover model budget monthly rollover if changed.
-- [ ] Run focused tests then Python full suite with .venv/bin/python -m unittest discover -s tests (existing repo uses unittest). Fix only task-related regressions and report all other failures.
+- [ ] Run focused tests then Python full suite with .venv/bin/python -m pytest tests -q (covers both pytest functions and unittest classes). Fix only task-related regressions and report all other failures.
 - [ ] Self-review, commit only owned files and record exact interface decisions/test evidence in task report.
 
 ### Task 2: Trusted Web risk context, auth and API integration
