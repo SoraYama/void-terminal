@@ -1,4 +1,4 @@
-> **Last updated**: 2026-11-06 (群星图鉴生产发布；同源重验、六组线上布局与四语实际播放验收)
+> **Last updated**: 2026-11-06 (修复手机 Safari 首页中文标题白块)
 
 # Agent Notes
 
@@ -32,6 +32,7 @@
 
 | Note | Summary |
 | --- | --- |
+| [2026-11-06-mobile-hero-title](bugfix/2026-11-06-mobile-hero-title.md) | 首页中文标题在 iPhone Safari 上显示白块；将 RGB 亮度遮罩预先转成透明 PNG，保留字形、响应式尺寸和高对比度文字 |
 | [2026-11-06-rehearsal-revalidate](bugfix/2026-11-06-rehearsal-revalidate.md) | 每日刷新使通过的演练凭据过期；同源不可变候选在新目录完整重验，保留旧报告，重新审计当前基线 |
 | [2026-11-05-sidebar-history](bugfix/2026-11-05-sidebar-history.md) | 第四个导航入口导致手机历史列表 flex 压缩为 0px；保留 88px 可点击空间，由侧栏外层滚动 |
 | [2026-11-05-character-provenance](bugfix/2026-11-05-character-provenance.md) | 试用/测试角色只有图片映射时误用旧提交号；媒体处理显式接收来源提交，入库前先校验所有嵌套来源 |

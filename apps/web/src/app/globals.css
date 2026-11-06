@@ -19,9 +19,9 @@
 .branch-note{border-left:2px solid var(--gold);padding:3px 10px;margin:4px 0 12px;font-size:11px;line-height:1.7}.branch-note>strong{font-weight:600;margin-right:9px}.branch-kind,.branch-target{display:inline;margin-right:8px;color:var(--muted);overflow-wrap:anywhere}.branch-condition{margin-top:6px}.branch-condition>span,.branch-condition code,.branch-unknown{display:block;white-space:pre-wrap;overflow-wrap:anywhere}.branch-condition>span,.branch-unknown{color:var(--muted)}.branch-condition code{font-size:11px;color:var(--text)}.context-block>p:last-child{margin-bottom:0}
 
 /* Display lettering stays separate from readable UI and source text. */
-.hero h1.hero-title-art{position:relative;width:min(100%,7em);aspect-ratio:1575/631;letter-spacing:0;line-height:1;background:#fffdf5;-webkit-mask:url("/assets/hero-title-zh-v3.png") 20.098% 51.852%/125.905% 125.674% no-repeat;mask:url("/assets/hero-title-zh-v3.png") 20.098% 51.852%/125.905% 125.674% no-repeat;mask-mode:luminance;text-shadow:none}
+.hero h1.hero-title-art{position:relative;width:min(100%,7em);aspect-ratio:1575/631;letter-spacing:0;line-height:1;background:url("/assets/hero-title-zh.png") left top/100% 100% no-repeat;text-shadow:none}
 @media(max-width:650px){.hero h1.hero-title-art{width:min(100%,7.5em)}}
-@media(forced-colors:active){.brand-wordmark,.hero h1.hero-title-art{-webkit-mask:none;mask:none;background:none;aspect-ratio:auto;width:auto}.brand-wordmark:after{content:attr(aria-label);font-size:14px;font-weight:600}.hero h1.hero-title-art .sr-only{position:static;width:auto;height:auto;clip:auto;overflow:visible;white-space:pre-line;color:CanvasText}}
+@media(forced-colors:active){.brand-wordmark{-webkit-mask:none;mask:none}.brand-wordmark,.hero h1.hero-title-art{background:none;aspect-ratio:auto;width:auto}.brand-wordmark:after{content:attr(aria-label);font-size:14px;font-weight:600}.hero h1.hero-title-art .sr-only{position:static;width:auto;height:auto;clip:auto;overflow:visible;white-space:pre-line;color:CanvasText}}
 
 .connection-result>svg{flex-shrink:0;margin-top:3px}.connection-result>span{min-width:0}
 /* Teyvat Archive: bounded previews, a comfortable reading measure, raw evidence on demand. */
