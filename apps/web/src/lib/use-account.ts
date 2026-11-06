@@ -36,10 +36,34 @@ export function useAccount(onIdentityChange:(identity:AccountIdentity)=>void,ena
   invalidate();
   if(!enabled){transition(null);setAccount(null);setLoading(false);setError(null);return}
   void refresh();
-  if(typeof BroadcastChannel!=='undefined'){channel.current=new BroadcastChannel('void-terminal-account');channel.current.onmessage=()=>{invalidate();void refresh()}}
-  const focus=()=>{void refresh()};window.addEventListener('focus',focus);
-  return()=>{sequence.current++;abort.current?.abort();channel.current?.close();channel.current=null;window.removeEventListener('focus',focus)};
+  if(typeof BroadcastChannel!=='undefined'){
+   channel.current=new BroadcastChannel('void-terminal-account');
+   channel.current.onmessage=({data})=>{
+    if(data?.type!=='changed')return;
+    if(data.scope!=='device')invalidate();
+    void refresh();
+   };
+  }
+  const focus=()=>{if(document.visibilityState==='visible'&&!abort.current)void refresh()};
+  window.addEventListener('focus',focus);
+  document.addEventListener('visibilitychange',focus);
+  return()=>{
+   sequence.current++;abort.current?.abort();channel.current?.close();channel.current=null;
+   window.removeEventListener('focus',focus);document.removeEventListener('visibilitychange',focus);
+  };
  },[refresh,invalidate,enabled,transition]);
+ const resetChecked=useRef<string|undefined>(undefined);
+ const resetsAt=account?.credits?.daily?.resetsAt;
+ useEffect(()=>{
+  if(!enabled||!resetsAt||resetsAt===resetChecked.current)return;
+  const delay=Date.parse(resetsAt)-Date.now();
+  if(!Number.isFinite(delay)||delay>2_147_000_000)return;
+  const timer=window.setTimeout(()=>{
+   resetChecked.current=resetsAt;
+   void refresh();
+  },Math.max(0,delay+300));
+  return()=>window.clearTimeout(timer);
+ },[enabled,resetsAt,refresh]);
  const post=useCallback(async<T,>(path:string,body?:unknown)=>{if(!enabled)throw new AccountRequestError('AUTH_DISABLED','Accounts are unavailable for this deployment');return accountRequest<T>(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})})},[enabled]);
  const sendCode=useCallback(async(email:string)=>{await post('/api/auth/send-code',{email,signals:collectDeviceSignals(enabled)})},[post,enabled]);
  // Even rejected/uncertain auth mutations can clear cookies server-side. Recheck
@@ -50,11 +74,13 @@ export function useAccount(onIdentityChange:(identity:AccountIdentity)=>void,ena
   let result:AccountSummary|null|undefined;
   try{await post<AccountSummary>('/api/account/verify-device',{token,signals:collectDeviceSignals(enabled)})}
   finally{
-   // The response can update either the session or device proof even on failure.
-   invalidate();channel.current?.postMessage({type:'changed'});result=await refresh();
+   // Reconcile changed cookies even on failure. Device renewal alone does not
+   // change namespaces; a failed lookup or a different user still does.
+   result=await refresh();
+   channel.current?.postMessage({type:'changed',scope:'device'});
   }
   return result;
- },[post,invalidate,refresh,enabled]);
+ },[post,refresh,enabled]);
  return {account,loading,error,refresh,sendCode,verifyCode,verifyDevice,logout};
 }
 export type AccountController=ReturnType<typeof useAccount>;

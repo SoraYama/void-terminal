@@ -135,7 +135,9 @@ docker compose --profile ingest run --rm --no-deps ingest prepare-embeddings --r
 
 自托管版在页面 Key 设置中输入兼容模型服务密钥并测试连接。密钥只保存在当前页面内存，刷新后需要重新输入，不写入浏览器持久存储、数据库或对话导出。请求路径是 **浏览器 → 你部署的实例 → 选定的模型服务**；BYOK 通过 `X-Model-Api-Key` 请求头发送，由实例后端代理模型调用。不要把密钥放到 URL、聊天正文、截图或问题反馈里。请只在自己信任的 HTTPS 实例输入密钥。设置中可填写自己的 **Base URL** 和 **Model name**，留空的字段使用站点默认值。更换地址会清空当前 Key；模型需支持 OpenAI 兼容的 Chat Completions、流式输出和工具调用。模型列表连接测试不产生生成请求，也不代表工具调用能力已验证。实例运营者技术上能够接触转发的 Key；HTTPS 保护传输，不代表运营者不可见。所选供应商还会收到问题、历史对话和相关原文。
 
-托管版必须设置 `DEPLOYMENT_MODE=hosted`，并按 [账户与积分运维指南](docs/operations/account-trial.md) 配齐邮箱登录、账本及模型配置。`SHARED_MODE_ENABLED=true` 是托管模型服务的内部开关，不是向访客开放的切换项；自托管版忽略该开关和服务器模型 Key。托管版只接受已验证账户的积分请求，不允许浏览器 Key 或自定义模型覆盖。全局 token 预算按请求预留、结算，独立于账户积分；异常和取消可能保留最坏额度，不能把本地预算当成供应商账单或硬性消费上限。对外开放前设置供应商侧限额。
+托管版必须设置 `DEPLOYMENT_MODE=hosted`，并按 [账户与积分运维指南](docs/operations/account-trial.md) 配齐邮箱登录、账本及模型配置。`SHARED_MODE_ENABLED=true` 是托管模型服务的内部开关，不是向访客开放的切换项；自托管版忽略该开关和服务器模型 Key。托管版要求邮箱登录和设备验证。符合条件的账户每日可用 3 点（北京时间零点重置，未用不累计），新账户默认另获 20 点储备；普通考据 1 点，深入考据 3 点，先用每日点数。托管 Compose 要求设置正数 `SHARED_MONTHLY_TOKEN_BUDGET`，并设置有限正数 `SHARED_DAILY_TOKEN_BUDGET`。全站日/月 token 预算按 UTC 日历预留与结算，独立于账户点数；异常和取消可能保留最坏额度，不能把本地预算当成供应商账单或硬性消费上限。对外开放前设置供应商侧限额。
+
+托管站可在运行环境配置 [公开联系邮箱及赞助渠道](docs/operations/account-trial.md#optional-sponsorship-and-contact)。只有实际配置的有效入口才显示。赞助可通过已核实的外部页面、二维码或站长提供的 BNB Smart Chain 主网收款地址进行，不兑换点数；站内没有支付、钱包签名或自动发点。自托管版没有这些入口，也不加载设备验证。
 
 自托管 BYOK 可指定公网 HTTPS 模型接口及模型 ID；服务器验证所有 DNS 结果，并将实际 TLS 连接固定到已验证的地址，拒绝内网、环回、云元数据和重定向。接口可包含供应商需要的 `/v1` 等前缀，不可携带 Key、账号密码、查询参数或 fragment。Base URL 和模型名可保存在本机，Key 不进入偏好或历史。托管版的服务器 Key 始终只发送给管理员配置的地址；旧浏览器偏好不能切换为 BYOK。
 
@@ -153,7 +155,7 @@ DSH 的预览版本接口可能变化。升级时统一修改根 `package.json` 
 
 先做备份并记录当前代码提交、活动 snapshot ID 和模型 manifest。通过自己的发布流程取回并检出已审查的新提交，执行 `bash scripts/update.sh`；脚本要求干净工作区、构建当前代码并等待 Web/知识服务健康。脚本不拉取未知更新，不自动更新语料，也不替换数据库主版本。
 
-已有托管部署需在启动新镜像前将 `DEPLOYMENT_MODE=hosted` 加入原 `.env`；不要用示例文件覆盖现有凭据。保留 Compose 项目名、原 `accounts` 卷和 ledger 路径。**本版知识服务会把旧账户账本升级为 schema v2，旧二进制不能直接读取升级后的库；先停写、备份并按 [迁移与恢复流程](docs/operations/credit-ledger.md) 演练。** 发布后核对 `/api/status.deployment.mode` 与浏览器入口：托管版应显示账户/积分且无 Key 设置，自托管版则应只有 BYOK。模式切换不会迁移或合并本机访客与账户聊天历史。
+已有托管部署需在启动新镜像前将 `DEPLOYMENT_MODE=hosted` 加入原 `.env`；不要用示例文件覆盖现有凭据。保留 Compose 项目名、原 `accounts` 卷和 ledger 路径。**本版知识服务会把旧账户账本升级为 schema v3，旧二进制不能直接读取升级后的库；先停写、备份并按 [迁移与恢复流程](docs/operations/credit-ledger.md) 演练。** 发布后核对 `/api/status.deployment.mode` 与浏览器入口：托管版应显示账户/积分且无 Key 设置，自托管版则应只有 BYOK。模式切换不会迁移或合并本机访客与账户聊天历史。
 
 语料更新应导入新的快照，检查 coverage 和抽样来源后再激活；旧快照保留用于回滚。代码回滚时检出之前记录的提交，重建并启动对应镜像。若新版本更改了数据结构，先在隔离环境验证旧代码兼容性；不兼容时需要恢复对应数据库备份，不能只回滚容器。模型或预处理改变时必须建立匹配的新索引。
 

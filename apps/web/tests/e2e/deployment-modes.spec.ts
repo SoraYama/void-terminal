@@ -5,7 +5,7 @@ import {mkdir,writeFile} from 'node:fs/promises';
 const artifacts=path.resolve(process.cwd(),'../../artifacts/deployment-modes');
 const frame=(event:string,data:unknown)=>`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 const source={id:'mode-source',documentId:'mode-book',title:'部署模式测试原文',type:'book',language:'zh-CN',text:'用于验证来源按钮的隔离资料。',path:'fixture/book.json',locator:'line:1',sourceUrl:'https://example.test/source',snapshotId:'mode-fixture',citation:1};
-const accountFixture={enabled:true,authenticated:true,user:{id:'mode-user',email:'fixture@example.test'},credits:{available:20,held:0,totalGranted:20},trialCredits:20,costs:{standard:1,deep:3},usage:[]};
+const accountFixture={enabled:true,authenticated:true,user:{id:'mode-user',email:'fixture@example.test'},risk:{status:'verified'},credits:{available:20,held:0,totalGranted:20},trialCredits:20,costs:{standard:1,deep:3},usage:[]};
 const modeOf=(info:TestInfo)=>info.project.metadata.deploymentMode as 'self-hosted'|'hosted';
 
 async function navigate(page:Page,name:string){
@@ -53,7 +53,8 @@ for(const entrypoint of ['/','/museum','/characters'])test(`runtime: ${entrypoin
  await expect.poll(()=>page.evaluate(()=>JSON.parse(localStorage.getItem('void.preferences')||'{}').mode)).toBe(hosted?'shared':'byok');
  if(entrypoint==='/')await screenshot(page,info,'settings-unavailable');
  await expect(page.locator('.sidebar .account-nav')).toHaveCount(hosted?1:0);
- if(hosted){await dialog.getByRole('button',{name:'登录',exact:true}).click();await expect(page.getByRole('dialog',{name:'账户与额度',exact:true})).toContainText('账户服务暂未开放')}
+ await expect(page.locator('.sidebar .support-nav')).toHaveCount(hosted?1:0);
+ if(hosted){await dialog.getByRole('button',{name:'登录',exact:true}).click();await expect(page.getByRole('dialog',{name:'账户与点数',exact:true})).toContainText('账户服务暂未开放')}
  else {await dialog.getByRole('button',{name:'关闭',exact:true}).click();expect(accountRequests).toBe(0)}
  await noOverflow(page);
 });
@@ -106,8 +107,8 @@ test('conversation: compact controls keep readable content and usable mobile hit
  await mkdir(artifacts,{recursive:true});await writeFile(path.join(artifacts,`${info.project.name}-control-metrics.json`),JSON.stringify(metrics,null,2));
  await page.locator('.chat-scroll').evaluate(el=>{el.scrollTop=el.scrollHeight;el.dispatchEvent(new Event('scroll'))});await screenshot(page,info,'compact-conversation');
  if(hosted&&mobile){
-  await page.setViewportSize({width:320,height:640});const cost=page.locator('.chat-bottom .composer-cost');await expect(cost).toHaveText('本次 1 额度');await noOverflow(page);await screenshot(page,info,'narrow-standard');
-  await page.getByRole('button',{name:'深入考据',exact:true}).click();await expect(cost).toHaveText('本次 3 额度');await noOverflow(page);await screenshot(page,info,'narrow-deep');
+  await page.setViewportSize({width:320,height:640});const cost=page.locator('.chat-bottom .composer-cost');await expect(cost).toHaveText('本次 1 点');await noOverflow(page);await screenshot(page,info,'narrow-standard');
+  await page.getByRole('button',{name:'深入考据',exact:true}).click();await expect(cost).toHaveText('本次 3 点');await noOverflow(page);await screenshot(page,info,'narrow-deep');
   await page.getByRole('button',{name:'中 / EN',exact:true}).click();await expect(cost).toHaveText('3 credits');await noOverflow(page);await screenshot(page,info,'narrow-deep-en');
   await navigate(page,'Settings');const dialog=page.getByRole('dialog',{name:'Settings',exact:true});await expect(dialog.getByLabel('Model API key')).toHaveCount(0);await expect(dialog.getByRole('button',{name:'View credits',exact:true})).toBeVisible();await noOverflow(page);expect(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);await screenshot(page,info,'narrow-settings-en');
  }

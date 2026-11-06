@@ -51,14 +51,14 @@ describe('hosted credit shortage guidance',()=>{
  it('explains exhausted credits honestly without offering a checkout',()=>{
   const shortage=accountCreditShortage(account(0),'standard');
   expect(shortage).toMatchObject({available:0,required:1,canUseStandard:false});
-  expect(creditShortageText(shortage,'zh-CN')).toContain('可用额度为 0');
-  expect(creditShortageText(shortage,'zh-CN')).toContain('充值尚未开放');
-  expect(chatErrorText({code:'CREDITS_EXHAUSTED',message:''},'en')).toContain('Top-ups are not available yet');
+  expect(creditShortageText(shortage,'zh-CN')).toContain('可用点数为 0');
+  expect(creditShortageText(shortage,'zh-CN')).not.toMatch(/充值|赞助/);
+  expect(chatErrorText({code:'CREDITS_EXHAUSTED',message:''},'en')).toContain('insufficient credits');
  });
  it.each([1,2])('offers a deliberate standard switch for %s credits when deep costs 3',available=>{
   const shortage=accountCreditShortage(account(available),'deep');
   expect(shortage).toMatchObject({available,required:3,standardCost:1,canUseStandard:true});
-  expect(creditShortageText(shortage,'zh-CN')).toContain(`当前可用 ${available} 额度`);
+  expect(creditShortageText(shortage,'zh-CN')).toContain(`当前可用 ${available} 点`);
   expect(creditShortageText(shortage,'en')).toContain('deep research needs 3');
   expect(accountCreditShortage(account(available),'standard')).toBeNull();
  });
@@ -68,10 +68,10 @@ describe('hosted credit shortage guidance',()=>{
   for(const value of [null,{enabled:true,authenticated:false},{...account(0),credits:undefined},{...account(0),costs:undefined},{...account(-1)},{...account(Number.NaN)},{...account(0),costs:{standard:0,deep:3}}]){
    expect(accountCreditShortage(value,'deep')).toBeNull();
   }
-  expect(creditShortageText(null,'zh-CN')).not.toContain('可用额度为 0');
+  expect(creditShortageText(null,'zh-CN')).not.toContain('可用点数为 0');
   expect(creditShortageText(null,'en')).not.toMatch(/\d/);
  });
  it('still localizes previous shortage messages saved in history',()=>{
-  expect(chatErrorText('Your account has insufficient credits. Check your balance in Account & credits.','zh-CN')).toContain('账户额度不足');
+  expect(chatErrorText('Your account has insufficient credits. Check your balance in Account & credits.','zh-CN')).toContain('账户点数不足');
  });
 });

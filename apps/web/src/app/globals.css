@@ -378,3 +378,58 @@
 .account-settings-help{margin:18px 0 0}
 .account-settings-help button{padding:2px 7px;font-size:12px;text-decoration:underline;text-underline-offset:3px}
 @media(max-width:650px){.account-dialog{padding:25px 22px;max-height:calc(100dvh - 28px);width:calc(100vw - 28px)}.account-description{padding-right:12px}.account-usage li{gap:8px}.account-usage time{max-width:95px;text-align:right}.account-identity{gap:8px}.account-actions{gap:5px}}
+
+/* Hosted account and support dialogs share the paper surface and gold divider. */
+.account-dialog>h2{padding-right:45px}
+.account-dialog .account-identity{margin-bottom:12px}
+.account-buckets>div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 16px;padding:12px 0}
+.account-buckets dd:not(.account-bucket-note){text-align:right;font-size:23px}
+.account-buckets dd.account-pending{font-size:13px;color:var(--accent)}
+.account-buckets .account-bucket-note{grid-column:1/-1;font-size:12px;font-weight:400;line-height:1.65;color:color-mix(in srgb,var(--text) 75%,var(--muted))}
+.account-buckets time{white-space:nowrap}
+.account-records{margin-top:8px}
+.account-records summary,.support-qr summary{cursor:pointer;min-height:44px;align-content:center;font-size:13px;font-weight:500}
+.account-records summary{border-top:1px solid var(--line)}
+.account-record-totals{margin:4px 0 0}
+.account-record-totals dd{font-size:14px}
+.account-records .account-usage{margin-top:14px;padding-top:14px}
+.account-secondary{width:100%;justify-content:flex-start;font-size:13px;padding-inline:4px;border-radius:0}
+.account-secondary svg:first-child{color:var(--accent)}
+.account-dialog .account-secondary+.account-secondary{border-top:1px solid var(--line)}
+.account-challenge{padding:14px 0;border-block:1px solid var(--line);margin:0 0 14px}
+.account-form .account-challenge{margin:0}
+.account-challenge h3,.support-section h3,.credit-request h3{font-size:15px;margin:0 0 6px}
+.account-challenge .account-policy{margin:0 0 8px}
+.account-challenge-widget{min-width:0;max-width:100%}
+.account-challenge .account-actions{margin:6px 0 0}
+.credit-request{border-top:1px solid var(--line);padding-top:15px;scroll-margin:16px}
+.support-dialog .support-section+.support-section{border-top:1px solid var(--line);padding-top:16px;margin-top:12px}
+.support-section .account-policy{margin:0 0 6px}
+.support-link{display:inline-flex;align-items:center;gap:8px;min-height:44px;font-size:13px;text-decoration:underline;text-underline-offset:3px}
+.support-qr img{display:block;object-fit:contain;max-width:100%;height:auto;background:white}
+.support-qr .account-policy{margin:10px 0 0}
+.support-chain{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;color:color-mix(in srgb,var(--text) 75%,var(--muted));font-size:12px;margin:0 0 14px}
+.support-chain>span{font-weight:600;color:var(--text)}
+.support-copy label{display:grid;gap:5px;font-size:12px}
+.support-copy textarea{display:block;width:100%;font-size:16px;line-height:1.55;resize:none;overflow-wrap:anywhere;padding:9px 10px;min-width:0}
+.support-copy textarea.support-code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:14px;word-break:break-all}
+.support-copy textarea::selection{background:var(--accent-soft);color:var(--text)}
+.support-actions{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;font-size:12px}
+.support-actions button{padding-inline:2px 8px;font-size:12px}
+.support-actions span{color:color-mix(in srgb,var(--text) 75%,var(--muted))}
+.support-nav{color:color-mix(in srgb,var(--text) 75%,var(--muted))}
+.hosted-signin-hint{margin:9px 0 0;font-size:12px;line-height:1.55;color:#fff;text-shadow:0 1px 4px #10293d}
+.hosted-signin-hint+.suggestions{margin-top:15px}
+@media(max-width:650px){
+ .support-copy textarea.support-code{font-size:16px}
+ .account-buckets>div{gap:4px 8px}
+ .account-buckets dd:not(.account-bucket-note){font-size:21px}
+ .account-buckets dd.account-pending{font-size:12px}
+}
+@media(max-width:650px){
+ .account-dialog>.ornament{margin-block:16px}
+ .account-dialog .account-balance>div{padding-block:9px}
+ .account-dialog .account-identity{margin-bottom:8px}
+ .main.home:has(.credit-shortage,.home-error){overflow-y:auto}
+ .main.home:has(.credit-shortage,.home-error) .hero{margin-top:clamp(76px,14dvh,110px)}
+}
