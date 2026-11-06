@@ -1,4 +1,4 @@
-> **Last updated**: 2026-11-06 (同源候选在每日刷新后重新验收，保留发布校验与原始凭据)
+> **Last updated**: 2026-11-06 (群星图鉴生产发布；同源重验、六组线上布局与四语实际播放验收)
 
 # Agent Notes
 
@@ -16,6 +16,7 @@
 
 | Note | Summary |
 | --- | --- |
+| [2026-11-05-character-release](feature/2026-11-05-character-release.md) | 群星图鉴与尘世文卷于 11 月 6 日上线；main 782f590、完整快照 26ae8d6dbac3、六组线上布局/四语播放通过，保留历史引用与每日刷新 |
 | [2026-11-05-navigation-elements](feature/2026-11-05-navigation-elements.md) | 尘世文卷 / Teyvat Archive、书籍/背包/角色图鉴原版导航图标、七元素符号与头像条下方角色身份区 |
 | [2026-11-05-character-archive](feature/2026-11-05-character-archive.md) | 群星图鉴：角色聚合、原图/四语原声、快照 API、游戏菜单 UI；真实本地 169 个源 ID、134 个正式来源记录，媒体覆盖与发布边界单独记录 |
 | [2026-11-05-compendium-rename](feature/2026-11-05-compendium-rename.md) | 万象集录 / Compendium replaces the item museum display name; navigation/title/ARIA/E2E, complete Noto Serif SC 600 heading subset, stable /museum links and web-only release |

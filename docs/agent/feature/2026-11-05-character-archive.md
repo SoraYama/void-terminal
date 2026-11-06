@@ -1,6 +1,8 @@
-> **Date / Revised**: 2026-11-05
+> **Date / Revised**: 2026-11-05 (created) / 2026-11-06 (revised)
 
 # 群星图鉴 / Character Archive
+
+**上线追记（2026-11-06）**：已合并并推送 `main`，基于完整生产语料上线。下文「未提交/未发布」描述保留为本地实现阶段的历史边界；实际版本、快照和线上验收见 [生产发布记录](2026-11-05-character-release.md)。
 
 ## 1. Background & Problem
 
