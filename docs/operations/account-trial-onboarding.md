@@ -4,14 +4,14 @@
 
 ## 1. 开通两个本人账号
 
-- [Supabase Dashboard](https://supabase.com/dashboard)：先选 Free，创建 `void-terminal-auth` 项目。区域选择靠近现有应用服务器的欧洲区域；数据库密码自行保存在密码管理器中，应用只使用 Auth，不需要数据库密码或 service-role Key。
+- [Supabase Dashboard](https://supabase.com/dashboard)：先选 Free，创建或复用 `void-terminal` 项目。新建时优先选择靠近应用服务器的区域；已建项目可以复用，无需为本接入重建。数据库密码自行保存在密码管理器中，应用只使用 Auth，不需要数据库密码或 service-role Key。
 - [Resend Dashboard](https://resend.com/overview)：先选 Free。当前免费交易邮件额度为每月 3,000 封、每天 100 封；Supabase Free 项目闲置一周可能暂停，因此本阶段仅作为邀请试用，不据此承诺正式商业可用性。[Resend 定价](https://resend.com/pricing)、[Supabase 定价](https://supabase.com/pricing)。
 
 ## 2. 验证发信子域名
 
-在 Resend 添加 `auth.sorayama.moe`，发件人采用 `虚空终端 <login@auth.sorayama.moe>`。只开启发送功能，不启用收件、邮件打开跟踪或链接跟踪。
+在 Resend 添加 `auth.sorayama.moe`，发件人采用 `虚空终端 <login@auth.sorayama.moe>`。只开启发送功能，不启用收件、邮件打开跟踪或链接跟踪。验证码发信域名使用 Enforced TLS，接收服务器不支持 TLS 时投递失败，不降级为明文。
 
-在域名 DNS 管理后台，逐项添加 **Resend 当前生成的** SPF、DKIM 和必要的发送验证记录，名称、类型和值以该项目页面为准，不猜测值。不要替换根域现有 MX、SPF 或站点记录；不要在同一个 DNS 名称创建多个 SPF 记录。待 Resend 显示 Verified 后继续。[官方域名说明](https://resend.com/docs/dashboard/domains/introduction)。
+在域名 DNS 管理后台，逐项添加 **Resend 当前生成的** SPF、DKIM 和必要的发送验证记录，名称、类型和值以该项目页面为准，不猜测值。较新的 Resend 项目可能提供 `rsend.auth`、`send.auth` 两条 CNAME，而不是旧式 MX + SPF TXT，按当前页面记录操作。可选 DMARC 不应覆盖现有根域邮件策略。不要替换根域现有 MX、SPF 或站点记录；不要在同一个 DNS 名称创建多个 SPF 记录。待 Resend 显示 Verified 后继续。[官方域名说明](https://resend.com/docs/dashboard/domains/introduction)。
 
 ## 3. 将 Resend 接到 Supabase
 
@@ -28,13 +28,13 @@ Supabase → Authentication → Email / Notifications → SMTP Settings：
 
 按 Resend 当前界面创建仅发送、限定此域名的 Key（如果界面支持对应范围），填入 Supabase；**该 Key 不需要交给应用服务器**。上述 SMTP 参数来自 [Resend 官方 Supabase 接入说明](https://resend.com/docs/send-with-supabase-smtp)。
 
-将 Site URL 设为 `https://void-terminal.sorayama.moe`；启用 email provider，保留邮箱确认。Magic Link 模板主题设为 `虚空终端登录验证码`，内容使用 [email-otp.html](../../deploy/auth/email-otp.html)，保留 `{{ .Token }}`。代码输入是六位数字，OTP length 必须设为 6；建议过期时间 600 秒、发送间隔至少 60 秒。初期 auth 邮件发送速率不超过 10 封/小时，并保持供应商限制，之后根据实际试用量调整。
+将 Site URL 设为 `https://void-terminal.sorayama.moe`；启用 email provider，保留邮箱确认。将 **Confirm sign up（首次注册）** 和 **Magic Link / OTP（再次登录）** 两个模板的主题均设为 `虚空终端登录验证码`，内容使用 [email-otp.html](../../deploy/auth/email-otp.html)，保留 `{{ .Token }}`。首次注册会使用确认邮件模板，因此两个模板都必须包含数字验证码，不能只修改 Magic Link。参考 [Auth 注册分支](https://github.com/supabase/auth/blob/master/internal/api/magic_link.go) 与 [官方验证码校验文档](https://supabase.com/docs/reference/javascript/auth-verifyotp)。代码输入是六位数字，OTP length 必须设为 6；建议过期时间 600 秒、发送间隔至少 60 秒。初期 auth 邮件发送速率不超过 10 封/小时，并保持供应商限制，之后根据实际试用量调整。
 
 Supabase 默认邮件服务只发给团队成员且限额很低，不能替代上述正式 SMTP 配置。[Supabase SMTP 文档](https://supabase.com/docs/guides/auth/auth-smtp)。
 
 ## 4. 填写服务器暂存配置
 
-本次候选目录：`/opt/void-terminal/releases/account-trial-7193f3e`。其中 `account-trial.env` 权限为 `0600`，尚未接入运行中的服务。
+本次候选目录：`/opt/void-terminal/releases/account-trial-7193f3e`。其中 `account-trial.env` 权限为 `0600`，用于独立暂存。发布时将已审阅字段合并到运行配置 `/opt/void-terminal/app/.env`，保留原站点、数据目录与内部服务凭证。
 
 在服务器编辑（不要把密钥粘贴到聊天或提交 Git）：
 
@@ -58,4 +58,14 @@ nano /opt/void-terminal/releases/account-trial-7193f3e/account-trial.env
 
 不要调用语料 bootstrap 或 enrichment promotion。回滚要同时恢复运行配置，并强制旧 Web 的 `SHARED_MODE_ENABLED=false`，防止旧版匿名共享路径使用新配置的服务端 Key。账户卷和已产生的额度记录保留，不用旧快照覆盖。
 
-完成两个后台的开通、DNS Verified 和四项配置后，先验证一个邀请邮箱的实际收码/登录/退出/重复登录不重复赠送，再进行受控模型验收。当前准备过程没有发送真实邮件或调用模型。
+完成两个后台的开通、DNS Verified 和四项配置后，先验证一个邀请邮箱的实际收码/登录/退出/重复登录不重复赠送，再进行受控模型验收。单纯构建候选镜像不会发送真实邮件或调用模型；本次正式开通与投递验收见下节。
+
+## 6. 本次生产发布记录
+
+2026-11-06 已复用 `void-terminal` Supabase 项目（项目区域为首尔），Resend 发送域名 `auth.sorayama.moe`（爱尔兰）已 Verified。专用发送 Key 限制到该域名，SMTP 凭证仅保存在 Supabase；两种验证码模板均已保存并重新加载验证。OTP 为 6 位 / 600 秒，每小时最多 10 封，同一邮箱至少间隔 60 秒。首次真实邮件已进入指定试用邮箱的收件箱，SPF、DKIM 均通过。
+
+应用版本 `7193f3eacae5e41803b75f336302bc2bbf967911` 已按邀请名单启用账户与共享服务；候选镜像通过发布检查后切换，现有快照、历史引用、Caddy 和原 `/data` 保持不变，数据刷新 timer 已恢复 active。专用 DeepSeek Key 的余额可用状态及 `deepseek-flash` 模型权限已通过服务端只读检查；这不是实际生成验收。
+
+生产 `/opt/void-terminal/app` 现在是校验过的源码归档，来源写入 `.account-trial-release.json`，并非 Git checkout。原完整目录及 `.git`、原 `.env` 保留在 `/opt/void-terminal/releases/account-trial-7193f3e/backup/app.before`。未来发布不能假定在新 app 目录执行 `git pull`；应准备校验后的版本并保持持久 Compose 配置与对应源码一致。
+
+回滚脚本为该 release 目录下的 `rollback.py --execute`，会恢复旧应用、配置及镜像，强制关闭旧版共享模式，并保留所有账户/预算/语料数据。发布脚本已完成后不能重复执行；应查 `recovery.json` 与回执。真实登录、额度及模型生成验收的最终状态见账户功能记录。

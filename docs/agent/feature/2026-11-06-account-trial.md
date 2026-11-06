@@ -30,7 +30,7 @@ See [account trial setup](../../operations/account-trial.md). Supply a Supabase 
 Browser history partitioning is interface isolation, not encryption against someone with access to that browser profile. Questions still pass through the application and model provider. Trial credits are fixed service units without monetary value; token metadata is not a bill. No payment functionality is included.
 
 
-## Subsequent hosted setup preparation
+## Subsequent hosted setup preparation (historical, before activation)
 
 On 2026-11-06 the user confirmed there is no Supabase/SMTP setup yet and accepted preparing the recommended services. Chosen initial path: Supabase Auth Free + Resend Free, invitation-only, sending subdomain `auth.sorayama.moe`. The six-digit code template is `deploy/auth/email-otp.html`; account creation, DNS verification and actual mail delivery still require the user's external accounts. Follow [first setup instructions](../../operations/account-trial-onboarding.md).
 
@@ -44,3 +44,18 @@ Server candidate directory: `/opt/void-terminal/releases/account-trial-7193f3e`.
 - Staged `account-trial.env` is mode 0600 inside the mode 0700 release directory. A fresh signing secret was generated only on the server. Account/shared toggles remain false. Supabase URL/publishable key, invited email list and server model key remain blank. SMTP Key belongs in Supabase, not this env file.
 
 Read-only deployment review found that the next real rollout must use the new base Compose, keep legacy `/data` RW for global budget, preserve both archive mounts, and atomically synchronize `state/settings.json.knowledgeImage` under `refresh.lock`. Rollback must disable shared mode before returning to the old anonymous-capable Web. These requirements are included in the setup guide. Candidate images are ready; live accounts, DNS/SMTP and activation are not complete. Evidence is in the server release's `preparation.json` and local `artifacts/deploy/account-trial-7193f3e/`.
+
+
+## Hosted activation (2026-11-06)
+
+Supabase/Resend were configured through the user's logged-in Chrome sessions. Only the `auth.sorayama.moe` DKIM TXT and two generated sending CNAME records were added in Namecheap; the website A record and existing root SPF/mail forwarding were read back unchanged. Resend domain is Verified, TLS is enforced, tracking/receiving are not enabled, and its dedicated key is sending-only and scoped to the one domain. SMTP is stored in Supabase, not the application env. Both Confirm sign up and Magic Link / OTP templates contain the six-digit `{{ .Token }}`; first-registration and returning-login templates were reloaded to verify persistence. Provider settings are six digits, 600-second expiry, 60-second resend interval, and 10 auth emails/hour.
+
+A disposable candidate Web container called the actual `/api/auth/send-code` route once with the configured invite email. The response was 200 / ok; the container was removed. The resulting message arrived in the intended Gmail INBOX with SPF/DKIM pass, correct sender and subject. Gmail intentionally withholds one-time authentication codes; the user completes authentication directly on the live website. No OTP, provider key or session token was written into artifacts or chat.
+
+A dedicated DeepSeek server key was created and transferred directly to the mode-0600 staged env. A first SSH transfer timed out; a separate read confirmed no key was written, then the retry succeeded. Official `/user/balance` and `/models` checks returned available=true and confirmed `deepseek-flash`. No recharge or subscription purchase occurred.
+
+The reviewed release/rollback artifacts were uploaded with verified hashes; `release.py --execute --shared` completed. The release atomically swapped a verified source archive into `/opt/void-terminal/app`, preserving the original complete app directory including Git metadata and configuration in the release backup. The new deployment is explicitly an archive with a provenance marker. New base Compose and merged protected env persist for future controller operations. The script held `refresh.lock`, updated `settings.knowledgeImage`, preserved `/data` RW and the catalog read-only mounts, and restored the timer. Both production images match the candidates above and are healthy. Public items, characters and a legacy pinned citation matched pre-release responses; Caddy, registry, controller and original DB file identity were unchanged. Anonymous shared model tests return 401 LOGIN_REQUIRED.
+
+Live anonymous browser acceptance passed at 1440×900 and 390×844: homepage title renders normally, the account entry opens the email form, page/dialog have no horizontal overflow, and there are no page/console errors, failed requests or alert messages. Four `production-*.png` screenshots and `production-ui-metrics.json` are in `artifacts/account-trial/`. The isolated browser made no non-read-only API requests and was closed.
+
+Live authenticated login, credit grant/settlement and generation acceptance await the user entering the OTP in the website. Do not infer those from deployment health, email delivery or provider-readiness checks.
