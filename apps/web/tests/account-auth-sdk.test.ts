@@ -27,6 +27,7 @@ const req = (cookie = "", body?: unknown) => new Request("https://app.example.co
 const cookiesFromResponse = (response: Response) => response.headers.getSetCookie().map((cookie) => cookie.split(";")[0]).join("; ");
 
 beforeEach(() => {
+  vi.stubEnv("DEPLOYMENT_MODE", "hosted");
   vi.stubEnv("ACCOUNT_TRIAL_ENABLED", "true");
   vi.stubEnv("SUPABASE_URL", "https://project.supabase.co");
   vi.stubEnv("SUPABASE_PUBLISHABLE_KEY", "sb_publishable_fixture_public_key");

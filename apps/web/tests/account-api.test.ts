@@ -57,6 +57,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.unstubAllEnvs();
   for (const [name, value] of Object.entries({
+    DEPLOYMENT_MODE: "hosted",
     ACCOUNT_TRIAL_ENABLED: "true", SUPABASE_URL: "https://project.supabase.co",
     SUPABASE_PUBLISHABLE_KEY: "sb_publishable_fixture_public_key", TRIAL_ALLOWED_EMAILS: "invited@example.com",
     PUBLIC_APP_ORIGIN: origin, SHARED_MODE_ENABLED: "true", DEEPSEEK_API_KEY: "server-secret",
@@ -177,6 +178,7 @@ describe("shared route account admission", () => {
     expect(settledAccount()).toHaveLength(1);
   });
   it("keeps BYOK available without an account or ledger reservation", async () => {
+    vi.stubEnv("DEPLOYMENT_MODE", "self-hosted");
     vi.stubEnv("ACCOUNT_TRIAL_ENABLED", "false");
     const response = await chat(request("/api/chat", { ...input, mode: "byok" }, { "X-Model-Api-Key": "visitor-secret" }));
     expect(response.status).toBe(200);

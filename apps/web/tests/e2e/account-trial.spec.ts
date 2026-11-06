@@ -2,7 +2,7 @@ import {test,expect,type Page} from '@playwright/test';
 import path from 'node:path';
 
 const screenshots=path.resolve(process.cwd(),'../../artifacts/account-trial');
-const status={ready:true,activeSnapshot:{id:'account-fixture',sourceRepo:'fixture',sourceCommit:'fixture',gameVersion:null,createdAt:'2026-11-06T00:00:00Z',label:'Account browser fixture',state:'ready'},documentCount:1,chunkCount:1,languages:['zh-CN','en'],retrieval:{lexical:true,semantic:false,model:null},coverage:[],provider:{model:'fixture-model',sharedEnabled:true,byok:true}};
+const status={ready:true,deployment:{mode:'hosted'},activeSnapshot:{id:'account-fixture',sourceRepo:'fixture',sourceCommit:'fixture',gameVersion:null,createdAt:'2026-11-06T00:00:00Z',label:'Account browser fixture',state:'ready'},documentCount:1,chunkCount:1,languages:['zh-CN','en'],retrieval:{lexical:true,semantic:false,model:null},coverage:[],provider:{model:'fixture-model',sharedEnabled:true,byok:false}};
 const frame=(event:string,data:unknown)=>`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 type Usage={requestId:string;createdAt:string;depth:'standard'|'deep';units:number;status:'reserved'|'completed'|'released'|'expired';usedTokens:number|null;model:string};
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -37,7 +37,7 @@ function accountId(email:string){return 'account-'+email.split('@')[0]}
 async function navigation(page:Page,name:string){const menu=page.getByRole('button',{name:'Menu',exact:true});if(page.viewportSize()!.width<=650)await menu.click();await page.getByRole('button',{name,exact:true}).click()}
 async function account(page:Page){await navigation(page,'账户与额度');const dialog=page.getByRole('dialog',{name:'账户与额度',exact:true});await expect(dialog).toBeVisible();return dialog}
 async function closeAccount(page:Page){await page.getByRole('dialog',{name:'账户与额度',exact:true}).getByRole('button',{name:'关闭',exact:true}).click()}
-async function signIn(page:Page,email:string){const dialog=page.getByRole('dialog',{name:'账户与额度',exact:true});await dialog.getByLabel('邮箱',{exact:true}).fill(email);await dialog.getByRole('button',{name:'发送验证码',exact:true}).click();await dialog.getByLabel('验证码',{exact:true}).fill('123456');await dialog.getByRole('button',{name:'验证并登录',exact:true}).click();await expect(dialog).toContainText(email);await expect(dialog).toContainText('可用额度')}
+async function signIn(page:Page,email:string){const dialog=page.getByRole('dialog',{name:'账户与额度',exact:true});await dialog.getByLabel('邮箱',{exact:true}).fill(email);await dialog.getByRole('button',{name:'发送验证码',exact:true}).click();await dialog.getByLabel('验证码',{exact:true}).fill('123456');await dialog.getByRole('button',{name:'验证并登录',exact:true}).click();await expect(dialog).toHaveCount(0);const reopened=await account(page);await expect(reopened).toContainText(email);await expect(reopened).toContainText('可用额度')}
 async function screenshot(page:Page,name:string,project:string){await page.screenshot({path:path.join(screenshots,`${project}-${name}.png`),fullPage:true,scale:'css',animations:'disabled',style:'nextjs-portal{visibility:hidden}'})}
 async function seedHistory(page:Page){
  await page.evaluate(async()=>{
@@ -55,7 +55,7 @@ for(const theme of ['light','dark'] as const){
   await dialog.getByLabel('验证码',{exact:true}).fill('000000');await dialog.getByRole('button',{name:'验证并登录',exact:true}).click();
   await expect(dialog.getByRole('alert')).toBeVisible();await expect(dialog.getByRole('button',{name:'验证并登录',exact:true})).toBeEnabled();
   await dialog.getByLabel('验证码',{exact:true}).fill('123456');await dialog.getByRole('button',{name:'验证并登录',exact:true}).click();
-  await expect(dialog).toContainText('alice@example.test');await expect(dialog).toContainText('20');
+  await expect(dialog).toHaveCount(0);await account(page);await expect(dialog).toContainText('alice@example.test');await expect(dialog).toContainText('20');
   state.available=19;await dialog.getByRole('button',{name:'刷新额度',exact:true}).click();await expect(dialog).toContainText('19');await expect(dialog.getByRole('region',{name:'最近用量',exact:true})).toContainText('普通考据');await expect(dialog.getByRole('region',{name:'最近用量',exact:true})).toContainText('已完成');
   const box=await dialog.boundingBox(),viewport=page.viewportSize()!;expect(box).not.toBeNull();expect(box!.x).toBeGreaterThanOrEqual(0);expect(box!.x+box!.width).toBeLessThanOrEqual(viewport.width);expect(box!.y).toBeGreaterThanOrEqual(0);expect(box!.y+box!.height).toBeLessThanOrEqual(viewport.height);
   await screenshot(page,`account-balance-${theme}`,info.project.name);
@@ -64,13 +64,15 @@ for(const theme of ['light','dark'] as const){
  });
 }
 
-test('account: unauthenticated shared send opens sign-in without calling the model',async({page})=>{
+test('account: anonymous draft survives sign-in and requires an explicit shared send',async({page})=>{
  const state=await setup(page);await page.getByRole('textbox',{name:'向虚空提问…',exact:true}).fill('需要登录的共享提问');await page.getByRole('button',{name:'发送',exact:true}).click();
  await expect(page.getByRole('dialog',{name:'账户与额度',exact:true})).toBeVisible();expect(state.chatRequests).toHaveLength(0);
+ await signIn(page,'alice@example.test');await closeAccount(page);await expect(page.getByRole('textbox',{name:'向虚空提问…',exact:true})).toHaveValue('需要登录的共享提问');expect(state.chatRequests).toHaveLength(0);
+ await page.getByRole('button',{name:'发送',exact:true}).click();await expect.poll(()=>state.chatRequests.length).toBe(1);expect(state.chatRequests[0].body.mode).toBe('shared');
 });
 
 test('account: shared sends have fresh request IDs and refresh credits after completion',async({page})=>{
- const state=await setup(page,{email:'alice@example.test'});const initialReads=state.accountReads;
+ const state=await setup(page,{email:'alice@example.test',mode:'byok'});const initialReads=state.accountReads;
  await page.getByRole('textbox',{name:'向虚空提问…',exact:true}).fill('第一条共享问题');await page.getByRole('button',{name:'发送',exact:true}).click();await expect(page.locator('.markdown').last()).toHaveText('账户隔离测试回答。');
  await expect.poll(()=>state.accountReads).toBeGreaterThan(initialReads);await expect(page.getByRole('button',{name:'停止生成',exact:true})).toHaveCount(0);
  await page.getByRole('textbox',{name:'继续追问…',exact:true}).fill('第二条共享问题');await page.getByRole('button',{name:'发送',exact:true}).click();await expect.poll(()=>state.chatRequests.length).toBe(2);await expect(page.getByRole('button',{name:'停止生成',exact:true})).toHaveCount(0);
@@ -79,27 +81,25 @@ test('account: shared sends have fresh request IDs and refresh credits after com
  const dialog=await account(page);await expect(dialog).toContainText('18');
 });
 
-test('account: identity switches isolate histories, clear the current conversation and in-memory key',async({page})=>{
+test('account: identity switches isolate user histories and never reveal guest records',async({page})=>{
  await setup(page,{mode:'byok'});await seedHistory(page);await page.reload();
- const histories=page.locator('.sidebar .history-row');await expect(histories.filter({hasText:'访客旧对话'})).toHaveCount(1);await expect(histories.filter({hasText:'Alice 私有对话'})).toHaveCount(0);
- await navigation(page,'设置');let settings=page.getByRole('dialog',{name:'设置',exact:true});await settings.getByLabel('模型 API Key').fill('do-not-retain-this-key');await settings.getByRole('button',{name:'关闭',exact:true}).click();
+ const histories=page.locator('.sidebar .history-row');await expect(histories.filter({hasText:'访客旧对话'})).toHaveCount(0);await expect(histories.filter({hasText:'Alice 私有对话'})).toHaveCount(0);
  await account(page);await signIn(page,'alice@example.test');await closeAccount(page);await expect(histories.filter({hasText:'Alice 私有对话'})).toHaveCount(1);await expect(histories.filter({hasText:'访客旧对话'})).toHaveCount(0);await expect(histories.filter({hasText:'Bob 私有对话'})).toHaveCount(0);
- await navigation(page,'设置');settings=page.getByRole('dialog',{name:'设置',exact:true});await expect(settings.getByLabel('模型 API Key')).toHaveValue('');await settings.getByRole('button',{name:'关闭',exact:true}).click();
  await navigation(page,'Alice 私有对话');await expect(page.locator('.markdown')).toContainText('Alice 私有对话私有正文');
  let dialog=await account(page);await dialog.getByRole('button',{name:'登出',exact:true}).click();await expect(dialog.getByLabel('邮箱',{exact:true})).toBeVisible();await expect(page.locator('.markdown')).toHaveCount(0);await expect(histories.filter({hasText:'Alice 私有对话'})).toHaveCount(0);
  await signIn(page,'bob@example.test');await closeAccount(page);await expect(histories.filter({hasText:'Bob 私有对话'})).toHaveCount(1);await expect(histories.filter({hasText:'Alice 私有对话'})).toHaveCount(0);await expect(histories.filter({hasText:'访客旧对话'})).toHaveCount(0);
- dialog=await account(page);await dialog.getByRole('button',{name:'登出',exact:true}).click();await closeAccount(page);await expect(histories.filter({hasText:'访客旧对话'})).toHaveCount(1);await expect(histories.filter({hasText:'Bob 私有对话'})).toHaveCount(0);
+ dialog=await account(page);await dialog.getByRole('button',{name:'登出',exact:true}).click();await closeAccount(page);await expect(histories.filter({hasText:'访客旧对话'})).toHaveCount(0);await expect(histories.filter({hasText:'Bob 私有对话'})).toHaveCount(0);
 });
 
-test('account: a failed balance refresh gives a recoverable error without fabricating zero credits',async({page})=>{
- const state=await setup(page,{email:'alice@example.test'});const dialog=await account(page);await expect(dialog).toContainText('20');state.accountError=true;
- await dialog.getByRole('button',{name:'刷新额度',exact:true}).click();await expect(dialog.getByRole('alert')).toBeVisible();await expect(dialog).toContainText('alice@example.test');
- state.accountError=false;state.available=17;await dialog.getByRole('button',{name:/^(刷新额度|重试)$/}).first().click();await expect(dialog).toContainText('17');await expect(dialog.getByRole('alert')).toHaveCount(0);
+test('account: failed balance refresh hides unverified private state and retry restores the account',async({page})=>{
+ const state=await setup(page,{email:'alice@example.test'});await seedHistory(page);await page.reload();await navigation(page,'Alice 私有对话');await expect(page.locator('.markdown')).toContainText('Alice 私有对话私有正文');const dialog=await account(page);await expect(dialog).toContainText('20');state.accountError=true;
+ await dialog.getByRole('button',{name:'刷新额度',exact:true}).click();await expect(dialog.getByRole('alert')).toBeVisible();await expect(dialog).not.toContainText('alice@example.test');await expect(dialog.locator('.account-balance')).toHaveCount(0);await expect(page.locator('.markdown')).toHaveCount(0);await expect(page.locator('.sidebar .history-row')).toHaveCount(0);
+ state.accountError=false;state.available=17;await dialog.getByRole('button',{name:'重试',exact:true}).click();await expect(dialog).toContainText('17');await expect(dialog).toContainText('alice@example.test');await expect(dialog.getByRole('alert')).toHaveCount(0);await expect(page.locator('.sidebar .history-row').filter({hasText:'Alice 私有对话'})).toHaveCount(1);await expect(page.locator('.sidebar .history-row').filter({hasText:'访客旧对话'})).toHaveCount(0);
 });
 
-test('account: disabled trial has no account navigation control and BYOK remains available',async({page})=>{
- await setup(page,{enabled:false,mode:'byok'});await expect(page.getByRole('button',{name:'账户与额度',exact:true})).toHaveCount(0);
- await navigation(page,'设置');const dialog=page.getByRole('dialog',{name:'设置',exact:true});await expect(dialog.getByLabel('模型 API Key')).toBeVisible();await dialog.getByLabel('模型 API Key').fill('local-fixture-key');await dialog.getByRole('button',{name:'测试连接',exact:true}).click();await expect(dialog.getByRole('status')).toContainText('连接成功');
+test('account: unavailable hosted account service keeps account navigation and exposes no key fallback',async({page})=>{
+ await setup(page,{enabled:false,mode:'byok'});const unavailable=await account(page);await expect(unavailable).toContainText('账户服务暂未开放');await expect(unavailable).not.toContainText('自己的模型密钥');await closeAccount(page);
+ await navigation(page,'设置');const dialog=page.getByRole('dialog',{name:'设置',exact:true});await expect(dialog.getByLabel('模型 API Key')).toHaveCount(0);await expect(dialog.getByLabel('Base URL',{exact:true})).toHaveCount(0);await expect(dialog.getByRole('combobox',{name:'模型连接',exact:true})).toHaveCount(0);await expect(dialog.getByRole('button',{name:'清除密钥',exact:true})).toHaveCount(0);
 });
 
 test('account: signing out during a shared request aborts it and cannot restore the previous conversation',async({page})=>{
@@ -127,18 +127,37 @@ test('account: usage distinguishes held, released, expired and unknown token cha
 test('account: logout error still reconciles changed server identity and clears private state',async({page})=>{
  const state=await setup(page,{email:'alice@example.test'});await seedHistory(page);await page.reload();await expect(page.locator('.sidebar .history-row').filter({hasText:'Alice 私有对话'})).toHaveCount(1);await navigation(page,'Alice 私有对话');await expect(page.locator('.markdown')).toContainText('Alice 私有对话私有正文');
  await page.route('**/api/auth/logout',r=>{state.email='';return r.fulfill({status:503,json:{error:{code:'AUTH_UNAVAILABLE',message:'登出响应暂时不可用。'}}})});
- const dialog=await account(page);await dialog.getByRole('button',{name:'登出',exact:true}).click();await expect(dialog.getByRole('alert')).toBeVisible();await expect(dialog.getByLabel('邮箱',{exact:true})).toBeVisible();await expect(page.locator('.markdown')).toHaveCount(0);await expect(page.locator('.sidebar .history-row').filter({hasText:'Alice 私有对话'})).toHaveCount(0);await expect(page.locator('.sidebar .history-row').filter({hasText:'访客旧对话'})).toHaveCount(1);
+ const dialog=await account(page);await dialog.getByRole('button',{name:'登出',exact:true}).click();await expect(dialog.getByRole('alert')).toBeVisible();await expect(dialog.getByLabel('邮箱',{exact:true})).toBeVisible();await expect(page.locator('.markdown')).toHaveCount(0);await expect(page.locator('.sidebar .history-row').filter({hasText:'Alice 私有对话'})).toHaveCount(0);await expect(page.locator('.sidebar .history-row').filter({hasText:'访客旧对话'})).toHaveCount(0);
 });
 
-test('account: delayed first guest lookup preserves an unsent draft and key typed during initialization',async({page})=>{
+test('account: delayed anonymous lookup preserves a first unsent draft without exposing guest history',async({page})=>{
  let release!:()=>void;const accountGate=new Promise<void>(resolve=>{release=resolve});await setup(page,{mode:'byok',accountGate});
- const prompt=page.getByRole('textbox',{name:'向虚空提问…',exact:true});await prompt.fill('账户初始化期间保留的草稿');await navigation(page,'设置');const dialog=page.getByRole('dialog',{name:'设置',exact:true});await dialog.getByLabel('模型 API Key').fill('initialization-fixture-key');
- release();await expect(page.locator('.sidebar .account-nav')).toHaveCount(1);await expect(dialog.getByLabel('模型 API Key')).toHaveValue('initialization-fixture-key');await dialog.getByRole('button',{name:'关闭',exact:true}).click();await expect(prompt).toHaveValue('账户初始化期间保留的草稿');
+ const prompt=page.getByRole('textbox',{name:'向虚空提问…',exact:true});await prompt.fill('账户初始化期间保留的草稿');release();await expect(prompt).toHaveValue('账户初始化期间保留的草稿');
+ const dialog=await account(page);await expect(dialog.getByLabel('邮箱',{exact:true})).toBeVisible();await closeAccount(page);await expect(prompt).toHaveValue('账户初始化期间保留的草稿');
 });
 
-test('account: an expired shared model-test session opens account sign-in',async({page})=>{
+test('account: an expired shared chat session opens sign-in without offering BYOK',async({page})=>{
+ const state=await setup(page,{email:'alice@example.test'});let requested=false;
+ await page.route('**/api/chat',r=>{requested=true;state.email='';return r.fulfill({status:401,json:{error:{code:'LOGIN_REQUIRED',message:'请重新登录。'}}})});
+ await page.getByRole('textbox',{name:'向虚空提问…',exact:true}).fill('过期会话提问');await page.getByRole('button',{name:'发送',exact:true}).click();
+ await expect.poll(()=>requested).toBe(true);const dialog=page.getByRole('dialog',{name:'账户与额度',exact:true});await expect(dialog.getByLabel('邮箱',{exact:true})).toBeVisible();await expect(dialog).not.toContainText('自己的模型密钥');
+});
+
+test('account: an expired shared model-test session opens sign-in without a key error',async({page})=>{
  const state=await setup(page,{email:'alice@example.test'});let tested=false;
- await page.route('**/api/models/test',r=>{tested=true;state.email='';return r.fulfill({status:401,json:{error:{code:'LOGIN_REQUIRED',message:'请重新登录。'}}})});
+ await page.route('**/api/models/test',r=>{tested=true;state.email='';return r.fulfill({status:401,json:{ok:false,code:'LOGIN_REQUIRED',message:'请重新登录。'}})});
  await navigation(page,'设置');const settings=page.getByRole('dialog',{name:'设置',exact:true});await settings.getByRole('button',{name:'测试连接',exact:true}).click();
- await expect.poll(()=>tested).toBe(true);const dialog=page.getByRole('dialog',{name:'账户与额度',exact:true});await expect(dialog.getByLabel('邮箱',{exact:true})).toBeVisible();await expect(settings).toHaveCount(0);expect(state.chatRequests).toHaveLength(0);
+ await expect.poll(()=>tested).toBe(true);const dialog=page.getByRole('dialog',{name:'账户与额度',exact:true});await expect(dialog.getByLabel('邮箱',{exact:true})).toBeVisible();await expect(settings).toHaveCount(0);expect(state.chatRequests).toHaveLength(0);await expect(dialog).not.toContainText('密钥未被接受');
+});
+
+test('account: logout clears a private draft while a fresh anonymous draft survives the next account login',async({page})=>{
+ const state=await setup(page,{email:'alice@example.test'});await seedHistory(page);await page.reload();
+ await expect(page.locator('.sidebar .history-row').filter({hasText:'Alice 私有对话'})).toHaveCount(1);
+ const question=page.locator('#question');await question.fill('Alice 不得跨账户的私有草稿');
+ const dialog=await account(page);await dialog.getByRole('button',{name:'登出',exact:true}).click();await expect(dialog.getByLabel('邮箱',{exact:true})).toBeVisible();await closeAccount(page);
+ await expect(question).toHaveValue('');await expect(page.locator('.sidebar .history-row').filter({hasText:'Alice 私有对话'})).toHaveCount(0);
+ await question.fill('退出后新写的匿名草稿');await page.getByRole('button',{name:'发送',exact:true}).click();expect(state.chatRequests).toHaveLength(0);
+ await signIn(page,'bob@example.test');await closeAccount(page);await expect(question).toHaveValue('退出后新写的匿名草稿');
+ await expect(page.locator('.sidebar .history-row').filter({hasText:'Bob 私有对话'})).toHaveCount(1);await expect(page.locator('.sidebar .history-row').filter({hasText:'Alice 私有对话'})).toHaveCount(0);
+ await page.getByRole('button',{name:'发送',exact:true}).click();await expect.poll(()=>state.chatRequests.length).toBe(1);expect(state.chatRequests[0].body.messages).toEqual([{role:'user',content:'退出后新写的匿名草稿'}]);
 });

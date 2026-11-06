@@ -1,15 +1,22 @@
 import type {Locale} from './contracts';
+import type {DeploymentMode} from './deployment';
 
 export interface ChatFailure {message:string;code?:string}
 export class ChatRequestError extends Error {
  constructor(message:string,public code?:string){super(message)}
 }
+/** Chat errors use an envelope; connection tests may return the same code at top level. */
+export function responseErrorCode(value:unknown):string|undefined{
+ if(!value||typeof value!=='object')return undefined;
+ const result=value as {code?:unknown;error?:{code?:unknown}};
+ return typeof result.error?.code==='string'?result.error.code:typeof result.code==='string'?result.code:undefined;
+}
 
 // Display text is selected at render time so switching languages also updates
 // errors already received or restored from history.
 const messages:Record<string,[string,string]>={
- LOGIN_REQUIRED:['请登录账户后使用共享服务。','Sign in to use shared research.'],
- CREDITS_EXHAUSTED:['账户额度不足，可在账户中查看余额，或使用自己的模型密钥。','Your account has insufficient credits. Check your balance or use your own model key.'],
+ LOGIN_REQUIRED:['请登录账户后开始考据。','Sign in to start research.'],
+ CREDITS_EXHAUSTED:['账户额度不足，请在账户中查看余额。','Your account has insufficient credits. Check your balance in Account & credits.'],
  ACCOUNT_BUSY:['此账户已有考据正在进行，请等待完成后重试。','This account already has research in progress. Wait for it to finish and retry.'],
  REQUEST_REPLAY:['此请求已处理，请重新发起考据。','This request was already processed. Start a new research request.'],
  REQUEST_ID_REQUIRED:['请求标识无效，请刷新页面后重试。','The request identifier is invalid. Reload the page and retry.'],
@@ -25,7 +32,7 @@ const messages:Record<string,[string,string]>={
  KNOWLEDGE_UNAVAILABLE:['暂时无法读取知识库，请稍后重试。','The knowledge service is unavailable. Please retry later.'],
  SNAPSHOT_UNAVAILABLE:['这段对话使用的资料快照暂不可用，请稍后重试。','The source snapshot for this conversation is unavailable. Please retry later.'],
  NO_SNAPSHOT:['知识库尚未导入资料，请先检查数据状态。','No source snapshot has been imported. Check corpus status first.'],
- QUOTA_EXCEEDED:['共享服务额度已用完，请稍后重试或使用自己的密钥。','The shared allowance has been used up. Retry later or use your own key.'],
+ QUOTA_EXCEEDED:['站点服务额度暂时用完，请稍后重试。','The site service allowance has been reached. Please retry later.'],
  TIMEOUT:['请求超时，请重试或缩小问题范围。','The request timed out. Retry or narrow your question.'],
  NETWORK_ERROR:['连接失败，请检查网络后重试。','Could not connect. Check your network and retry.'],
  MODEL_STREAM_INCOMPLETE:['回答连接提前中断，请重试。','The answer stream ended unexpectedly. Please retry.'],
@@ -34,7 +41,9 @@ const messages:Record<string,[string,string]>={
  CONTEXT_LIMIT:['对话或资料过长，请缩小问题范围或开始新对话。','The conversation or sources are too long. Narrow your question or start a new conversation.'],
  TOOL_LIMIT:['本次检索未能完成，请简化问题或重试。','The research could not be completed. Simplify your question or retry.'],
  CANCELLED:['已停止生成','Generation stopped'],
- SHARED_DISABLED:['共享服务尚未启用，请使用自己的密钥','Shared service is disabled; use your own key'],
+ SHARED_DISABLED:['考据服务暂未开放，账户额度会保留，请稍后重试。','Research is not available yet. Your account credits are retained. Please retry later.'],
+ MODE_NOT_ALLOWED:['站点服务模式已变更，请刷新页面后重试。','The site service mode has changed. Reload the page and retry.'],
+ DEPLOYMENT_CONFIG:['站点服务配置暂不可用，请稍后重试。','The site service configuration is unavailable. Please retry later.'],
  MESSAGE_TOO_LONG:['问题最多 12000 字符','Maximum 12,000 characters per message'],
  CONVERSATION_LIMIT:['当前对话达到长度限制，请开始新对话','Conversation limit reached. Start a new conversation.'],
  COPY_FAILED:['复制失败，请手动选择文本','Copy failed. Select text manually.'],
@@ -71,13 +80,14 @@ export function chatFailure(error:unknown):ChatFailure{
  if(error instanceof TypeError)return {message:error.message,code:'NETWORK_ERROR'};
  return {message:error instanceof Error?error.message:''};
 }
-export function chatErrorText(failure:ChatFailure|string,locale:Locale):string{
+export function chatErrorText(failure:ChatFailure|string,locale:Locale,deploymentMode?:DeploymentMode):string{
  const message=typeof failure==='string'?failure:failure.message;
  const code=typeof failure==='string'?legacy[message]:failure.code||legacy[message];
- const pair=messages[codeAliases[code]||code];
+ const effectiveCode=codeAliases[code]||code;
+ const pair=deploymentMode==='hosted'&&['MODEL_AUTH','MODEL_KEY_REQUIRED','INVALID_PROVIDER','PROVIDER_ADDRESS_BLOCKED'].includes(effectiveCode)?messages.MODEL_UNAVAILABLE:messages[effectiveCode];
  if(pair)return pair[locale==='zh-CN'?0:1];
  const parts=message.split(' · ');
- if(parts.length>1)return parts.map(part=>chatErrorText(part,locale)).join(' · ');
+ if(parts.length>1)return parts.map(part=>chatErrorText(part,locale,deploymentMode)).join(' · ');
  const citation=/^Unknown citation \[(\d+)\]$/.exec(message);
  if(citation)return locale==='zh-CN'?`引用 [${citation[1]}] 无法对应到已取回的原文。`:`Citation [${citation[1]}] does not match a retrieved source.`;
  return messages.REQUEST_FAILED[locale==='zh-CN'?0:1];

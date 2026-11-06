@@ -8,9 +8,10 @@ import {
   worstCaseTokens,
 } from "../../../lib/server/config";
 import { AppError, errorResponse } from "../../../lib/server/errors";
+import { assertRequestMode } from "../../../lib/server/deployment";
 import { issueIdentity } from "../../../lib/server/identity";
 import { knowledge } from "../../../lib/server/knowledge";
-import { parseChat, readJson, record } from "../../../lib/server/validation";
+import { invalid, parseChat, parseMode, readJson, record } from "../../../lib/server/validation";
 import { resolveProvider } from "../../../lib/server/provider";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,7 +21,10 @@ export async function POST(request: Request): Promise<Response> {
   let accountReservation: AccountReservation | undefined;
   let streamOwnsReservation = false;
   try {
-    const input = parseChat(await readJson(request));
+    const body = await readJson(request);
+    if (!record(body)) throw invalid();
+    assertRequestMode(parseMode(body.mode));
+    const input = parseChat(body);
     const key = credentials(input.mode, request);
     let accountId: string | undefined;
     if (input.mode === "shared") {
@@ -54,7 +58,7 @@ export async function POST(request: Request): Promise<Response> {
       if (!reserved.allowed)
         throw new AppError(
           "QUOTA_EXCEEDED",
-          "The shared usage budget has been reached. Use your own API key.",
+          "The service usage budget has been reached. Try again later.",
           429,
         );
       if (typeof reserved.reservationId !== "string" || !reserved.reservationId)

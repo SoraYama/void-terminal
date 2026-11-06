@@ -4,6 +4,7 @@ import { AppError, safeError } from "../../../../lib/server/errors";
 import { issueIdentity } from "../../../../lib/server/identity";
 import { boundedJson } from "../../../../lib/server/knowledge";
 import { openProviderTransport, resolveProvider, type ProviderTransport } from "../../../../lib/server/provider";
+import { assertRequestMode } from "../../../../lib/server/deployment";
 import {
   exactKeys,
   invalid,
@@ -23,6 +24,7 @@ export async function POST(request: Request): Promise<Response> {
     if (!record(body)) throw invalid();
     exactKeys(body, ["mode", "provider"]);
     const mode = parseMode(body.mode);
+    assertRequestMode(mode);
     const provider = parseProvider(body.provider, mode);
     model = provider?.model || model;
     const key = credentials(mode, request);

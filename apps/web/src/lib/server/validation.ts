@@ -62,7 +62,7 @@ export function parseMode(value: unknown): "byok" | "shared" {
 export function parseProvider(value: unknown, mode: "byok" | "shared"): ModelProvider | undefined {
   if (value === undefined) return undefined;
   if (mode !== "byok")
-    throw new AppError("PROVIDER_BYOK_ONLY", "Custom model settings require your own API key.", 400);
+    throw new AppError("PROVIDER_BYOK_ONLY", "Custom model settings are not available for account chat.", 400);
   const invalidProvider = () => new AppError("INVALID_PROVIDER", "Enter a valid model name and HTTPS Base URL.", 400);
   if (!record(value) || Object.keys(value).some(key => !["baseUrl", "model"].includes(key))) throw invalidProvider();
   for (const [field, limit] of [["baseUrl", 2048], ["model", 200]] as const) {

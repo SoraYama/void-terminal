@@ -11,6 +11,7 @@ import type { User } from "@supabase/supabase-js";
 import { z } from "zod";
 import { configuredAppOrigin } from "./app-origin";
 import { AppError, errorResponse } from "./errors";
+import { deploymentMode } from "./deployment";
 import { exactKeys, invalid, readJson, record } from "./validation";
 
 const AUTH_TIMEOUT_MS = 10_000;
@@ -38,6 +39,7 @@ function normalizeEmail(value: unknown): string | null {
 }
 
 function authConfig(): AuthConfig {
+  if (deploymentMode() !== "hosted") throw disabled();
   if (process.env.ACCOUNT_TRIAL_ENABLED !== "true") throw disabled();
   const key = process.env.SUPABASE_PUBLISHABLE_KEY?.trim() ?? "";
   // Accept current publishable keys only; a service-role/secret key must never power user login.
@@ -55,6 +57,8 @@ function authConfig(): AuthConfig {
 }
 
 export function accountAuthEnabled(): boolean {
+  // Invalid deployment configuration must propagate instead of becoming a guest fallback.
+  if (deploymentMode() !== "hosted") return false;
   try { authConfig(); return true; } catch { return false; }
 }
 
@@ -222,8 +226,8 @@ export async function getAccountSession(request: Request): Promise<AccountSessio
 export async function handleAccountAuth(request: Request, action: "send" | "verify" | "logout"): Promise<Response> {
   let context: AuthContext | undefined;
   try {
-    assertAccountOrigin(request);
     const config = authConfig();
+    assertAccountOrigin(request);
     if (action === "logout") {
       context = authContext(request, config);
       try {

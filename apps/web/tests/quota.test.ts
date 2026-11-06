@@ -53,6 +53,7 @@ describe("request-sized quota bounds", () => {
 describe("shared budget and identity", () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
+    vi.stubEnv("DEPLOYMENT_MODE", "hosted");
     vi.stubEnv("SHARED_MODE_ENABLED", "true");
     vi.stubEnv("ACCOUNT_TRIAL_ENABLED", "true");
     vi.stubEnv("SUPABASE_URL", "https://project.supabase.co");

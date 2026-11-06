@@ -31,6 +31,7 @@ let logout: typeof import("../src/app/api/auth/logout/route").POST;
 beforeEach(async () => {
   vi.resetModules();
   vi.resetAllMocks();
+  vi.stubEnv("DEPLOYMENT_MODE", "hosted");
   vi.stubEnv("ACCOUNT_TRIAL_ENABLED", "true");
   vi.stubEnv("SUPABASE_URL", "https://project.supabase.co");
   vi.stubEnv("SUPABASE_PUBLISHABLE_KEY", "sb_publishable_fixture_public_key");

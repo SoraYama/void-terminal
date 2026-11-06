@@ -1,12 +1,25 @@
 # void-terminal · 虚空终端
 
-面向原神文本考据的自托管问答与资料库。Next.js 页面通过内部 Python 知识服务检索有来源的文本，由官方 DeepSeek Harness（DSH）运行检索工具循环、会话和上下文压缩，再向配置的 OpenAI 兼容接口发起带引用的流式回答。支持中文与英文、来源回看、快照和本地密钥模式。
+面向原神文本考据的开源问答与资料库。Next.js 页面通过内部 Python 知识服务检索有来源的文本，由官方 DeepSeek Harness（DSH）运行检索工具循环、会话和上下文压缩，再向配置的 OpenAI 兼容接口发起带引用的流式回答。支持中文与英文、来源回看和快照；自托管版使用自己的模型 Key，官方托管版使用邮箱登录与积分。
 
 ![void-terminal 实际首页](docs/screenshots/home.png)
 
 [原文库截图](docs/screenshots/library.png) · [原文阅读截图](docs/screenshots/reading.png) · [手机首页](docs/screenshots/mobile-home.png) · [手机来源面板](docs/screenshots/mobile-source.png)。这些是实际页面截图；阅读页连接本地真实语料，不是设计概念图。
 
 **仓库不附带完整游戏数据库。** 空库会明确显示未就绪；测试夹具不代表真实语料覆盖。首次使用前需要导入真实来源。已发现、已导入、缺少文本与未解析的数量以 `/api/status` 的 `coverage` 为准；源仓库提交和游戏版本是两回事，未知游戏版本保持为空。知识检索失败时不会补造游戏资料。
+
+## 两种部署模式
+
+同一个开源仓库、同一份 Web 镜像，通过运行时环境变量 `DEPLOYMENT_MODE` 选择模式，不需要分别构建：
+
+| 模式 | 问答入口 | 运行依赖 |
+| --- | --- | --- |
+| `self-hosted`（默认） | 在设置中填写自己的模型 Key（BYOK） | 知识服务与语料；无需 Supabase、SMTP、账户或积分配置 |
+| `hosted` | 邮箱验证码登录后使用账户积分 | Supabase Auth、生产 SMTP、独立积分账本及管理员模型 Key |
+
+自托管版不显示登录、积分或账户入口，也不会使用服务器共享 Key。官方托管版不提供 BYOK、接口/模型覆盖或模式切换；认证、模型或预算配置缺失时拒绝生成，不会降级为 BYOK。服务端也会拒绝不属于当前部署模式的请求。
+
+仅未设置 `DEPLOYMENT_MODE` 时默认 `self-hosted`；显式空值、拼写错误或其他值均按配置错误拒绝服务。两个 Compose 文件都在容器运行时传入该变量；改值后需重新创建 Web 容器。**已有官方托管实例升级前必须显式设置 `DEPLOYMENT_MODE=hosted`，并保留原 `accounts` 卷。** 托管配置与升级步骤见 [账户与积分运维指南](docs/operations/account-trial.md)。目前没有支付或订阅功能。
 
 ## 本地开发
 
@@ -23,17 +36,18 @@ cd ../..
 bash scripts/dev.sh
 ```
 
-打开 <http://127.0.0.1:3000>。开发脚本只监听 localhost，并启动 8000 端口的知识服务。默认 SQLite 文件为 `data/catalog.sqlite`。低流量、访客自带 Key 的单机部署可使用 `compose.sqlite.yaml` 复用现有快照；需要共享额度、向量索引或更高并发时使用默认的 PostgreSQL + pgvector 配置。SQLite 验证不能代替 PostgreSQL 并发和配额事务验证。
+打开 <http://127.0.0.1:3000>，在设置中填写自己的模型 Key；默认 `DEPLOYMENT_MODE=self-hosted`，无需设置服务器模型 Key 或账户服务。开发脚本只监听 localhost，并启动 8000 端口的知识服务。默认 SQLite 文件为 `data/catalog.sqlite`。低流量单机部署可使用 `compose.sqlite.yaml` 复用现有快照；需要向量索引或更高语料查询并发时使用默认的 PostgreSQL + pgvector 配置。托管版积分账本独立使用 SQLite，两种语料后端均可搭配；积分功能不要求 PostgreSQL。SQLite 语料验证不能代替 PostgreSQL 并发验证。
 
 `.env` 由开发脚本读取；单独运行 Python CLI 时，需要自己导出需要的环境变量。不要提交 `.env`、浏览器密钥、数据库、下载语料或模型权重。
 
 ## 生产部署
 
-单台服务器的快捷 HTTPS 方案、SQLite 完整快照迁移与 Key 隐私说明见 [快速部署指南](docs/deploy-fast.md)。`compose.sqlite.yaml` 独立运行 Web、知识服务和 Caddy，默认关闭共享付费模式与向量模型；下面的命令则使用 PostgreSQL。
+单台服务器的快捷 HTTPS 方案、SQLite 完整快照迁移与 Key 隐私说明见 [快速部署指南](docs/deploy-fast.md)。`compose.sqlite.yaml` 独立运行 Web、知识服务和 Caddy，默认使用自托管模式并关闭向量模型；下面的命令则使用 PostgreSQL。
 
 ```sh
 cp .env.example .env
 # 编辑 .env，至少填入 POSTGRES_PASSWORD 和 KNOWLEDGE_API_TOKEN。
+# 保留 DEPLOYMENT_MODE=self-hosted；在浏览器设置中填写自己的模型 Key。
 # 两者可分别用 openssl rand -hex 32 生成；数据库密码使用 URL 安全字符。
 docker compose build
 docker compose up -d --wait db knowledge web
@@ -42,11 +56,11 @@ curl --fail http://127.0.0.1:3000/api/status
 
 Web 采用 Next.js standalone，Node 24；知识服务采用 Python 3.11/uv；数据库使用带 vector 扩展的 PostgreSQL 17 镜像。依赖由锁文件固定；基础镜像标签可更新，正式环境应按组织流程另行固定经审查的镜像 digest。
 
-只有 Web 绑定宿主 `127.0.0.1:3000`；数据库和知识服务不发布宿主端口。知识接口在生产要求 `X-Knowledge-Token`，Web 从运行时环境注入该请求头。镜像构建不接收模型密钥或内部令牌。`database`、`sources`、`models` 三个命名卷分别保存数据库、来源文件与模型缓存；不要执行 `docker compose down -v`，它会删除这些数据。
+只有 Web 绑定宿主 `127.0.0.1:3000`；数据库和知识服务不发布宿主端口。知识接口在生产要求 `X-Knowledge-Token`，Web 从运行时环境注入该请求头。镜像构建不接收模型密钥或内部令牌。`database`、`sources`、`models` 三个命名卷分别保存语料数据库、来源文件与模型缓存；`accounts` 卷独立保存托管版积分账本。不要执行 `docker compose down -v`，它会删除这些数据。
 
 公网部署需要域名、有效 TLS 证书和由管理员管理的反向代理。参考 [deploy/nginx.conf](deploy/nginx.conf)，替换域名和证书路径后先运行 `nginx -t`。它关闭 SSE 缓冲和缓存、延长流式读取超时、覆盖客户端传入的代理地址并限制请求频率。仅当所有入口都经过这个受控代理时设置 `TRUST_PROXY=true`。知识服务和数据库继续保持内网隔离。
 
-生产共享模式还要求 `PUBLIC_APP_ORIGIN=https://你的域名`，与浏览器访问的 HTTPS origin 精确一致，不含路径、账号密码、查询参数和 fragment；它独立于代理头，用于校验共享请求来源。不能把容器内部 `http://0.0.0.0:3000` 或 `http://web:3000` 填作公网地址。开发服务器可留空并按请求地址匹配；Docker Web 使用 production 模式，共享模式需要受信任的 HTTPS 入口，即使只做本地演练也是如此。BYOK 不要求开启共享服务。
+托管版还要求 `PUBLIC_APP_ORIGIN=https://你的域名`，与浏览器访问的 HTTPS origin 精确一致，不含路径、账号密码、查询参数和 fragment；它独立于代理头，用于校验登录和积分问答请求来源。不能把容器内部 `http://0.0.0.0:3000` 或 `http://web:3000` 填作公网地址。本地 `npm dev` 演练托管版也必须显式填写浏览器 origin，可使用 `http://127.0.0.1:3000`；Docker Web 使用 production 模式，即使本地演练也需要受信任的 HTTPS 入口。自托管 BYOK 不依赖这些账户配置。
 
 ## 首次导入与快照
 
@@ -117,13 +131,13 @@ docker compose --profile ingest run --rm --no-deps ingest prepare-embeddings --r
 
 默认 `KNOWLEDGE_SEMANTIC_BUILD=false`，Python 镜像只安装词法检索所需依赖，不包含 torch/sentence-transformers。设为 true 并重建后才安装 semantic extra；模型文件仍另存持久卷。构建开关和运行时 `EMBEDDING_ENABLED` 是两个独立设置。首次下载需要网络、磁盘和模型许可证审查；全量 embedding 需要 CPU/GPU 时间和索引存储。默认使用本地 embedding，不产生远程 embedding API 费用；回答仍消耗你配置的模型服务额度。
 
-## Key 设置与共享模式
+## 自托管 Key 设置与托管积分
 
-在页面 Key 设置中输入兼容模型服务密钥并测试连接。密钥只保存在当前页面内存，刷新后需要重新输入。BYOK 通过 `X-Model-Api-Key` 请求头发送，服务器代理模型调用；不要把密钥放到 URL、聊天正文、截图或问题反馈里。请只在自己信任的 HTTPS 实例输入密钥。设置中可填写自己的 **Base URL** 和 **Model name**，留空的字段使用站点默认值。更换地址会清空当前 Key；模型需支持 OpenAI 兼容的 Chat Completions、流式输出和工具调用。模型列表连接测试不产生生成请求，也不代表工具调用能力已验证。本站运营者技术上能够接触转发的 Key；所选供应商还会收到问题、历史对话和相关原文。
+自托管版在页面 Key 设置中输入兼容模型服务密钥并测试连接。密钥只保存在当前页面内存，刷新后需要重新输入，不写入浏览器持久存储、数据库或对话导出。请求路径是 **浏览器 → 你部署的实例 → 选定的模型服务**；BYOK 通过 `X-Model-Api-Key` 请求头发送，由实例后端代理模型调用。不要把密钥放到 URL、聊天正文、截图或问题反馈里。请只在自己信任的 HTTPS 实例输入密钥。设置中可填写自己的 **Base URL** 和 **Model name**，留空的字段使用站点默认值。更换地址会清空当前 Key；模型需支持 OpenAI 兼容的 Chat Completions、流式输出和工具调用。模型列表连接测试不产生生成请求，也不代表工具调用能力已验证。实例运营者技术上能够接触转发的 Key；HTTPS 保护传输，不代表运营者不可见。所选供应商还会收到问题、历史对话和相关原文。
 
-共享模式默认关闭，日预算为零。开启时必须同时设置 `SHARED_MODE_ENABLED=true`、服务器 `DEEPSEEK_API_KEY`、至少 32 字符的随机 `SESSION_SECRET`、正整数 `SHARED_DAILY_TOKEN_BUDGET`、生产 HTTPS 的 `PUBLIC_APP_ORIGIN`，并配置外层访问和频率控制。预算按请求预留、结算；异常和取消可能保留最坏额度，不能把本地预算当成供应商账单或硬性消费上限。对外开放前设置供应商侧限额。
+托管版必须设置 `DEPLOYMENT_MODE=hosted`，并按 [账户与积分运维指南](docs/operations/account-trial.md) 配齐邮箱登录、账本及模型配置。`SHARED_MODE_ENABLED=true` 是托管模型服务的内部开关，不是向访客开放的切换项；自托管版忽略该开关和服务器模型 Key。托管版只接受已验证账户的积分请求，不允许浏览器 Key 或自定义模型覆盖。全局 token 预算按请求预留、结算，独立于账户积分；异常和取消可能保留最坏额度，不能把本地预算当成供应商账单或硬性消费上限。对外开放前设置供应商侧限额。
 
-访客在 BYOK 模式可指定公网 HTTPS 模型接口及模型 ID；服务器验证所有 DNS 结果，并将实际 TLS 连接固定到已验证的地址，拒绝内网、环回、云元数据和重定向。接口可包含供应商需要的 `/v1` 等前缀，不可携带 Key、账号密码、查询参数或 fragment。Base URL 和模型名可保存在本机，Key 不进入偏好或历史。共享模式不接受访客模型覆盖，服务器共享 Key 始终只发送给管理员配置的地址。
+自托管 BYOK 可指定公网 HTTPS 模型接口及模型 ID；服务器验证所有 DNS 结果，并将实际 TLS 连接固定到已验证的地址，拒绝内网、环回、云元数据和重定向。接口可包含供应商需要的 `/v1` 等前缀，不可携带 Key、账号密码、查询参数或 fragment。Base URL 和模型名可保存在本机，Key 不进入偏好或历史。托管版的服务器 Key 始终只发送给管理员配置的地址；旧浏览器偏好不能切换为 BYOK。
 
 管理员设置站点默认接口时，仍使用 `DEEPSEEK_BASE_URL`、`DEEPSEEK_MODEL` 与精确 origin 允许清单。除默认 `https://api.deepseek.com` 外，需同时设置 `DEEPSEEK_BASE_URL` 与 `DEEPSEEK_ALLOWED_BASE_URLS`。后者为逗号分隔的精确 HTTPS origin（不含路径或末尾斜杠）；例如 `DEEPSEEK_BASE_URL=https://models.example.com/v1` 对应 `DEEPSEEK_ALLOWED_BASE_URLS=https://models.example.com`。接口路径仅支持根路径或 `/v1`，不支持 URL 中的账号密码、查询参数和 fragment。重新创建 Web 容器后生效。
 
@@ -139,6 +153,8 @@ DSH 的预览版本接口可能变化。升级时统一修改根 `package.json` 
 
 先做备份并记录当前代码提交、活动 snapshot ID 和模型 manifest。通过自己的发布流程取回并检出已审查的新提交，执行 `bash scripts/update.sh`；脚本要求干净工作区、构建当前代码并等待 Web/知识服务健康。脚本不拉取未知更新，不自动更新语料，也不替换数据库主版本。
 
+已有托管部署需在启动新镜像前将 `DEPLOYMENT_MODE=hosted` 加入原 `.env`；不要用示例文件覆盖现有凭据。保留 Compose 项目名、原 `accounts` 卷和 ledger 路径，升级与回滚均使用同一账本。发布后核对 `/api/status.deployment.mode` 与浏览器入口：托管版应显示账户/积分且无 Key 设置，自托管版则应只有 BYOK。模式切换不会迁移或合并本机访客与账户聊天历史。
+
 语料更新应导入新的快照，检查 coverage 和抽样来源后再激活；旧快照保留用于回滚。代码回滚时检出之前记录的提交，重建并启动对应镜像。若新版本更改了数据结构，先在隔离环境验证旧代码兼容性；不兼容时需要恢复对应数据库备份，不能只回滚容器。模型或预处理改变时必须建立匹配的新索引。
 
 ## 备份与恢复
@@ -153,6 +169,8 @@ docker compose up -d --wait knowledge web
 ```
 
 脚本生成逻辑 SQL、来源归档、代码提交和 `runtime.env`。备份包含密钥与数据，应加密后离机保存；模型缓存可按固定 revision 重新下载。不要只复制运行中的数据库卷。SQLite 开发库可在停止开发服务后连同 `data/`、来源、模型 manifest 和 `.env` 一起备份。
+
+上述 `backup.sh` / `restore.sh` 仅处理 PostgreSQL 语料与来源，**不包含 `accounts` 卷**。托管版必须另外按 [账户账本备份要求](docs/operations/account-trial.md#privacy-and-operation) 备份和恢复 `/accounts/accounts.sqlite`；语料快照、PostgreSQL 备份与账户账本不能互相替代。
 
 定期在全新 Compose 项目/空数据库做恢复演练，不覆盖在线实例。先准备受保护的 `.env` 并按记录检出兼容代码，然后执行：
 
@@ -190,7 +208,3 @@ PostgreSQL 原文库的英文前缀检索使用 `LIKE` 与 `text_pattern_ops` �
 测试不使用真实模型密钥，不等于真实数据全量导入、远程模型计费验证或生产验收。完整 Compose 部署、重启、导入与恢复仍需在有 Docker 的机器上演练；开发工作机没有 Docker 时不能声称容器部署已通过。
 
 原神风景为官方原图素材，权利归原权利人；详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 与[素材来源](docs/design/genshin-v2/assets/scenery-sources.md)。项目原创代码采用 MIT；游戏文本、第三方数据和模型不因此获得 MIT 授权。
-
-### Optional email-code trial
-
-Email-code accounts, one-time trial credits and authenticated shared model access are available behind default-off configuration. BYOK remains available. See [account trial setup](docs/operations/account-trial.md) for Supabase/SMTP, invitations, the separate ledger volume and backup requirements. This includes no payment integration.

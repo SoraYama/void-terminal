@@ -1,2 +1,4 @@
 import {Terminal} from '../../components/terminal';
-export default function CharactersPage(){return <Terminal initialView="characters"/>}
+import {deploymentMode} from '../../lib/server/deployment';
+export const dynamic = 'force-dynamic';
+export default function CharactersPage(){return <Terminal initialView="characters" deploymentMode={deploymentMode()}/>}

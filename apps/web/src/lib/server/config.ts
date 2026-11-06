@@ -3,6 +3,7 @@ import { AppError } from "./errors";
 import { configuredAppOrigin } from "./app-origin";
 export { configuredAppOrigin } from "./app-origin";
 import { accountAuthEnabled } from "./account-auth";
+import { assertRequestMode, deploymentMode } from "./deployment";
 export const MAX_TOOL_ROUNDS = 4;
 export const MAX_PROVIDER_REQUEST_BYTES = 400_000;
 export function providerConfig() {
@@ -42,6 +43,7 @@ export function providerConfig() {
   return { base, model: process.env.DEEPSEEK_MODEL || "deepseek-flash" };
 }
 export function sharedEnabled() {
+  if (deploymentMode() !== "hosted") return false;
   try {
     configuredAppOrigin();
   } catch {
@@ -60,11 +62,12 @@ export function sharedEnabled() {
   );
 }
 export function credentials(mode: "byok" | "shared", request: Request) {
+  assertRequestMode(mode);
   if (mode === "shared") {
     if (!sharedEnabled())
       throw new AppError(
         "SHARED_DISABLED",
-        "Shared mode is not available. Use your own API key.",
+        "Account chat is temporarily unavailable. Try again later.",
         503,
       );
     return process.env.DEEPSEEK_API_KEY!.trim();
