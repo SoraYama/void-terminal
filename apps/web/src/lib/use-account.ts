@@ -47,12 +47,14 @@ export function useAccount(onIdentityChange:(identity:AccountIdentity)=>void,ena
  const verifyCode=useCallback(async(email:string,code:string)=>{let result:AccountSummary|null|undefined;try{await post('/api/auth/verify-code',{email,code,signals:collectDeviceSignals(enabled)})}finally{invalidate();channel.current?.postMessage({type:'changed'});result=await refresh()}return result},[post,invalidate,refresh,enabled]);
  const logout=useCallback(async()=>{try{await post('/api/auth/logout')}finally{invalidate();channel.current?.postMessage({type:'changed'});await refresh()}},[post,invalidate,refresh]);
  const verifyDevice=useCallback(async(token:string)=>{
-  await post<AccountSummary>('/api/account/verify-device',{token,signals:collectDeviceSignals(enabled)});
-  channel.current?.postMessage({type:'changed'});
-  // Re-read current cookies: another tab may have signed out or switched accounts
-  // during the challenge. The returned response is a snapshot of its start.
-  return refresh();
- },[post,refresh,enabled]);
+  let result:AccountSummary|null|undefined;
+  try{await post<AccountSummary>('/api/account/verify-device',{token,signals:collectDeviceSignals(enabled)})}
+  finally{
+   // The response can update either the session or device proof even on failure.
+   invalidate();channel.current?.postMessage({type:'changed'});result=await refresh();
+  }
+  return result;
+ },[post,invalidate,refresh,enabled]);
  return {account,loading,error,refresh,sendCode,verifyCode,verifyDevice,logout};
 }
 export type AccountController=ReturnType<typeof useAccount>;
