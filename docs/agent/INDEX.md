@@ -1,4 +1,4 @@
-> **Last updated**: 2026-11-07 (图鉴的原版属性图标、元素底色、本地字体及旅行者补充立绘)
+> **Last updated**: 2026-11-07 (图鉴视觉与缓存验收；发布回归修正旧原文测试的重复请求假设)
 
 # Agent Notes
 
@@ -51,7 +51,7 @@
 
 | Note | Summary |
 | --- | --- |
-| [2026-11-07-archive-visuals](optimize/2026-11-07-archive-visuals.md) | 档案主体渐变与会话内缓存、导航和滚动隔离；七元素卡片与原版星级/属性图标；旅行者精确补图、独立来源与本地字体；真实数据验收 |
+| [2026-11-07-archive-visuals](optimize/2026-11-07-archive-visuals.md) | 档案渐变与会话内缓存、快照/滚动隔离；七元素卡片与原版星级/属性图标、旅行者补图及本地字体；原文暖缓存不应等待重复网络请求 |
 | [2026-11-03-sidebar-motion](optimize/2026-11-03-sidebar-motion.md) | Sidebar bottom status/toggle row, restored 145px v4 wordmark with English/Chinese line gap; reversible 280ms width/footer motion, mobile drawer/backdrop exit and reduced-motion checks |
 | [2026-11-03-library-ui](optimize/2026-11-03-library-ui.md) | library-workspace full-height reader and compact header; global native thumb fade including Radix portals; persistent 76px sidebar rail, mobile drawer and short-screen selected-passage actions |
 | [2026-11-02-chat-reading](optimize/2026-11-02-chat-reading.md) | Streaming follows answer-tail instead of citation tags; full-height scenery/title scroll, Motion compact header, dark/mobile composer; public real DeepSeek 41k-history and failed-placeholder follow-ups |

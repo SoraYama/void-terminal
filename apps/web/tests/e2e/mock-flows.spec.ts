@@ -222,8 +222,17 @@ test('mock: conversation remains pinned when active corpus changes, including re
  await page.getByRole('button',{name:'编辑并分支',exact:true}).first().click();await page.locator('.edit-box textarea').fill('编辑首问仍应保留快照');await page.locator('.edit-box').getByRole('button',{name:'编辑并分支',exact:true}).click();await expect.poll(()=>requests.length).toBe(4);expect(requests[3].snapshotId).toBe('snapshot-v1');
 });
 test('mock: original dialogue relation conditions and related records open exact snapshot',async({page})=>{
- await setup(page);await library(page);await page.getByRole('button',{name:/Browser fixture · 原文/}).click();await page.locator('.reading-assistant .source-mini').click();await page.getByRole('dialog').getByRole('button',{name:'Browser fixture · 下一段',exact:true}).click();await expect(page.getByRole('heading',{name:'Browser fixture · 下一段'})).toBeVisible();await page.locator('.back-link').click();await page.getByRole('button',{name:/Browser fixture · 原文/}).click();const relations=page.locator('.record-relations');await expect(relations.getByText('条件原文',{exact:true})).toBeVisible();await expect(relations.locator('code')).toHaveText('questState == 3');
- const nextRequest=page.waitForRequest(r=>r.url().includes('/api/documents/book-2?'));await relations.getByRole('button',{name:/下一段/}).click();expect(new URL((await nextRequest).url()).searchParams.get('snapshotId')).toBe('fixture-snapshot');await expect(page.getByRole('heading',{name:'Browser fixture · 下一段'})).toBeVisible();
+ await setup(page);
+ const nextRequests:URL[]=[];
+ page.on('request',request=>{const url=new URL(request.url());if(url.pathname==='/api/documents/book-2')nextRequests.push(url)});
+ await library(page);await page.getByRole('button',{name:/Browser fixture · 原文/}).click();await page.locator('.reading-assistant .source-mini').click();await page.getByRole('dialog').getByRole('button',{name:'Browser fixture · 下一段',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Browser fixture · 下一段'})).toBeVisible();
+ expect(nextRequests).toHaveLength(1);expect(nextRequests[0].searchParams.get('snapshotId')).toBe('fixture-snapshot');
+ await page.locator('.back-link').click();await page.getByRole('button',{name:/Browser fixture · 原文/}).click();const relations=page.locator('.record-relations');await expect(relations.getByText('条件原文',{exact:true})).toBeVisible();await expect(relations.locator('code')).toHaveText('questState == 3');
+ await relations.getByRole('button',{name:/下一段/}).click();
+ await expect(page.getByRole('heading',{name:'Browser fixture · 下一段'})).toBeVisible();
+ await expect(page.locator('.reading-text')).toContainText('下一段原文，保留资料关联。');
+ expect(nextRequests).toHaveLength(1);
 });
 
 test('mock: English UI answers remain separate from Chinese source language',async({page})=>{
