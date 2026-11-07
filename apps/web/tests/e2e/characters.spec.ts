@@ -202,3 +202,36 @@ test('characters: leaving before snapshot resolution cannot replace the new modu
  await page.goto('/characters');await expect.poll(()=>started).toBe(true);await navigateArchive(page,'尘世文卷');await expect(page.locator('.library-scroll')).toBeVisible();
  await page.waitForTimeout(600);await expect(page).toHaveURL(/\/$/);await expect(page.locator('.character-workspace')).toHaveCount(0);
 });
+
+test('characters: a material link supersedes a pending generic Museum transition with its explicit snapshot',async({page})=>{
+ await fixture(page);await page.route('**/api/items**',route=>{
+  const url=new URL(route.request().url()),snapshot=url.searchParams.get('snapshotId')||'generic-snapshot';
+  const item={id:material.itemId,language:'zh-CN',name:'哀叙冰玉碎屑',category:'material',subtype:'角色突破材料',rarity:2,description:'用于角色突破的材料。',story:'',state:'source-record',icon:missing,rawIds:[material.id],documentIds:[],sources:[source],attributes:[],acquisition:[],coverage:{}};
+  return route.fulfill({json:url.pathname==='/api/items'?{items:[item],total:1,page:1,pageSize:48,snapshotId:snapshot,ready:true,counts:{material:1}}:{item,snapshotId:snapshot}});
+ });
+ await openAyaka(page);await page.getByRole('tab',{name:'培养',exact:true}).click();await expect(page.locator('.character-material-list').first().getByRole('link')).toContainText('哀叙冰玉碎屑');
+ await page.evaluate(()=>{
+  const native=document.startViewTransition.bind(document);let release!:()=>void;const held=new Promise<void>(resolve=>{release=resolve});
+  Object.assign(window,{releaseMaterialTransition:release});
+  document.startViewTransition=callback=>native(async()=>{await held;await (callback as ()=>void|Promise<void>)()});
+  document.querySelector<HTMLButtonElement>('#desktop-navigation .nav-item[aria-label="万象集录"]')!.click();
+  document.querySelector<HTMLAnchorElement>('.character-material-list a')!.click();
+ });
+ expect(new URL(page.url()).searchParams.get('item')).toBe(material.itemId);expect(new URL(page.url()).searchParams.get('snapshotId')).toBe(snapshotId);
+ await page.evaluate(()=>(window as unknown as {releaseMaterialTransition:()=>void}).releaseMaterialTransition());
+ await expect(page.locator('.museum-detail h2')).toHaveText('哀叙冰玉碎屑');expect(new URL(page.url()).searchParams.get('snapshotId')).toBe(snapshotId);
+});
+
+test('characters: browser Back restores language-specific list scroll after changing source language',async({page})=>{
+ await fixture(page);await page.route('**/api/characters?*',route=>{
+  const params=new URL(route.request().url()).searchParams,language=params.get('language')||'zh-CN',element=params.get('element')||'Ice';
+  const records=Array.from({length:48},(_,i)=>({...ayaka,id:`avatar:${10000100+i}`,name:`${language==='en'?'EN':'ZH'}-${element}-${i}`,language,element}));
+  return route.fulfill({json:{characters:records,total:48,page:1,pageSize:48,snapshotId,ready:true,counts:{Ice:48,Grass:48},regions:[]}});
+ });
+ await page.goto('/characters?element=Ice&snapshotId='+snapshotId);await expect(page.locator('.character-card')).toHaveCount(48);
+ const grid=page.locator('.character-grid-scroll');await grid.evaluate(el=>{el.scrollTop=360});await expect.poll(()=>page.evaluate(()=>history.state.characterScroll)).toBe(360);
+ await navigateArchive(page,'设置');await choose(page,'资料语言','English sources');await page.getByRole('dialog',{name:'设置',exact:true}).getByRole('button',{name:'关闭',exact:true}).click();
+ await expect(page.locator('.character-card strong').first()).toHaveText('EN-Ice-0');await grid.evaluate(el=>{el.scrollTop=720});await expect.poll(()=>page.evaluate(()=>history.state.characterScroll)).toBe(720);
+ await page.locator('.character-elements button[data-element="Grass"]').click();await expect(page.locator('.character-card strong').first()).toHaveText('EN-Grass-0');
+ await page.goBack();await expect(page.locator('.character-card strong').first()).toHaveText('EN-Ice-0');await expect.poll(()=>grid.evaluate(el=>el.scrollTop)).toBe(720);
+});

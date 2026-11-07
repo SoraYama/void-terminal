@@ -181,3 +181,16 @@ test('navigation: CSS fallback keeps the main interactive and clears its fade',a
  });
  expect(observed).toEqual({animation:'terminal-main-in',pointerEvents:'auto'});await expect(page.locator('.character-workspace')).toBeVisible();await expect(page.locator('main')).not.toHaveAttribute('data-navigation-fade','true');
 });
+
+test('library: a query refetched from a new snapshot does not inherit the evicted snapshot scroll',async({page})=>{
+ await openLibrary(page,'light');await page.locator('.back-link').click();let activeSnapshot='snapshot-a';
+ await page.route('**/api/library?*',route=>{
+  const query=new URL(route.request().url()).searchParams.get('q')||'';
+  const items=Array.from({length:24},(_,i)=>({id:`${activeSnapshot}-${query}-${i}`,title:`${activeSnapshot}-${query}-${i}`,type:'book',language:'zh-CN',excerpt:'用于检查快照滚动隔离。',snapshotId:activeSnapshot}));
+  return route.fulfill({json:{items,total:24,page:1,pageSize:24,snapshotId:activeSnapshot}});
+ });
+ const search=page.getByLabel('搜索书籍、任务或关键词…'),scroll=page.locator('.library-scroll');
+ await search.fill('original');await expect(page.locator('.document-card').first()).toContainText('snapshot-a-original-0');await scroll.evaluate(el=>{el.scrollTop=640});await expect.poll(()=>scroll.evaluate(el=>el.scrollTop)).toBe(640);
+ for(let i=0;i<8;i++){await search.fill(`eviction-${i}`);await expect(page.locator('.document-card').first()).toContainText(`snapshot-a-eviction-${i}-0`)}
+ activeSnapshot='snapshot-b';await search.fill('original');await expect(page.locator('.document-card').first()).toContainText('snapshot-b-original-0');await expect.poll(()=>scroll.evaluate(el=>el.scrollTop)).toBe(0);
+});
