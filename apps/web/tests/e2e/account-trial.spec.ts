@@ -501,3 +501,36 @@ test('free credits: a shared budget rejection retains the draft and individual c
  await expect(dialog.getByText('3 / 3',{exact:true})).toBeVisible();
  await expect(dialog.locator('.account-buckets>div').filter({hasText:'储备点数'}).getByText('20',{exact:true})).toBeVisible();
 });
+
+test('free credits: BSC address QR can be displayed and saved without changing the receiving address',async({page},info)=>{
+ if(info.project.name.includes('mobile'))await page.setViewportSize({width:375,height:812});
+ await setup(page,{locale:'en'});
+ await navigation(page,'Support the project');
+ const dialog=page.getByRole('dialog',{name:'Support the project',exact:true});
+ await dialog.getByText('Show address QR code',{exact:true}).click();
+ const image=dialog.getByRole('img',{name:'BSC receiving address QR code',exact:true});
+ await expect(image).toBeVisible();
+ await expect.poll(()=>image.evaluate(el=>(el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+ await expect(image).toHaveAttribute('src',`/api/support/bsc-qr?address=${fixtureOnlyBsc}`);
+ await expect(dialog).toContainText('The QR contains only the address');
+ await expect(dialog.getByRole('textbox',{name:'Receiving address',exact:true})).toHaveValue(fixtureOnlyBsc);
+ const downloadPromise=page.waitForEvent('download');
+ await dialog.getByRole('link',{name:'Save BSC QR image',exact:true}).click();
+ const download=await downloadPromise;
+ expect(download.suggestedFilename()).toBe('bsc-receiving-address.png');
+ expect(await download.failure()).toBeNull();
+ expect(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
+ await screenshot(page,'bsc-address-qr',info.project.name);
+});
+
+test('free credits: a failed BSC QR keeps the full address and manual copy available',async({page})=>{
+ await page.route('**/api/support/bsc-qr?*',route=>route.fulfill({status:503,body:'Unavailable'}));
+ await setup(page,{locale:'zh-CN'});
+ await navigation(page,'支持虚空终端');
+ const dialog=page.getByRole('dialog',{name:'支持虚空终端',exact:true});
+ await dialog.getByText('显示地址二维码',{exact:true}).click();
+ await expect(dialog.getByText('二维码暂时无法加载，请复制上方收款地址。',{exact:true})).toBeVisible();
+ await expect(dialog.getByRole('textbox',{name:'收款地址',exact:true})).toHaveValue(fixtureOnlyBsc);
+ await expect(dialog.getByRole('button',{name:'复制地址',exact:true})).toBeVisible();
+ await expect(dialog.getByRole('link',{name:'保存 BSC 二维码',exact:true})).toHaveCount(0);
+});

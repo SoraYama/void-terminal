@@ -1,4 +1,4 @@
-> **Last updated**: 2026-11-07 (支付宝原图和只读挂载已暂存，手机解码与下载核验通过；待正式发布)
+> **Last updated**: 2026-11-07 (BSC地址二维码生成/下载与独立解码通过；支付宝已暂存，待正式发布)
 
 # Agent Notes
 
@@ -16,7 +16,7 @@
 
 | Note | Summary |
 | --- | --- |
-| [2026-11-07-sponsor-config](feature/2026-11-07-sponsor-config.md) | BSC USDT/USDC/BNB、Turnstile与0600激活配置暂存；支付宝原图解码/375px展示/原图下载通过，只传公开素材并原位更新路径；线上未变 |
+| [2026-11-07-sponsor-config](feature/2026-11-07-sponsor-config.md) | 官网BSC地址二维码动态生成/保存，拒绝旧地址与自部署访问；原图/手机/桌面解码一致，支付宝与Turnstile已暂存；线上未变 |
 | [2026-11-06-hosted-free](feature/2026-11-06-hosted-free.md) | schema v3 每日 3 点优先、新人 20 点保留、跨午夜预留、Turnstile 与持久设备限流、官网赞助/BSC、自部署无账户流程；外部配置与生产验收分别记录 |
 | [2026-11-06-credit-foundation](feature/2026-11-06-credit-foundation.md) | schema v2 追加式入账、订单与支付幂等核心、独立账本备份恢复 CLI、额度不足草稿及分支恢复；保留历史支付基础，后续已暂停充值并转为免费点数与赞助 |
 | [2026-11-06-deployment-modes](feature/2026-11-06-deployment-modes.md) | 同一镜像运行时选择自部署 BYOK 或官网登录额度；服务端边界、历史隔离、登录草稿和紧凑对话控件；验证与发布证据见记录 |

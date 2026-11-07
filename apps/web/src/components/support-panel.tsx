@@ -35,6 +35,20 @@ function Channel({channel,zh}:{channel:SupportChannel;zh:boolean}){
  </details>;
 }
 
+function BscQr({address,zh}:{address:string;zh:boolean}){
+ const [failed,setFailed]=useState(false);
+ const url=`/api/support/bsc-qr?address=${encodeURIComponent(address)}`;
+ return <details className="support-qr"><summary>{zh?'显示地址二维码':'Show address QR code'}</summary>
+  <p className="account-policy">{zh?'二维码只包含收款地址。扫码后请在钱包中选择 BSC 主网和正确币种；同一部手机可先保存图片，再从相册扫码。':'The QR contains only the address. Choose BSC mainnet and the correct asset in your wallet. On the same phone, save the image and scan it from your photo library.'}</p>
+  {failed?<p className="account-policy" role="status">{zh?'二维码暂时无法加载，请复制上方收款地址。':'The QR image could not load. Copy the receiving address above.'}</p>:<>
+   {/* Keep the generated PNG intact and off third-party image services. */}
+   {/* eslint-disable-next-line @next/next/no-img-element */}
+   <img src={url} alt={zh?'BSC 收款地址二维码':'BSC receiving address QR code'} width={180} height={180} loading="lazy" onError={()=>setFailed(true)}/>
+   <a className="support-link" href={url} download="bsc-receiving-address.png">{zh?'保存 BSC 二维码':'Save BSC QR image'}</a>
+  </>}
+ </details>;
+}
+
 export function SupportPanel({open,onOpenChange,onCloseFocus,support,zh}:{open:boolean;onOpenChange:(open:boolean)=>void;onCloseFocus:()=>void;support:SupportConfig;zh:boolean}){
  const domestic=support.channels.filter(item=>item.id!=='kofi'),international=support.channels.filter(item=>item.id==='kofi');
  const {bsc}=support;
@@ -50,6 +64,7 @@ export function SupportPanel({open,onOpenChange,onCloseFocus,support,zh}:{open:b
     <h3>BNB Smart Chain (BSC/BEP-20)</h3>
     <p className="support-chain">{zh?`主网 · 链 ID ${bsc.chainId}`:`Mainnet · Chain ID ${bsc.chainId}`}<span>{bsc.assets.join(' · ')}</span></p>
     <CopyField label={zh?'收款地址':'Receiving address'} copyLabel={zh?'复制地址':'Copy address'} value={bsc.address} zh={zh} code/>
+    <BscQr key={bsc.address} address={bsc.address} zh={zh}/>
     <p className="account-policy">{zh?'转账时请选择 BSC 主网，并核对网络和完整地址。':'Choose BSC mainnet when transferring, and double-check the network and full address.'}</p>
     <a className="support-link" href={`https://bscscan.com/address/${bsc.address}`} target="_blank" rel="noopener noreferrer">{zh?'在 BscScan 查看地址':'View address on BscScan'}<ArrowSquareOut size={15} aria-hidden="true"/></a>
    </section>}

@@ -408,6 +408,7 @@
 .support-link{display:inline-flex;align-items:center;gap:8px;min-height:44px;font-size:13px;text-decoration:underline;text-underline-offset:3px}
 .support-qr img{display:block;object-fit:contain;max-width:100%;height:auto;background:white}
 .support-qr .account-policy{margin:10px 0 0}
+.support-qr .account-policy+img{margin-top:12px}
 .support-chain{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;color:color-mix(in srgb,var(--text) 75%,var(--muted));font-size:12px;margin:0 0 14px}
 .support-chain>span{font-weight:600;color:var(--text)}
 .support-copy label{display:grid;gap:5px;font-size:12px}
