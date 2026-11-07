@@ -94,11 +94,11 @@
 
 - [x] Run final complete Python and Web suites, typecheck/build; perform migration/backup/restore rehearsal on synthetic legacy accounts including held reservations.
 - [x] Run focused browser matrix and inspect actual screenshots; verify route-level API calls cannot bypass risk or cross modes. Verify same-device collisions show useful UI and manual exemption remains distinct from gift.
-- [ ] Configure owner-provided sponsor contact/links/BSC address in an appropriate ignored runtime config; validate exact address readback and network label. Do not publish placeholders, invent private data, send money or contact others.
+- [x] Configure owner-provided sponsor contact/links/BSC address in an appropriate ignored runtime config; validate exact address readback and network label. Do not publish placeholders, invent private data, send money or contact others.
 - [x] Assess deployment requirements: ledger schema backup/migration, risk secret, challenge credentials, trusted proxy, day/month budgets. Complete authorized reversible setup; missing external credentials/recipient info remain explicit, never silently bypassed.
 - [x] Independent whole-branch security/spec review, fix material findings, record validations and remaining external readiness separately. No unsupported claim of production deployment.
 - [x] Update docs/agent/feature/2026-11-06-hosted-free.md and INDEX.md. Final user report states code changes, tests, sponsorship setup and any genuine blocked external step.
 
 ## Owner configuration follow-up (2026-11-07)
 
-USDC is now explicitly requested and implemented. Actual BSC recipient, accepted assets and public contact are configured in an ignored runtime overlay; a real Managed Turnstile widget and private keys are staged on the server with verified contents. Alipay remains pending its QR image, so the full real-channel activation checkbox stays open. The running site and account database are unchanged.
+USDC is now explicitly requested and implemented. Actual BSC recipient, accepted assets and public contact are configured in an ignored runtime overlay; a real Managed Turnstile widget and private keys are staged on the server with verified contents. The supplied Alipay PNG is decoded, preserved byte-for-byte and verified in 375 px / desktop previews including original-file downloads. The public asset and read-only mount override are staged, with only the QR path changed in the remote overlay; existing secrets stay on-server. Owner configuration is complete. Production merge/release, ledger migration and real provider acceptance remain separate. The running site and account database are unchanged.
