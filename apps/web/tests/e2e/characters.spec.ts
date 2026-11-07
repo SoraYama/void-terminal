@@ -1,3 +1,4 @@
+import {navigateArchive,watchWarmEntry,expectNoWarmFlash} from '../helpers/archive-navigation-browser';
 import {test,expect,type Page} from '@playwright/test';
 import type {Character,CharacterVoice} from '../../src/lib/characters';
 
@@ -170,4 +171,34 @@ test('characters: Traveler identity follows the selected form and leaves missing
  await choose(page,'元素形态','岩 · 502');await expect(identity.getByRole('img',{name:'岩',exact:true})).toBeVisible();await expect(identity).not.toContainText('岩');await expect(identity.locator('[data-element-icon="Rock"]')).toBeVisible();await expect(identity.locator('[data-element-icon="Wind"]')).toHaveCount(0);
  await page.getByRole('tab',{name:'资料',exact:true}).click();await expect(identity).toBeInViewport();await expect(identity.locator('[data-element-icon="Rock"]')).toBeVisible();
  await choose(page,'元素形态','未记录元素 · 503');await expect(identity.locator('[data-element-icon]')).toHaveCount(0);await expect(identity).not.toContainText('风');await expect(identity.getByRole('heading',{name:'旅行者',exact:true})).toBeVisible();
+});
+
+test('characters: warm return restores filtered query and profile without loading, and stops audio on exit',async({page})=>{
+ await fixture(page);let requests=0;page.on('request',r=>{if(new URL(r.url()).pathname.startsWith('/api/characters')&&!r.url().includes('/voices/'))requests++});
+ await page.goto('/characters');await page.getByRole('searchbox').fill('神里');await expect(page.locator('.character-card')).toHaveCount(1);
+ await page.locator('.character-card').click();await page.getByRole('tab',{name:'资料',exact:true}).click();await page.getByRole('tab',{name:'语音',exact:true}).click();
+ await page.getByRole('button',{name:'播放语音',exact:true}).click();await expect.poll(async()=> (await audioState(page)).some(a=>!a.paused)).toBe(true);
+ const url=page.url(),before=requests;
+ await navigateArchive(page,'尘世文卷');await expect(page.locator('.character-workspace')).toHaveCount(0);
+ await expect.poll(async()=> (await audioState(page)).every(a=>a.paused&&!a.src)).toBe(true);
+ await watchWarmEntry(page,'characters');await navigateArchive(page,'群星图鉴');
+ await expect(page.locator('[data-character-detail] h1')).toHaveText('神里绫华');await expect(page.getByRole('tab',{name:'语音',exact:true})).toHaveAttribute('aria-selected','true');
+ expect(page.url()).toBe(url);await expectNoWarmFlash(page);expect(requests).toBe(before);
+ await page.getByRole('button',{name:'返回图鉴',exact:true}).click();await expect(page.getByRole('searchbox')).toHaveValue('神里');await expect(page.locator('.character-card')).toHaveCount(1);
+ await page.goBack();await expect(page.locator('[data-character-detail] h1')).toHaveText('神里绫华');await expectNoWarmFlash(page);
+});
+
+test('characters: warm profile restores its own tab scroll after a module switch',async({page})=>{
+ await fixture(page);await page.route('**/api/characters/avatar%3A10000002?*',r=>r.fulfill({json:{character:{...ayaka,description:Array.from({length:60},()=>ayaka.description).join('\n\n')},snapshotId}}));
+ await page.goto('/characters?character=avatar:10000002&tab=info&snapshotId='+snapshotId);await expect(page.locator('[data-character-detail] h1')).toHaveText('神里绫华');
+ const scroll=page.locator('.character-section-content');await scroll.evaluate(el=>{el.scrollTop=420});const before=await scroll.evaluate(el=>el.scrollTop);expect(before).toBeGreaterThan(300);
+ await navigateArchive(page,'尘世文卷');await expect(page.locator('.character-workspace')).toHaveCount(0);await navigateArchive(page,'群星图鉴');
+ await expect(page.locator('[data-character-detail] h1')).toHaveText('神里绫华');await expect.poll(()=>scroll.evaluate(el=>el.scrollTop)).toBe(before);
+});
+
+test('characters: leaving before snapshot resolution cannot replace the new module URL',async({page})=>{
+ await fixture(page);let started=false;
+ await page.route('**/api/characters?*',async r=>{started=true;await new Promise(resolve=>setTimeout(resolve,500));await r.fallback()});
+ await page.goto('/characters');await expect.poll(()=>started).toBe(true);await navigateArchive(page,'尘世文卷');await expect(page.locator('.library-scroll')).toBeVisible();
+ await page.waitForTimeout(600);await expect(page).toHaveURL(/\/$/);await expect(page.locator('.character-workspace')).toHaveCount(0);
 });

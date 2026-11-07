@@ -1,3 +1,4 @@
+import {navigateArchive,watchWarmEntry,expectNoWarmFlash} from '../helpers/archive-navigation-browser';
 import {test,expect,type Page} from '@playwright/test';
 import path from 'node:path';
 
@@ -167,4 +168,13 @@ test('museum: server pagination, filters, stale lists, errors and retry',async({
 test('museum: UI language, source language and theme remain shared with the shell',async({page},info)=>{
  test.skip(info.project.name==='mobile');await fixture(page);await page.goto('/museum');await page.getByRole('button',{name:'界面语言',exact:true}).click();await expect(page.getByRole('heading',{name:'Compendium',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Weapons',exact:true})).toHaveAttribute('aria-pressed','true');
  await page.getByRole('button',{name:'Settings',exact:true}).click();const pending=page.waitForRequest(r=>r.url().includes('/api/items?')&&new URL(r.url()).searchParams.get('language')==='en');await choose(page,'Source language','English sources');await page.keyboard.press('Escape');const request=await pending;expect(new URL(request.url()).searchParams.get('snapshotId')).toBe(snapshotId);
+});
+
+test('museum: warm return retains filtered items and list scroll without loading',async({page})=>{
+ await fixture(page);let requests=0;page.on('request',r=>{if(new URL(r.url()).pathname.startsWith('/api/items'))requests++});
+ await page.goto('/museum');await expect(page.locator('.museum-card')).toHaveCount(24);
+ const grid=page.locator('.museum-grid-scroll');await grid.evaluate(el=>{el.scrollTop=el.scrollHeight});const position=await grid.evaluate(el=>el.scrollTop);expect(position).toBeGreaterThan(100);
+ const url=page.url();await navigateArchive(page,'尘世文卷');const before=requests;
+ await watchWarmEntry(page,'museum');await navigateArchive(page,'万象集录');await expect(page.locator('.museum-card')).toHaveCount(24);
+ expect(page.url()).toBe(url);await expect.poll(()=>grid.evaluate(el=>el.scrollTop)).toBe(position);await expectNoWarmFlash(page);expect(requests).toBe(before);
 });

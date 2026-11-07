@@ -534,3 +534,26 @@ test('free credits: a failed BSC QR keeps the full address and manual copy avail
  await expect(dialog.getByRole('button',{name:'复制地址',exact:true})).toBeVisible();
  await expect(dialog.getByRole('link',{name:'保存 BSC 二维码',exact:true})).toHaveCount(0);
 });
+
+test('account: identity reset skips a captured private view and invalidates its delayed navigation callback',async({page})=>{
+ const state=await setup(page,{email:'alice@example.test'});await seedHistory(page);await page.reload();
+ await navigation(page,'Alice 私有对话');await expect(page.locator('.markdown')).toContainText('Alice 私有对话私有正文');
+ await expect(page.locator('html')).not.toHaveAttribute('data-terminal-transition','true');
+ await page.route('**/api/library?*',r=>r.fulfill({json:{items:[],total:0,page:1,pageSize:24,snapshotId:'account-fixture'}}));
+ await page.evaluate(()=>{
+  const original=document.startViewTransition.bind(document),state={starts:0,skips:0,callbacks:0};let release!:()=>void;
+  const gate=new Promise<void>(resolve=>{release=resolve});Object.assign(window,{privateTransitionState:state,releasePrivateTransition:release});
+  document.startViewTransition=function(callback){
+   state.starts++;const active=original(async()=>{await gate;state.callbacks++;await (callback as ()=>void|Promise<void>)()});
+   const skip=active.skipTransition.bind(active);active.skipTransition=()=>{state.skips++;skip()};return active;
+  };
+ });
+ await navigation(page,'尘世文卷');
+ const reads=state.accountReads;state.email='';await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect.poll(()=>state.accountReads).toBeGreaterThan(reads);
+ await expect.poll(()=>page.evaluate(()=>(window as unknown as {privateTransitionState:{starts:number;skips:number}}).privateTransitionState.skips)).toBe(1);
+ expect(await page.evaluate(()=>(window as unknown as {privateTransitionState:{starts:number}}).privateTransitionState.starts)).toBe(1);
+ await expect(page.locator('main')).toHaveClass('main home');await expect(page.locator('.markdown')).toHaveCount(0);await expect(page.locator('html')).not.toHaveAttribute('data-terminal-transition','true');
+ await page.evaluate(()=>(window as unknown as {releasePrivateTransition:()=>void}).releasePrivateTransition());
+ await expect.poll(()=>page.evaluate(()=>(window as unknown as {privateTransitionState:{callbacks:number}}).privateTransitionState.callbacks)).toBe(1);
+ await expect(page.locator('main')).toHaveClass('main home');await expect(page.locator('.library-scroll')).toHaveCount(0);await expect(page.locator('.sidebar .history-row')).toHaveCount(0);
+});

@@ -1,6 +1,7 @@
 'use client';
 
 import {useCallback,useEffect,useLayoutEffect,useRef,useState} from 'react';
+import {archiveDetailKey,type PublicResponseCache} from '../lib/archive-session';
 import {motion,useReducedMotion} from 'motion/react';
 import {ArrowLeft,ArrowUp,BookOpen,Database,FileText,MagnifyingGlass,Sparkle,X} from '@phosphor-icons/react';
 import type {Citation,ContentType,DocumentResult,LibraryResult,Locale} from '../lib/contracts';
@@ -11,6 +12,7 @@ import {LibraryCard,LibraryReader} from './library-record';
 import {Ornament,Scene} from './ui';
 
 interface Props{
+ scrollPositions?:PublicResponseCache<number>;listKey?:string;
  locale:Locale;query:string;onQuery:(value:string)=>void;
  type:ContentType|'';onType:(value:ContentType|'')=>void;
  page:number;onPage:(value:number)=>void;
@@ -21,9 +23,10 @@ interface Props{
 }
 
 export function LibraryWorkspace(props:Props){
- const {locale,query,onQuery,type,onType,page,onPage,library,busy,error,onRetry,onStatus,record,documentBusy,onBack,onOpen,onSource,selection,onSelection,onAsk}=props;
+ const {scrollPositions,listKey='list',locale,query,onQuery,type,onType,page,onPage,library,busy,error,onRetry,onStatus,record,documentBusy,onBack,onOpen,onSource,selection,onSelection,onAsk}=props;
  const zh=locale==='zh-CN',t=text(locale),reduced=useReducedMotion();
  const scroll=useRef<HTMLDivElement>(null),assistant=useRef<HTMLElement>(null),listPosition=useRef(0);
+ const positionKey=record?archiveDetailKey(record.document.language,record.snapshotId,record.document.id):listKey;
  const [compact,setCompact]=useState(false);
  const updateCompact=useCallback(()=>{
   const viewport=scroll.current,heading=viewport?.querySelector('.reading-heading');
@@ -31,9 +34,10 @@ export function LibraryWorkspace(props:Props){
   setCompact(Boolean(viewport&&heading&&header&&heading.getBoundingClientRect().bottom<=viewport.getBoundingClientRect().top+header.clientHeight));
  },[]);
  useLayoutEffect(()=>{
-  if(scroll.current)scroll.current.scrollTop=record?0:listPosition.current;
+  if(busy||documentBusy)return;
+  if(scroll.current)scroll.current.scrollTop=scrollPositions?(scrollPositions.get(positionKey)??0):(record?0:listPosition.current);
   updateCompact();
- },[record?.document.id,updateCompact]);
+ },[positionKey,busy,documentBusy,scrollPositions,updateCompact]);
  useLayoutEffect(()=>{
   if(!selection||!scroll.current)return;
   const selected=window.getSelection();if(!selected?.rangeCount)return;
@@ -62,7 +66,7 @@ export function LibraryWorkspace(props:Props){
    <h2 title={title}>{title}</h2>
    <button className="reader-talk" onClick={showAssistant} aria-label={talkLabel}><Sparkle size={20}/><span>{talkLabel}</span></button>
   </motion.header>}
-  <div className="library-scroll" ref={scroll} onScroll={()=>{if(!record&&!documentBusy)listPosition.current=scroll.current?.scrollTop||0;updateCompact()}}>
+  <div className="library-scroll" ref={scroll} onScroll={()=>{if(!busy&&!documentBusy){const top=scroll.current?.scrollTop||0;scrollPositions?.set(positionKey,top);if(!record)listPosition.current=top}updateCompact()}}>
    <div className="library-cover"><Scene/></div>
    {!record&&<div className="library-toolbar"><div><h1>{t.library}</h1><p className="library-intro">{zh?'翻开一本书，重温一段旅途。按类别浏览，或搜索记忆中的名字与句子。':'Open a book. Revisit a journey. Browse by category, or search a name or a remembered line.'}</p></div>
     <label className="search"><MagnifyingGlass size={21}/><input aria-label={t.search} placeholder={t.search} value={query} onChange={e=>onQuery(e.target.value)}/></label>

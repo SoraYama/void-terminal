@@ -434,3 +434,18 @@
  .main.home:has(.credit-shortage,.home-error){overflow-y:auto}
  .main.home:has(.credit-shortage,.home-error) .hero{margin-top:clamp(76px,14dvh,110px)}
 }
+
+/* Capture only the main workspace. The sidebar remains live during navigation. */
+:root[data-terminal-transition]{view-transition-name:none}
+:root[data-terminal-transition] .main{view-transition-name:terminal-main}
+:root[data-terminal-transition]::view-transition{pointer-events:none}
+::view-transition-group(terminal-main){animation-duration:180ms}
+::view-transition-old(terminal-main){animation:terminal-main-out 180ms ease both;mix-blend-mode:normal}
+::view-transition-new(terminal-main){animation:terminal-main-in 180ms ease both;mix-blend-mode:normal}
+.main[data-navigation-fade]{animation:terminal-main-in 180ms ease both}
+@keyframes terminal-main-in{from{opacity:0}to{opacity:1}}
+@keyframes terminal-main-out{from{opacity:1}to{opacity:0}}
+@media(prefers-reduced-motion:reduce){
+ .main[data-navigation-fade]{animation:none}
+ ::view-transition-group(terminal-main),::view-transition-old(terminal-main),::view-transition-new(terminal-main){animation:none}
+}
