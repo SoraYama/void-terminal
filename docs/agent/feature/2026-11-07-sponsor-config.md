@@ -2,6 +2,8 @@
 
 # Hosted sponsorship and Turnstile activation preparation
 
+Current status: deployed on 2026-11-07; public Alipay/BSC bytes and the configured UI were verified. The operator completed real device verification; the browser showed 3 daily credits and preserved reserve. This page preserves preparation evidence; see the [production release receipt](../misc/2026-11-07-hosted-release.md).
+
 ## Background
 
 The operator supplied a public BSC recipient, chose USDT/USDC/BNB, authorized a public contact mailbox, selected Alipay and provided an authenticated Cloudflare browser session. This continues the reviewed free-credit feature; it does not deploy the new ledger or enable paid checkout.

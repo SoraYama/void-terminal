@@ -1,4 +1,4 @@
-> **Last updated**: 2026-11-07 (图鉴视觉与缓存验收；发布回归修正旧原文测试的重复请求假设)
+> **Last updated**: 2026-11-07 (官网免费点数/图鉴版本已发布；v3 账本迁移、全邮箱开放与人工加点操作)
 
 # Agent Notes
 
@@ -16,7 +16,7 @@
 
 | Note | Summary |
 | --- | --- |
-| [2026-11-07-sponsor-config](feature/2026-11-07-sponsor-config.md) | 官网BSC地址二维码动态生成/保存，拒绝旧地址与自部署访问；原图/手机/桌面解码一致，支付宝与Turnstile已暂存；线上未变 |
+| [2026-11-07-sponsor-config](feature/2026-11-07-sponsor-config.md) | 官网BSC地址二维码动态生成/保存，拒绝旧地址与自部署访问；原图/手机/桌面解码一致；支付宝及设备配置上线状态见 hosted-release |
 | [2026-11-06-hosted-free](feature/2026-11-06-hosted-free.md) | schema v3 每日 3 点优先、新人 20 点保留、跨午夜预留、Turnstile 与持久设备限流、官网赞助/BSC、自部署无账户流程；外部配置与生产验收分别记录 |
 | [2026-11-06-credit-foundation](feature/2026-11-06-credit-foundation.md) | schema v2 追加式入账、订单与支付幂等核心、独立账本备份恢复 CLI、额度不足草稿及分支恢复；保留历史支付基础，后续已暂停充值并转为免费点数与赞助 |
 | [2026-11-06-deployment-modes](feature/2026-11-06-deployment-modes.md) | 同一镜像运行时选择自部署 BYOK 或官网登录额度；服务端边界、历史隔离、登录草稿和紧凑对话控件；验证与发布证据见记录 |
@@ -61,3 +61,7 @@
 | [2026-10-29-dropdowns](optimize/2026-10-29-dropdowns.md) | Native select popup ignores theme: themed-select.tsx uses shared Radix Select with theme tokens, keyboard/touch, collision handling and settings portals |
 
 ## Misc
+
+| Note | Summary |
+| --- | --- |
+| [2026-11-07-hosted-release](misc/2026-11-07-hosted-release.md) | 47f8745 官网发布、schema v3 备份迁移及旧数据核对；SQLite 只读连接仍需 WAL 辅助文件；全邮箱开放、赞助挂载、grant 人工加点与真实设备验证边界 |
