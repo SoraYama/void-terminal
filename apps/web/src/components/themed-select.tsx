@@ -10,17 +10,18 @@ interface Props {
   options: Option[];
   onValueChange: (value: string) => void;
   variant?: 'composer' | 'settings';
+  archive?: boolean;
 }
 const emptyValue = '__all_sources__';
 
-export function ThemedSelect({label, value, options, onValueChange, variant = 'settings'}: Props) {
+export function ThemedSelect({label, value, options, onValueChange, variant = 'settings', archive = false}: Props) {
   return <Select.Root value={value || emptyValue} onValueChange={next => onValueChange(next === emptyValue ? '' : next)}>
     <Select.Trigger type="button" className={`select-trigger select-${variant}`} aria-label={label}>
       <Select.Value/>
       <Select.Icon className="select-caret"><CaretDown size={16} aria-hidden="true"/></Select.Icon>
     </Select.Trigger>
     <Select.Portal>
-      <Select.Content className="select-menu" position="popper" sideOffset={8} collisionPadding={12} align="start">
+      <Select.Content className={archive?'select-menu select-menu-archive':'select-menu'} position="popper" sideOffset={8} collisionPadding={12} align="start">
         <Select.ScrollUpButton className="select-scroll"><CaretUp size={16} aria-hidden="true"/></Select.ScrollUpButton>
         <Select.Viewport className="select-options">
           {options.map(option => <Select.Item key={option.value} value={option.value || emptyValue} disabled={option.disabled} className="select-option">

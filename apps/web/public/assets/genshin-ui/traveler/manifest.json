@@ -1,0 +1,30 @@
+[
+  {
+    "file": "UI_Gacha_AvatarImg_PlayerBoy.png",
+    "avatarId": 10000005,
+    "iconIdentifier": "UI_AvatarIcon_PlayerBoy",
+    "width": 1920,
+    "height": 1200,
+    "bytes": 470852,
+    "sha256": "eca75e0093c95f6e17739458d44611bfa63b29d71e84b2fb8096e7a8dcd772ef",
+    "gitBlob": "f2744ec3620379dff34220f1ea97b302b41d5077",
+    "repository": "Rollphes/genshin-manager",
+    "commit": "cfea64f3f4afbfb8cf6fd3c35088c78528515ca8",
+    "path": "initImages/UI_Gacha_AvatarImg_PlayerBoy.png",
+    "url": "https://raw.githubusercontent.com/Rollphes/genshin-manager/cfea64f3f4afbfb8cf6fd3c35088c78528515ca8/initImages/UI_Gacha_AvatarImg_PlayerBoy.png"
+  },
+  {
+    "file": "UI_Gacha_AvatarImg_PlayerGirl.png",
+    "avatarId": 10000007,
+    "iconIdentifier": "UI_AvatarIcon_PlayerGirl",
+    "width": 1920,
+    "height": 1200,
+    "bytes": 511500,
+    "sha256": "1e42cd2753417a0cb11fb0057ef29188e97e3877212e7740b52c5d34bd1e4860",
+    "gitBlob": "b0b7f3571e4115744568b2da9cbefdbe03a2bead",
+    "repository": "Rollphes/genshin-manager",
+    "commit": "cfea64f3f4afbfb8cf6fd3c35088c78528515ca8",
+    "path": "initImages/UI_Gacha_AvatarImg_PlayerGirl.png",
+    "url": "https://raw.githubusercontent.com/Rollphes/genshin-manager/cfea64f3f4afbfb8cf6fd3c35088c78528515ca8/initImages/UI_Gacha_AvatarImg_PlayerGirl.png"
+  }
+]

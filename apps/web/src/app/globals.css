@@ -449,3 +449,8 @@
  .main[data-navigation-fade]{animation:none}
  ::view-transition-group(terminal-main),::view-transition-old(terminal-main),::view-transition-new(terminal-main){animation:none}
 }
+
+/* Archive typography; decorative module titles keep their own display fonts. */
+:root{--archive-font:ArchiveUI,var(--font)}
+.character-workspace,.museum-workspace,.museum-mobile-detail,.library-content,.library-toolbar .search,.library-filters,.select-menu-archive{font-family:var(--archive-font);font-weight:500}
+.character-stat-list dd,.character-talent-meta dd,.character-talent-values dd,.museum-stats dd,.museum-substats dd,.museum-cost strong{font-variant-numeric:tabular-nums;font-weight:600}

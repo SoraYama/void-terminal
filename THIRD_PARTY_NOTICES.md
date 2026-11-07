@@ -55,9 +55,17 @@ audio format. The full voice corpus is not downloaded or bundled with the code.
 Credit belongs to the game's creators, performers and the dataset maintainer;
 the dataset's availability does not change underlying game-content rights.
 
-## Navigation and seven-element icons
+Two local portrait supplements are original Genshin Impact artwork mirrored by
+[Rollphes/genshin-manager](https://github.com/Rollphes/genshin-manager/tree/cfea64f3f4afbfb8cf6fd3c35088c78528515ca8/initImages),
+commit `cfea64f3f4afbfb8cf6fd3c35088c78528515ca8`. The
+[Traveler portrait manifest](apps/web/public/assets/genshin-ui/traveler/manifest.json)
+records the matching Avatar identities, original paths, dimensions, Git blobs
+and SHA-256 hashes. These supplements are separate from snapshot media coverage
+and retain the underlying game-content rights.
 
-The three module navigation icons and seven elemental symbols are unmodified
+## Navigation, element, property and rarity sprites
+
+The module navigation, element, character property and rarity sprites are unmodified
 original Genshin Impact UI sprites from the community mirror
 [PathOfGenshin/resources](https://github.com/PathOfGenshin/resources/tree/015a2493b5672b28576ab78ffbcffde2ea0c9844/resources/gi/Sprite),
 commit `015a2493b5672b28576ab78ffbcffde2ea0c9844`. Original filenames, source URLs,
@@ -65,6 +73,14 @@ dimensions and verified hashes are recorded in
 [the asset manifest](apps/web/public/assets/genshin-ui/manifest.json).
 They remain miHoYo / HoYoverse game artwork; the mirror's software license and
 this project's MIT license do not grant rights to the underlying images.
+
+## Archive typography
+
+Noto Sans SC variable font subsets are distributed under the
+[SIL Open Font License 1.1](apps/web/public/assets/fonts/archive/OFL.txt).
+The `ArchiveUI` CSS family points to the original self-hosted WOFF2 bytes.
+The [font manifest](apps/web/public/assets/fonts/archive/manifest.json) lists the
+source CSS, upstream subset URLs, sizes and SHA-256 hashes.
 
 ## Software and model dependencies
 

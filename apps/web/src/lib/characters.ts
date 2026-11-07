@@ -1,4 +1,5 @@
 import type {Locale,Provenance} from './contracts';
+import travelerPortraits from '../../public/assets/genshin-ui/traveler/manifest.json';
 export const elements=['Fire','Water','Wind','Electric','Ice','Rock','Grass'] as const;
 export const characterWeapons=['WEAPON_SWORD_ONE_HAND','WEAPON_CLAYMORE','WEAPON_POLE','WEAPON_CATALYST','WEAPON_BOW'] as const;
 export const audioLocales=['zh-CN','en','ja','ko'] as const;
@@ -29,6 +30,17 @@ export function characterUrl(q:CharacterQuery){const p=characterListQuery(q,'zh-
 export function allowedCharacterImage(media:CharacterMedia):string|null {
  if(media.status!=='verified'||media.verification!=='image-header'||!media.url||!/^(?:UI|Skill)_[A-Za-z0-9_]+$/.test(media.identifier))return null;
  return media.url===`https://gi.yatta.moe/assets/UI/${media.identifier}.png`?media.url:null;
+}
+type PortraitRecord=Pick<Character,'id'|'avatarId'|'portrait'>&{icon:Pick<CharacterMedia,'identifier'>};
+export function resolveCharacterPortrait(character:PortraitRecord,failed?:ReadonlySet<string>){
+ const supplement=travelerPortraits.find(asset=>character.id===`avatar:${asset.avatarId}`&&character.avatarId===asset.avatarId&&character.icon.identifier===asset.iconIdentifier)||null;
+ const primary=allowedCharacterImage(character.portrait);
+ if(primary&&!failed?.has(primary))return {kind:'snapshot' as const,src:primary,supplement};
+ if(supplement){
+  const src=`/assets/genshin-ui/traveler/${supplement.file}`;
+  if(!failed?.has(src))return {kind:'supplement' as const,src,supplement};
+ }
+ return {kind:'missing' as const,src:null,supplement};
 }
 export function voiceUrl(media:CharacterMedia|undefined,character:string,voice:string,locale:AudioLocale,snapshot:string,language:Locale):string|null {
  if(!snapshot||!/^avatar:[0-9]{1,16}$/.test(character)||!/^[A-Za-z0-9_-]{1,100}$/.test(voice)||!audioLocales.includes(locale)||media?.status!=='verified'||media.verification!=='archive-index'||media.provider!=='genshin-voice'||media.url!==`/api/characters/${character}/voices/${voice}?audioLanguage=${locale}`)return null;

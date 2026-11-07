@@ -19,11 +19,13 @@ const ayaka:Character={
 };
 const nahida:Character={...ayaka,id:'avatar:10000073',avatarId:10000073,name:'纳西妲',title:'白草净华',element:'Grass',elementName:'草',region:'须弥',forms:[{...ayaka.forms[0],id:'7301',name:'草',element:'Grass',elementName:'草'}],voices:[]};
 const traveler:Character={...ayaka,id:'avatar:10000005',avatarId:10000005,name:'旅行者',title:'远行之人',element:'Wind',elementName:'风',forms:[{...ayaka.forms[0],id:'501',name:'风',element:'Wind',elementName:'风'},{...ayaka.forms[0],id:'502',name:'岩',element:'Rock',elementName:'岩'},{...ayaka.forms[0],id:'503',name:'未记录元素',element:'',elementName:''}],voices:[]};
+const travelerPortraitUrl='https://gi.yatta.moe/assets/UI/UI_Gacha_AvatarImg_PlayerBoy.png';
+const travelerWithPortrait:Character={...traveler,element:null,elementName:'',icon:{...missing,identifier:'UI_AvatarIcon_PlayerBoy'},portrait:{identifier:'UI_Gacha_AvatarImg_PlayerBoy',url:travelerPortraitUrl,status:'verified',verification:'image-header'},coverage:{...traveler.coverage,portrait:'complete'}};
 const characters=[ayaka,nahida];
 function wav(){const frames=24000*15,data=Buffer.alloc(44+frames*2);data.write('RIFF');data.writeUInt32LE(data.length-8,4);data.write('WAVEfmt ',8);data.writeUInt32LE(16,16);data.writeUInt16LE(1,20);data.writeUInt16LE(1,22);data.writeUInt32LE(24000,24);data.writeUInt32LE(48000,28);data.writeUInt16LE(2,32);data.writeUInt16LE(16,34);data.write('data',36);data.writeUInt32LE(frames*2,40);return data}
-async function fixture(page:Page,options:{delayAyaka?:boolean;failAudio?:boolean;unbuilt?:boolean;images?:boolean;traveler?:boolean}={}){
+async function fixture(page:Page,options:{delayAyaka?:boolean;failAudio?:boolean;unbuilt?:boolean;images?:boolean;traveler?:boolean;travelerPortrait?:boolean}={}){
  const calls:{audio:number;chat:number;snapshots:string[]}={audio:0,chat:0,snapshots:[]};
- const available=options.traveler?[...characters,traveler]:characters;
+ const available=options.travelerPortrait?[...characters,travelerWithPortrait]:options.traveler?[...characters,traveler]:characters;
  const records=options.images?available.map(c=>{const identifier=c===ayaka?'UI_AvatarIcon_Ayaka':'UI_AvatarIcon_Nahida';return {...c,icon:{identifier,url:`https://gi.yatta.moe/assets/UI/${identifier}.png`,provider:'yatta',status:'verified',verification:'image-header'}}}):available;
  await page.addInitScript(()=>{
   localStorage.setItem('void.preferences',JSON.stringify({theme:'light',locale:'zh-CN',sourceLanguage:'zh-CN',mode:'byok'}));
@@ -48,6 +50,41 @@ async function fixture(page:Page,options:{delayAyaka?:boolean;failAudio?:boolean
 async function choose(page:Page,label:string,option:string){await page.getByRole('combobox',{name:label,exact:true}).click();await page.getByRole('option',{name:option,exact:true}).click()}
 async function openAyaka(page:Page){await page.goto('/characters');await page.locator('.character-card[data-character-id="avatar:10000002"]').click();await expect(page.locator('[data-character-detail] h1')).toHaveText('神里绫华')}
 async function audioState(page:Page){return page.evaluate(()=>((window as unknown as {characterPlayed:HTMLMediaElement[]}).characterPlayed).map(a=>({paused:a.paused,time:a.currentTime,src:a.getAttribute('src')})))}
+
+test('characters: failed verified Traveler portrait uses local art with separate source coverage',async({page})=>{
+ await fixture(page,{travelerPortrait:true});
+ await page.route(travelerPortraitUrl,route=>route.fulfill({status:404,body:'Not found'}));
+ const failed=page.waitForResponse(r=>r.url()===travelerPortraitUrl&&r.status()===404);
+ await page.goto('/characters?character=avatar%3A10000005');
+ await failed;
+ const portrait=page.locator('.character-portrait-stage').getByRole('img',{name:'旅行者',exact:true});
+ await expect(portrait).toHaveAttribute('src','/assets/genshin-ui/traveler/UI_Gacha_AvatarImg_PlayerBoy.png');
+ await expect.poll(()=>portrait.evaluate(img=>(img as HTMLImageElement).naturalWidth)).toBe(1920);
+ await page.getByRole('button',{name:'来源与覆盖',exact:true}).click();
+ const evidence=page.getByRole('region',{name:'来源与覆盖'});
+ await expect(evidence.locator('dl').getByText('立绘',{exact:true}).locator('..')).toContainText('已覆盖');
+ await expect(evidence.getByRole('link',{name:/UI_Gacha_AvatarImg_PlayerBoy/})).toHaveAttribute('href',/Rollphes\/genshin-manager\/blob\/cfea64f3f4afbfb8cf6fd3c35088c78528515ca8\/initImages\//);
+ await expect(evidence.getByText('补充立绘来源',{exact:true})).toBeVisible();
+});
+
+test('characters: archive fonts and original stat/rarity sprites load locally',async({page})=>{
+ await fixture(page);
+ const loadedSprites=new Set<string>(),fontOrigins=new Set<string>();
+ page.on('response',r=>{if(r.ok()&&r.url().includes('/assets/genshin-ui/'))loadedSprites.add(new URL(r.url()).pathname.split('/').at(-1)!);});
+ page.on('request',r=>{if(r.resourceType()==='font')fontOrigins.add(new URL(r.url()).origin)});
+ await openAyaka(page);
+ const stats=page.locator('.character-stat-list'),hp=stats.locator('dt').filter({hasText:'基础生命值'});
+ await expect(hp.locator('[aria-hidden=true]')).toBeVisible();
+ await expect(stats.getByText('12,858',{exact:true})).toBeVisible();
+ await expect.poll(()=>[...loadedSprites]).toEqual(expect.arrayContaining(['UI_Icon_MaxHp.png','UI_Icon_Critical.png','UI_IconStar.png']));
+ await expect(hp).toHaveCSS('font-family',/ArchiveUI/);
+ const loadedFonts=await page.evaluate(async()=>{
+  await document.fonts.ready;
+  return [...document.fonts].filter(f=>f.family.replaceAll('"','')==='ArchiveUI'&&f.status==='loaded').length;
+ });
+ expect(loadedFonts).toBeGreaterThan(0);
+ expect([...fontOrigins]).toEqual([new URL(page.url()).origin]);
+});
 
 test('characters: stats, talents, narrative branches and same-snapshot cultivation',async({page},info)=>{
  const calls=await fixture(page);await openAyaka(page);

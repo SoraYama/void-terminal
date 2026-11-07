@@ -1,5 +1,36 @@
 import {describe,it,expect} from 'vitest';
-import {readCharacterQuery,characterUrl,allowedCharacterImage,voiceUrl,defaultLevel,formatCharacterStat,orderedCharacterStats,materialTotals} from '../src/lib/characters';
+import {readCharacterQuery,characterUrl,allowedCharacterImage,voiceUrl,defaultLevel,formatCharacterStat,orderedCharacterStats,materialTotals,resolveCharacterPortrait} from '../src/lib/characters';
+
+const boy={id:'avatar:10000005',avatarId:10000005,icon:{identifier:'UI_AvatarIcon_PlayerBoy'},portrait:{identifier:'UI_Gacha_AvatarImg_PlayerBoy',url:null,status:'missing'}};
+const girl={...boy,id:'avatar:10000007',avatarId:10000007,icon:{identifier:'UI_AvatarIcon_PlayerGirl'}};
+const boySupplement='/assets/genshin-ui/traveler/UI_Gacha_AvatarImg_PlayerBoy.png';
+const girlSupplement='/assets/genshin-ui/traveler/UI_Gacha_AvatarImg_PlayerGirl.png';
+
+describe('Traveler portrait presentation',()=>{
+ it('uses the corresponding local art only for exact matching record, avatar ID and icon',()=>{
+  expect(resolveCharacterPortrait(boy)).toMatchObject({kind:'supplement',src:boySupplement});
+  expect(resolveCharacterPortrait(girl)).toMatchObject({kind:'supplement',src:girlSupplement});
+  for(const patch of [{id:'avatar:10000007'},{avatarId:10000007},{icon:girl.icon}]){
+   expect(resolveCharacterPortrait({...boy,...patch})).toEqual({kind:'missing',src:null,supplement:null});
+  }
+ });
+ it('prefers an allowed verified snapshot portrait, then uses the local art on failure',()=>{
+  const url='https://gi.yatta.moe/assets/UI/UI_Gacha_AvatarImg_PlayerBoy.png';
+  const verified={...boy,portrait:{...boy.portrait,url,status:'verified',verification:'image-header'}};
+  expect(resolveCharacterPortrait(verified)).toMatchObject({kind:'snapshot',src:url});
+  expect(resolveCharacterPortrait(verified,new Set([url]))).toMatchObject({kind:'supplement',src:boySupplement});
+  expect(resolveCharacterPortrait(verified,new Set([url,boySupplement]))).toMatchObject({kind:'missing',src:null});
+  expect(resolveCharacterPortrait({...verified,portrait:{...verified.portrait,url:'https://example.org/portrait.png'}})).toMatchObject({kind:'supplement',src:boySupplement});
+ });
+ it('reports the supplement separately and does not modify or broaden snapshot media verification',()=>{
+  const record=Object.freeze({...boy,portrait:Object.freeze(boy.portrait),coverage:Object.freeze({portrait:'upstream-missing'})});
+  const {supplement}=resolveCharacterPortrait(record);
+  expect(supplement).toMatchObject({repository:'Rollphes/genshin-manager',commit:'cfea64f3f4afbfb8cf6fd3c35088c78528515ca8',path:'initImages/UI_Gacha_AvatarImg_PlayerBoy.png'});
+  expect(record.coverage.portrait).toBe('upstream-missing');
+  expect(record.portrait).toMatchObject({status:'missing',url:null});
+  expect(allowedCharacterImage({...record.portrait,url:boySupplement,status:'verified',verification:'image-header'})).toBeNull();
+ });
+});
 
 describe('character archive identity and display',()=>{
  it('rejects malformed deep links and retains exact form/tab/snapshot',()=>{

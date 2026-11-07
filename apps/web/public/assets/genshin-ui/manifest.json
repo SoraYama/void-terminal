@@ -91,6 +91,87 @@
       "gitBlob": "94862337f94664a8389f48edae7f2fc7fd71d0bd",
       "sha256": "8fd0982d01bc62a794fdb0d6d0b0f3cca282683e13aadf269f684ea20c9687fe",
       "url": "https://raw.githubusercontent.com/PathOfGenshin/resources/015a2493b5672b28576ab78ffbcffde2ea0c9844/resources/gi/Sprite/UI_Icon_Element_Grass.png"
+    },
+    {
+      "file": "UI_IconStar.png",
+      "width": 80,
+      "height": 80,
+      "bytes": 1524,
+      "gitBlob": "ff57b468e7d7e562b998e8345ad48557902616aa",
+      "sha256": "46bb4e680458acb7cab773779c04785f95f7da3562e8bd341e27e7204fe4ca16",
+      "url": "https://raw.githubusercontent.com/PathOfGenshin/resources/015a2493b5672b28576ab78ffbcffde2ea0c9844/resources/gi/Sprite/UI_IconStar.png"
+    },
+    {
+      "file": "UI_Icon_ChargeEfficiency.png",
+      "width": 32,
+      "height": 32,
+      "bytes": 469,
+      "gitBlob": "f372490e154a1e8ee5c1489dae52bbed603ad852",
+      "sha256": "2da0c094e042b080ca4053bd883fa5b4509087520be655d56ca4b7fdcb5ab970",
+      "url": "https://raw.githubusercontent.com/PathOfGenshin/resources/015a2493b5672b28576ab78ffbcffde2ea0c9844/resources/gi/Sprite/UI_Icon_ChargeEfficiency.png"
+    },
+    {
+      "file": "UI_Icon_Critical.png",
+      "width": 32,
+      "height": 32,
+      "bytes": 415,
+      "gitBlob": "4babaf00448ae9c06cf606b7817e8fa099fe5896",
+      "sha256": "c292f3d1efa27fe134a2442fcaf4fe831dcbd4efa793b468236a8788f974c528",
+      "url": "https://raw.githubusercontent.com/PathOfGenshin/resources/015a2493b5672b28576ab78ffbcffde2ea0c9844/resources/gi/Sprite/UI_Icon_Critical.png"
+    },
+    {
+      "file": "UI_Icon_CurAttack.png",
+      "width": 32,
+      "height": 32,
+      "bytes": 313,
+      "gitBlob": "6ac01a201a091707604bd7965789ff70dd51f8ea",
+      "sha256": "7d01a158ea5d3faa742434400814ee3c386b769bb408c95436e37f123c53831f",
+      "url": "https://raw.githubusercontent.com/PathOfGenshin/resources/015a2493b5672b28576ab78ffbcffde2ea0c9844/resources/gi/Sprite/UI_Icon_CurAttack.png"
+    },
+    {
+      "file": "UI_Icon_CurDefense.png",
+      "width": 30,
+      "height": 32,
+      "bytes": 360,
+      "gitBlob": "8c2e2f3230e502a73a7bef02c7178dc9098525d1",
+      "sha256": "948ef2760cd25a190f7b1b83fefbbc0208969849b9edc212f95245fbf9af94cc",
+      "url": "https://raw.githubusercontent.com/PathOfGenshin/resources/015a2493b5672b28576ab78ffbcffde2ea0c9844/resources/gi/Sprite/UI_Icon_CurDefense.png"
+    },
+    {
+      "file": "UI_Icon_Element.png",
+      "width": 32,
+      "height": 32,
+      "bytes": 737,
+      "gitBlob": "cbd0d7e8373ea132522054db9fb76367b0d700d9",
+      "sha256": "bb3caa5a99c747599a75f7597d0f4f73c736ab38516f46617760c797691239b0",
+      "url": "https://raw.githubusercontent.com/PathOfGenshin/resources/015a2493b5672b28576ab78ffbcffde2ea0c9844/resources/gi/Sprite/UI_Icon_Element.png"
+    },
+    {
+      "file": "UI_Icon_Heal.png",
+      "width": 32,
+      "height": 32,
+      "bytes": 213,
+      "gitBlob": "4bf7c131c30950992eedb2d10a3e3c39891ad06b",
+      "sha256": "d55b2c87e72ce967a3ccffbaa009b3463e02c7f97a3b363e1dc85ac3588ee5d2",
+      "url": "https://raw.githubusercontent.com/PathOfGenshin/resources/015a2493b5672b28576ab78ffbcffde2ea0c9844/resources/gi/Sprite/UI_Icon_Heal.png"
+    },
+    {
+      "file": "UI_Icon_MaxHp.png",
+      "width": 28,
+      "height": 32,
+      "bytes": 606,
+      "gitBlob": "5ea56af82409ec7f754f5f4d2336395413962a54",
+      "sha256": "5b173ee7f061a824acadbc05c2b39115ef555c65200a003a05666c35fc69634d",
+      "url": "https://raw.githubusercontent.com/PathOfGenshin/resources/015a2493b5672b28576ab78ffbcffde2ea0c9844/resources/gi/Sprite/UI_Icon_MaxHp.png"
+    },
+    {
+      "file": "UI_Icon_PhysicalAttackUp.png",
+      "width": 32,
+      "height": 32,
+      "bytes": 451,
+      "gitBlob": "dcbc9443b7e76ef5f0355d1d2e811ab21653a16d",
+      "sha256": "b0787e6a1ccd7465c7b2b86dc11bbd7f15d64734dc2091fe5dc8cea847ac3878",
+      "url": "https://raw.githubusercontent.com/PathOfGenshin/resources/015a2493b5672b28576ab78ffbcffde2ea0c9844/resources/gi/Sprite/UI_Icon_PhysicalAttackUp.png"
     }
   ]
 }
