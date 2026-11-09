@@ -1,0 +1,29 @@
+.archive-skeleton,.archive-pending-value{
+ --archive-placeholder:color-mix(in srgb,var(--c-ink,var(--museum-ink)) 11%,transparent);
+ background:var(--archive-placeholder);
+ border-radius:4px;
+}
+.archive-skeleton{display:inline-block;max-inline-size:100%;vertical-align:middle}
+.character-workspace .archive-control-placeholder,.museum-workspace .archive-control-placeholder,.museum-mobile-detail .archive-control-placeholder{
+ display:inline-flex;
+ align-items:center;
+ background:var(--archive-placeholder);
+ border-color:transparent;
+}
+.archive-control-placeholder::before{
+ content:'';
+ display:block;
+ inline-size:44%;
+ block-size:.65em;
+ margin-inline-start:12px;
+ border-radius:3px;
+ background:var(--archive-placeholder);
+}
+.archive-pending-value{
+ display:inline-block;
+ min-inline-size:5ch;
+ padding-inline:.45em;
+ text-align:right;
+ color:var(--c-muted,var(--museum-muted));
+ font-variant-numeric:tabular-nums;
+}

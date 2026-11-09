@@ -1,17 +1,18 @@
 'use client';
 import {useState,useEffect,useLayoutEffect,useRef,useCallback} from 'react';
-import {MagnifyingGlass,ArrowLeft,ArrowClockwise,CaretLeft,CaretRight} from '@phosphor-icons/react';
+import {MagnifyingGlass,ArrowClockwise,CaretLeft,CaretRight} from '@phosphor-icons/react';
 import {ThemedSelect} from '../themed-select';
 import {Emblem} from '../ui';
 import {archiveDetailKey,resolvedListKey,type ArchiveCache} from '../../lib/archive-session';
 import {request} from '../../lib/client';
 import type {Locale} from '../../lib/contracts';
-import {readCharacterQuery,characterListQuery,characterUrl,elements,characterWeapons,type CharacterQuery,type CharacterResult,type CharacterListResult} from '../../lib/characters';
+import {readCharacterQuery,characterListQuery,characterUrl,elements,characterWeapons,type CharacterQuery,type CharacterResult,type CharacterListResult,type CharacterSummary} from '../../lib/characters';
 import {CharacterImage} from './character-ui';
 import {ElementIcon} from '../game-icons';
 import {CharacterDetail} from './character-detail';
 import {Rarity} from '../museum/item-image';
 import './characters.css';
+const emptyCharacters:CharacterSummary[]=[];
 export interface CharacterWorkspaceProps {cache?:ArchiveCache<CharacterListResult,CharacterResult>;locale:Locale;language:Locale;onOpenDocument:(id:string,snapshot:string)=>void;onAsk:(name:string,id:string,snapshot:string)=>void;onOpenMaterial:(id:string,snapshot:string)=>void}
 export function CharacterWorkspace({locale,language,onOpenDocument,onAsk,onOpenMaterial,cache}:CharacterWorkspaceProps){
  const zh=locale==='zh-CN';
@@ -24,7 +25,7 @@ export function CharacterWorkspace({locale,language,onOpenDocument,onAsk,onOpenM
   const detail=archiveDetailKey(language,query?.snapshotId||list?.snapshotId||'',query?.character||'');
   return {query,key,list,detail,result:cache?.details.get(detail)||null};
  });
- const [query,setQuery]=useState<CharacterQuery|null>(initial.query),[search,setSearch]=useState(initial.query?.q||''),[list,setList]=useState<CharacterListResult|null>(initial.list),[result,setResult]=useState<CharacterResult|null>(initial.result),[loading,setLoading]=useState(!initial.list),[detailLoading,setDetailLoading]=useState(false),[error,setError]=useState(''),[detailError,setDetailError]=useState(''),[retry,setRetry]=useState(0);
+ const [query,setQuery]=useState<CharacterQuery|null>(initial.query),[search,setSearch]=useState(initial.query?.q||''),[list,setList]=useState<CharacterListResult|null>(initial.list),[result,setResult]=useState<CharacterResult|null>(initial.result),[loading,setLoading]=useState(!initial.list),[error,setError]=useState(''),[detailError,setDetailError]=useState<{key:string;message:string}|null>(null),[retry,setRetry]=useState(0);
  const state=useRef(query),scroller=useRef<HTMLDivElement>(null),detailContainer=useRef<HTMLElement>(null),focusId=useRef(''),restoreScroll=useRef<{key:string;top:number}|null>(null),listKey=useRef(initial.key),detailKey=useRef(initial.detail);state.current=query;
  const sourceLanguage=useRef(language);sourceLanguage.current=language;
  const update=useCallback((patch:Partial<CharacterQuery>,replace=false)=>{if(!state.current||window.location.pathname!=='/characters')return;const next={...state.current,...patch};state.current=next;setQuery(next);window.history[replace?'replaceState':'pushState']({...window.history.state,terminalView:'characters'},'',characterUrl(next))},[]);
@@ -38,8 +39,12 @@ export function CharacterWorkspace({locale,language,onOpenDocument,onAsk,onOpenM
   request<CharacterListResult>('/api/characters?'+key,{signal:abort.signal}).then(data=>{if(abort.signal.aborted)return;cache?.lists.set(key,data,[resolvedListKey(key,data.snapshotId)]);accept(data)}).catch(e=>{if(!abort.signal.aborted)setError(e.message)}).finally(()=>{if(!abort.signal.aborted)setLoading(false)});return()=>abort.abort();
  },[key,retry,update,cache]);
  const selected=query?.character||'',snapshot=query?.snapshotId||list?.snapshotId||'',selectedKey=archiveDetailKey(language,snapshot,selected);
- useEffect(()=>{detailKey.current=selectedKey;setDetailError('');const cached=cache?.details.get(selectedKey);setResult(cached||null);setDetailLoading(false);if(cached||!selected||!snapshot)return;const abort=new AbortController();setDetailLoading(true);
-  request<CharacterResult>(`/api/characters/${encodeURIComponent(selected)}?`+new URLSearchParams({language,snapshotId:snapshot}),{signal:abort.signal}).then(data=>{if(!abort.signal.aborted&&data.character.id===selected&&data.character.language===language&&data.snapshotId===snapshot){cache?.details.set(selectedKey,data);setResult(data)}}).catch(e=>{if(!abort.signal.aborted)setDetailError(e.message)}).finally(()=>{if(!abort.signal.aborted)setDetailLoading(false)});return()=>abort.abort();
+ useEffect(()=>{detailKey.current=selectedKey;setDetailError(null);const cached=cache?.details.get(selectedKey);setResult(cached||null);if(cached||!selected||!snapshot)return;const abort=new AbortController();
+  request<CharacterResult>(`/api/characters/${encodeURIComponent(selected)}?`+new URLSearchParams({language,snapshotId:snapshot}),{signal:abort.signal}).then(data=>{
+   if(abort.signal.aborted)return;
+   if(data?.character?.id!==selected||data.character.language!==language||data.snapshotId!==snapshot){setDetailError({key:selectedKey,message:''});return}
+   cache?.details.set(selectedKey,data);setResult(data);
+  }).catch(e=>{if(!abort.signal.aborted)setDetailError({key:selectedKey,message:e.message})});return()=>abort.abort();
  },[selectedKey,selected,snapshot,language,retry,cache]);
  useLayoutEffect(()=>{if(selected||loading||!scroller.current)return;const queued=restoreScroll.current;scroller.current.scrollTop=queued?.key===key?queued.top:(cache?.scroll.get(key)??0);restoreScroll.current=null;if(focusId.current){scroller.current.querySelector<HTMLButtonElement>(`[data-character-id="${focusId.current}"]`)?.focus({preventScroll:true});focusId.current=''}},[selected,loading,key,cache]);
  function filter(patch:Partial<CharacterQuery>){update({...patch,page:1,character:'',form:''});restoreScroll.current=state.current?{key:characterListQuery(state.current,language).toString(),top:0}:null;scroller.current?.scrollTo(0,0)}
@@ -49,9 +54,9 @@ export function CharacterWorkspace({locale,language,onOpenDocument,onAsk,onOpenM
  const currentList=cache?.lists.get(key)||(list&&listKey.current===key?list:null),listLoading=loading&&!currentList;
  const detailScrollKey=query?JSON.stringify([language,characterUrl(query)]):'';
  useLayoutEffect(()=>{const element=detailContainer.current?.querySelector('.character-section-content');if(element&&currentResult)element.scrollTop=cache?.scroll.get(detailScrollKey)??0},[currentResult,detailScrollKey,cache]);
- const selectedError=detailError||(!snapshot?error:'');
+ const selectedError=detailError?.key===selectedKey?(detailError.message||(zh?'返回的角色资料与当前选择不一致。':'The response did not match the selected character.')):(!snapshot?error:'');
  if(selected&&query)return <section ref={detailContainer} onScrollCapture={e=>{const element=e.target;if(window.location.pathname==='/characters'&&element instanceof HTMLElement&&element.classList.contains('character-section-content'))cache?.scroll.set(detailScrollKey,element.scrollTop)}} className="character-workspace character-open" aria-label={zh?'群星图鉴':'Character Archive'}>
-  {currentResult?<CharacterDetail key={`${selectedKey}:${query.form}`} result={currentResult} query={query} locale={locale} language={language} characters={currentList?.characters||[]} onUpdate={update} onBack={back} onOpenDocument={onOpenDocument} onAsk={onAsk} onOpenMaterial={onOpenMaterial}/>:<div className="character-state"><button onClick={back}><ArrowLeft size={20}/>{zh?'返回图鉴':'Back to archive'}</button>{selectedError?<><h2>{zh?'角色资料暂时无法读取':'Character details could not be loaded'}</h2><p role="alert">{selectedError}</p><button onClick={()=>setRetry(n=>n+1)}><ArrowClockwise size={18}/>{zh?'重试':'Retry'}</button></>:<><Emblem/><p role="status">{detailLoading?(zh?'正在读取角色资料…':'Reading character records…'):(zh?'正在确认快照…':'Resolving snapshot…')}</p></>}</div>}
+  <CharacterDetail result={currentResult} recordKey={selectedKey} error={selectedError} onRetry={()=>setRetry(n=>n+1)} query={query} locale={locale} language={language} characters={currentList?.snapshotId===snapshot?currentList.characters:emptyCharacters} onUpdate={update} onBack={back} onOpenDocument={onOpenDocument} onAsk={onAsk} onOpenMaterial={onOpenMaterial}/>
  </section>;
  return <section className="character-workspace" aria-label={zh?'群星图鉴':'Character Archive'}>
   <header className="character-archive-heading"><Emblem/><div><h1>{zh?'群星图鉴':'Character Archive'}</h1><p>{zh?'与旅途中的群星重逢':'Meet the characters of the journey'}</p></div></header>

@@ -129,6 +129,29 @@ test('characters: browser back cancels a slower character response',async({page}
  await expect(page.locator('[data-character-detail] h1')).toHaveText('纳西妲');await page.waitForTimeout(500);await expect(page.locator('[data-character-detail] h1')).toHaveText('纳西妲');
 });
 
+test('characters: a slow switch keeps the focused avatar and reserves the stat values',async({page},info)=>{
+ await fixture(page);
+ let release!:()=>void;
+ const pending=new Promise<void>(resolve=>{release=resolve});
+ await page.route('**/api/characters/avatar%3A10000002?*',async route=>{await pending;await route.fallback()});
+ await page.goto('/');
+ await navigateArchive(page,'群星图鉴');
+ await page.locator('.character-card[data-character-id="avatar:10000073"]').click();
+ await expect(page.locator('[data-character-detail] h1')).toHaveText('纳西妲');
+ const avatar=page.locator('.character-avatar-strip [data-character-id="avatar:10000002"]');
+ try{
+  await avatar.focus();
+  await avatar.press('Enter');
+  await expect(avatar).toBeFocused();
+  await expect(avatar).toHaveAttribute('aria-pressed','true');
+  await expect(page.getByRole('heading',{name:'神里绫华',exact:true})).toBeVisible();
+  await expect(page.locator('.character-stat-list dd').first()).toHaveText('—');
+  await page.screenshot({path:info.outputPath('character-pending.png'),scale:'css',animations:'disabled'});
+ }finally{release()}
+ await expect(page.locator('.character-stat-list dd').first()).toHaveText('12,858');
+ await expect(avatar).toBeFocused();
+});
+
 test('characters: preparing a question preserves an existing unsent draft',async({page},info)=>{
  const calls=await fixture(page);await page.goto('/');await page.locator('#question').fill('保留我的旧草稿');
  if(info.project.name==='mobile')await page.getByRole('button',{name:'Menu',exact:true}).click();

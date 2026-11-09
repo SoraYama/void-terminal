@@ -1,4 +1,4 @@
-> **Last updated**: 2026-11-07 (官网免费点数/图鉴版本已发布；v3 账本迁移、全邮箱开放与人工加点操作)
+> **Last updated**: 2026-11-09 (群星图鉴与万象集录详情切换骨架)
 
 # Agent Notes
 
@@ -37,6 +37,7 @@
 
 | Note | Summary |
 | --- | --- |
+| [2026-11-09-archive-loading](bugfix/2026-11-09-archive-loading.md) | 群星图鉴和万象集录的详情慢请求原先切到独立读取/空状态；保留头像条、返回键及已知摘要，按详情布局占位，数值先显示「—」 |
 | [2026-11-06-mobile-hero-title](bugfix/2026-11-06-mobile-hero-title.md) | 首页中文标题在 iPhone Safari 上显示白块；将 RGB 亮度遮罩预先转成透明 PNG，保留字形、响应式尺寸和高对比度文字 |
 | [2026-11-06-rehearsal-revalidate](bugfix/2026-11-06-rehearsal-revalidate.md) | 每日刷新使通过的演练凭据过期；同源不可变候选在新目录完整重验，保留旧报告，重新审计当前基线 |
 | [2026-11-05-sidebar-history](bugfix/2026-11-05-sidebar-history.md) | 第四个导航入口导致手机历史列表 flex 压缩为 0px；保留 88px 可点击空间，由侧栏外层滚动 |

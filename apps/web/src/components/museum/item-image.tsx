@@ -1,6 +1,7 @@
 'use client';
 import {useState} from 'react';
 import {Sword,Flower,Leaf,CookingPot,Scroll,Compass,Package} from '@phosphor-icons/react';
+import {ArchiveSkeleton} from '../archive-skeleton';
 import {RarityStar} from '../game-icons';
 import {allowedItemImage,type ItemSummary,type ItemCategory} from '../../lib/items';
 export const categoryIcons={weapon:Sword,artifact:Flower,material:Leaf,food:CookingPot,quest:Scroll,gadget:Compass,other:Package};
@@ -8,6 +9,6 @@ export const categoryNames:Record<ItemCategory,[string,string]>={weapon:['武器
 export function ItemImage({item,zh,large=false}:{item:ItemSummary;zh:boolean;large?:boolean}){
  const url=allowedItemImage(item.icon),[failed,setFailed]=useState<string|null>(null),[loaded,setLoaded]=useState<string|null>(null),Icon=categoryIcons[item.category]||Package;
  const available=!!url&&failed!==url;
- return <div className={'museum-image'+(large?' large':'')} data-rarity={item.rarity||1}>{available&&<img src={url} alt={item.name} loading={large?'eager':'lazy'} decoding="async" referrerPolicy="no-referrer" onLoad={()=>setLoaded(url)} onError={()=>setFailed(url)}/>} {(!available||loaded!==url)&&<span className="museum-image-missing"><Icon size={large?60:34} weight="duotone"/><span>{available?(zh?'图片载入中':'Loading image'):(zh?'图片暂缺':'Image unavailable')}</span></span>}</div>;
+ return <div className={'museum-image'+(large?' large':'')} data-rarity={item.rarity||1}>{available&&<img src={url} alt={item.name} loading={large?'eager':'lazy'} decoding="async" referrerPolicy="no-referrer" onLoad={()=>setLoaded(url)} onError={()=>setFailed(url)}/>} {(!available||loaded!==url)&&(available&&large?<ArchiveSkeleton className="museum-image-pending" width="96px" height="96px"/>:<span className="museum-image-missing"><Icon size={large?60:34} weight="duotone"/><span>{available?(zh?'图片载入中':'Loading image'):(zh?'图片暂缺':'Image unavailable')}</span></span>)}</div>;
 }
 export function Rarity({value,zh}:{value:number|null;zh:boolean}){return value?<span className="museum-rarity" role="img" aria-label={`${value}${zh?'星':value===1?' star':' stars'}`}>{Array.from({length:value},(_,i)=><RarityStar key={i}/>)}</span>:null}

@@ -1,42 +1,105 @@
 'use client';
-import {useState,useEffect,useRef} from 'react';
-import {ArrowLeft,BookOpen,ChatCircle,ArrowSquareOut} from '@phosphor-icons/react';
+import {useState,useLayoutEffect,useRef,type ReactNode} from 'react';
+import {ArrowLeft,ArrowClockwise,BookOpen,ChatCircle,ArrowSquareOut} from '@phosphor-icons/react';
+import {ArchiveSkeleton,ArchivePendingValue} from '../archive-skeleton';
 import {ThemedSelect} from '../themed-select';
 import {Rarity} from '../museum/item-image';
 import type {Locale} from '../../lib/contracts';
 import {defaultLevel,formatCharacterStat,orderedCharacterStats,readableCharacterText,resolveCharacterPortrait,type CharacterResult,type CharacterSummary,type CharacterQuery,type CharacterForm} from '../../lib/characters';
 import {CharacterStatIcon,ElementIcon} from '../game-icons';
-import {CharacterImage,CharacterPortrait,CharacterTabs,CharacterText} from './character-ui';
+import {CharacterImage,CharacterPortrait,CharacterPortraitPlaceholder,CharacterTabs,CharacterText} from './character-ui';
 import {CharacterVoices,voiceLocaleNames} from './character-voices';
 import {CharacterStories} from './character-narrative';
 import {CharacterCultivation} from './character-materials';
-interface Props {result:CharacterResult;query:CharacterQuery;locale:Locale;language:Locale;characters:CharacterSummary[];onUpdate:(patch:Partial<CharacterQuery>,replace?:boolean)=>void;onBack:()=>void;onOpenDocument:(id:string,snapshot:string)=>void;onAsk:(name:string,id:string,snapshot:string)=>void;onOpenMaterial:(id:string,snapshot:string)=>void}
-export function CharacterDetail({result,query,locale,language,characters,onUpdate,onBack,onOpenDocument,onAsk,onOpenMaterial}:Props){
- const {character,snapshotId}=result,zh=locale==='zh-CN',form=character.forms.find(f=>f.id===query.form)||character.forms[0];
- const [evidence,setEvidence]=useState(false),avatarStrip=useRef<HTMLDivElement>(null);
- useEffect(()=>{avatarStrip.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.scrollIntoView({block:'nearest',inline:'center',behavior:'auto'})},[character.id,characters]);
+interface Props {result:CharacterResult|null;recordKey:string;error:string;onRetry:()=>void;query:CharacterQuery;locale:Locale;language:Locale;characters:CharacterSummary[];onUpdate:(patch:Partial<CharacterQuery>,replace?:boolean)=>void;onBack:()=>void;onOpenDocument:(id:string,snapshot:string)=>void;onAsk:(name:string,id:string,snapshot:string)=>void;onOpenMaterial:(id:string,snapshot:string)=>void}
+export function CharacterDetail(props:Props){
+ const {result,recordKey,error,onRetry,query,locale,characters,onUpdate,onBack}=props,zh=locale==='zh-CN';
+ const character=result?.character;
+ const summary=characters.find(c=>c.id===query.character);
+ const form=character?.forms.find(f=>f.id===query.form)||character?.forms[0];
+ const profile=character||summary,baseIdentity=character||(!query.form?summary:undefined);
+ const element=(form?form.element:baseIdentity?.element)||'',elementName=(form?form.elementName:baseIdentity?.elementName)||'';
+ const identity=<CharacterIdentity character={profile} element={element} elementName={elementName} zh={zh}/>;
+ const avatarStrip=useRef<HTMLDivElement>(null),extra=character&&!summary?character:null;
+ useLayoutEffect(()=>{avatarStrip.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.scrollIntoView({block:'nearest',inline:'center',behavior:'auto'})},[query.character,characters,extra]);
+ return <div className="character-detail" data-element={element} data-character-detail={character?.id}>
+  <header className="character-detail-header">
+   <button className="character-back" aria-label={zh?'返回图鉴':'Back to archive'} onClick={onBack}><ArrowLeft size={23}/><span>{zh?'返回图鉴':'Back to archive'}</span></button>
+   <div ref={avatarStrip} className="character-avatar-strip" aria-label={zh?'当前筛选角色':'Characters in current results'}>
+    {(extra?[extra,...characters]:characters).map(c=><button key={c.id} data-character-id={c.id} aria-label={c.name} aria-pressed={c.id===query.character} onClick={()=>onUpdate({character:c.id,form:''})}><CharacterImage media={c.icon} name={c.name}/></button>)}
+    {!extra&&!characters.length&&Array.from({length:5},(_,i)=><ArchiveSkeleton key={i} className="character-avatar-placeholder" width="46px" height="50px"/>)}
+   </div>
+  </header>
+  {result?<CharacterRecord key={`${recordKey}:${query.form}`} {...props} result={result} form={form} identity={identity}/>:error?<div className="character-state"><h2>{zh?'角色资料暂时无法读取':'Character details could not be loaded'}</h2><p role="alert">{error}</p><button onClick={onRetry}><ArrowClockwise size={18}/>{zh?'重试':'Retry'}</button></div>:<CharacterDetailSkeleton key={recordKey} query={query} locale={locale} onUpdate={onUpdate} identity={identity}/>}
+ </div>;
+}
+function CharacterIdentity({character,element,elementName,zh}:{character?:CharacterSummary;element:string;elementName:string;zh:boolean}){
+ const subtitle=character?[character.title,character.weaponName].filter(Boolean).join(' · '):'';
+ return <div className="character-identity"><div className="character-identity-heading">{element&&<span className="character-identity-element" role="img" aria-label={elementName||element}><ElementIcon element={element}/></span>}<h1 aria-hidden={!character||undefined}>{character?.name||<ArchiveSkeleton width="10rem" height="0.85em"/>}</h1>{character&&<Rarity value={character.rarity} zh={zh}/>}</div>{(subtitle||!character)&&<p>{subtitle||<ArchiveSkeleton width="8rem"/>}</p>}</div>;
+}
+function CharacterSectionTabs({query,zh,onUpdate}:{query:CharacterQuery;zh:boolean;onUpdate:Props['onUpdate']}){
  const tabs=[{value:'attributes' as const,label:zh?'属性':'Attributes'},{value:'constellations' as const,label:zh?'命之座':'Constellations'},{value:'talents' as const,label:zh?'天赋':'Talents'},{value:'info' as const,label:zh?'资料':'Profile'},{value:'cultivation' as const,label:zh?'培养':'Cultivation'}];
- const strip=characters.some(c=>c.id===character.id)?characters:[character,...characters];
- const element=(form?form.element:character.element)||'',elementName=(form?form.elementName:character.elementName)||'';
+ return <CharacterTabs id="character-section" label={zh?'角色资料分区':'Character sections'} items={tabs} value={query.tab} onChange={tab=>onUpdate({tab})} vertical/>;
+}
+type RecordProps=Pick<Props,'query'|'locale'|'language'|'onUpdate'|'onOpenDocument'|'onAsk'|'onOpenMaterial'>&{result:CharacterResult;form:CharacterForm|undefined;identity:ReactNode};
+function CharacterRecord({result,form,identity,query,locale,language,onUpdate,onOpenDocument,onAsk,onOpenMaterial}:RecordProps){
+ const {character,snapshotId}=result,zh=locale==='zh-CN';
+ const [evidence,setEvidence]=useState(false);
  const supplement=evidence?resolveCharacterPortrait(character).supplement:null;
- const subtitle=[character.title,character.weaponName].filter(Boolean).join(' · ');
- const identity=<div className="character-identity"><div className="character-identity-heading">{element&&<span className="character-identity-element" role="img" aria-label={elementName||element}><ElementIcon element={element}/></span>}<h1>{character.name}</h1><Rarity value={character.rarity} zh={zh}/></div>{subtitle&&<p>{subtitle}</p>}</div>;
- return <div className="character-detail" data-element={element} data-character-detail={character.id}>
-  <header className="character-detail-header"><button className="character-back" aria-label={zh?'返回图鉴':'Back to archive'} onClick={onBack}><ArrowLeft size={23}/><span>{zh?'返回图鉴':'Back to archive'}</span></button><div ref={avatarStrip} className="character-avatar-strip" aria-label={zh?'当前筛选角色':'Characters in current results'}>{strip.map(c=><button key={c.id} data-character-id={c.id} aria-label={c.name} aria-pressed={c.id===character.id} onClick={()=>onUpdate({character:c.id,form:''})}><CharacterImage media={c.icon} name={c.name}/></button>)}</div></header>
-  <div className="character-detail-body"><aside className="character-section-menu"><CharacterTabs id="character-section" label={zh?'角色资料分区':'Character sections'} items={tabs} value={query.tab} onChange={tab=>onUpdate({tab})} vertical/>{character.state!=='source-record'&&<div className="character-menu-meta"><span>{character.state==='internal'?(zh?'内部源记录':'Internal source record'):(zh?'未分类源记录':'Unclassified source record')}</span></div>}{character.forms.length>1&&<label className="character-form-select">{zh?'元素形态':'Elemental form'}<ThemedSelect archive label={zh?'元素形态':'Elemental form'} value={form?.id||''} onValueChange={id=>onUpdate({form:id})} options={character.forms.map(f=>({value:f.id,label:`${f.name} · ${f.id}`}))}/></label>}</aside>
+ return <>
+  <div className="character-detail-body"><aside className="character-section-menu"><CharacterSectionTabs query={query} zh={zh} onUpdate={onUpdate}/>{character.state!=='source-record'&&<div className="character-menu-meta"><span>{character.state==='internal'?(zh?'内部源记录':'Internal source record'):(zh?'未分类源记录':'Unclassified source record')}</span></div>}{character.forms.length>1&&<label className="character-form-select">{zh?'元素形态':'Elemental form'}<ThemedSelect archive label={zh?'元素形态':'Elemental form'} value={form?.id||''} onValueChange={id=>onUpdate({form:id})} options={character.forms.map(f=>({value:f.id,label:`${f.name} · ${f.id}`}))}/></label>}</aside>
    <div className="character-content-region">{query.tab!=='attributes'&&identity}
    <div className={'character-section-content '+(query.tab==='attributes'?'attributes':'')} id="character-section-panel" role="tabpanel" aria-labelledby={`character-section-${query.tab}`} tabIndex={0}>
     {query.tab==='attributes'?<>{identity}<CharacterAttributes character={character} form={form} locale={locale}/></>:query.tab==='constellations'?<CharacterConstellations form={form} zh={zh}/>:query.tab==='talents'?<CharacterTalents form={form} zh={zh}/>:query.tab==='cultivation'?<CharacterCultivation character={character} form={form} snapshot={snapshotId} language={language} zh={zh} onOpenMaterial={onOpenMaterial}/>:<div className="character-info"><CharacterTabs id="character-info" label={zh?'角色资料类型':'Profile sections'} value={query.subtab} onChange={subtab=>onUpdate({subtab})} items={[{value:'biography',label:zh?'简介':'Biography'},{value:'stories',label:zh?'故事':'Stories'},{value:'voices',label:zh?'语音':'Voice-overs'}]}/><div id="character-info-panel" role="tabpanel" aria-labelledby={`character-info-${query.subtab}`} tabIndex={0}>{query.subtab==='biography'?<article className="character-reading character-biography"><h2>{character.name}</h2><CharacterText text={character.description}/><dl>{[[zh?'所属':'Affiliation',character.affiliation],[zh?'地区':'Region',character.region],[zh?'生日':'Birthday',character.birthday.month&&character.birthday.day?(zh?`${character.birthday.month}月${character.birthday.day}日`:`${character.birthday.month}/${character.birthday.day}`):''],[zh?'命之座':'Constellation',character.constellationName],...Object.entries(character.cv).map(([l,name])=>[`${voiceLocaleNames[l as keyof typeof voiceLocaleNames]?.[zh?0:1]||l}${zh?'配音':' voice actor'}`,name])].map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value|| (zh?'源数据暂缺':'Not recorded')}</dd></div>)}</dl></article>:query.subtab==='stories'?<CharacterStories stories={character.stories} zh={zh}/>:<CharacterVoices key={`${character.id}:${form?.id}:${locale}`} character={character} snapshot={snapshotId} locale={locale} language={language}/>}</div></div>}
    </div>
    </div>
   </div>
-  <footer className="character-detail-footer"><button disabled={!character.documentIds.length} onClick={()=>onOpenDocument(character.documentIds[0],snapshotId)}><BookOpen size={18}/>{zh?'查看原始文献':'Read original document'}</button><button onClick={()=>onAsk(character.name,character.id,snapshotId)}><ChatCircle size={18}/>{zh?'向终端询问':'Ask the terminal'}</button><button aria-expanded={evidence} onClick={()=>setEvidence(v=>!v)}>{zh?'来源与覆盖':'Sources & coverage'}</button><span>{zh?'源数据记录':'Source record'} · {character.avatarId}</span></footer>
+  <CharacterDetailActions zh={zh} recordId={character.avatarId} evidence={evidence} onDocument={character.documentIds.length?()=>onOpenDocument(character.documentIds[0],snapshotId):undefined} onAsk={()=>onAsk(character.name,character.id,snapshotId)} onEvidence={()=>setEvidence(v=>!v)}/>
   {evidence&&<section className="character-evidence" aria-label={zh?'来源与覆盖':'Sources and coverage'}><button className="character-evidence-close" onClick={()=>setEvidence(false)}>{zh?'收起':'Close'}</button><h2>{zh?'来源与覆盖':'Sources & coverage'}</h2><p>{zh?'快照':'Snapshot'}: {snapshotId}</p><dl>{Object.entries(character.coverage).map(([field,status])=><div key={field}><dt>{coverageField(field,zh)}</dt><dd>{coverageStatus(status,zh)}</dd></div>)}</dl>{[...new Map(character.sources.map(s=>[s.repo+':'+s.path,s])).values()].slice(0,6).map(s=><a key={s.url} href={s.url} target="_blank" rel="noopener noreferrer"><span>{s.path}</span><small>{s.commit.slice(0,12)}</small><ArrowSquareOut size={16}/></a>)}<p className="character-note">{zh?'显示聚合资料来源摘要；逐条原文保留各自定位。源记录不代表已实装或当前可获取。':'This summary links the underlying source files. Individual records retain exact provenance. Source presence does not prove release or availability.'}</p>{supplement&&<div className="character-supplement-source">
     <h3>{zh?'补充立绘来源':'Supplemental portrait source'}</h3>
     <a href={`https://github.com/${supplement.repository}/blob/${supplement.commit}/${supplement.path}`} target="_blank" rel="noopener noreferrer"><span>{supplement.path}</span><small>{supplement.commit.slice(0,12)}</small><ArrowSquareOut size={16}/></a>
     <p className="character-note">{zh?'仅在快照立绘缺失或加载失败时显示；上方覆盖状态仍按快照记录。':'Shown when the snapshot portrait is missing or fails to load. Coverage above reflects the snapshot.'}</p>
    </div>}</section>}
+ </>;
+}
+function CharacterDetailActions({zh,recordId,evidence,onDocument,onAsk,onEvidence}:{zh:boolean;recordId?:number;evidence?:boolean;onDocument?:()=>void;onAsk?:()=>void;onEvidence?:()=>void}){
+ return <footer className="character-detail-footer"><button disabled={!onDocument} onClick={onDocument}><BookOpen size={18}/>{zh?'查看原始文献':'Read original document'}</button><button disabled={!onAsk} onClick={onAsk}><ChatCircle size={18}/>{zh?'向终端询问':'Ask the terminal'}</button><button disabled={!onEvidence} aria-expanded={evidence} onClick={onEvidence}>{zh?'来源与覆盖':'Sources & coverage'}</button><span>{recordId?<>{zh?'源数据记录':'Source record'} · {recordId}</>:<ArchiveSkeleton width="7rem"/>}</span></footer>;
+}
+function CharacterDetailSkeleton({query,locale,onUpdate,identity}:Pick<RecordProps,'query'|'locale'|'onUpdate'|'identity'>){
+ const zh=locale==='zh-CN',attributes=query.tab==='attributes';
+ return <>
+  <span className="sr-only" role="status">{zh?'正在加载角色资料':'Loading character details'}</span>
+  <div className="character-detail-body">
+   <aside className="character-section-menu"><CharacterSectionTabs query={query} zh={zh} onUpdate={onUpdate}/></aside>
+   <div className="character-content-region">
+    {!attributes&&identity}
+    <div className={'character-section-content '+(attributes?'attributes':'')} id="character-section-panel" role="tabpanel" aria-labelledby={`character-section-${query.tab}`} aria-busy="true" tabIndex={0}>
+     {attributes?<>{identity}
+      <div className="character-portrait-stage is-pending"><CharacterPortraitPlaceholder/></div>
+      <section className="character-stats-panel" aria-hidden="true">
+       <h2>{zh?'角色基础属性':'Character base stats'}</h2><p className="character-note">{zh?'不含武器、圣遗物及条件增益':'Without weapon, artifacts or conditional buffs'}</p>
+       <ArchiveSkeleton className="select-trigger archive-control-placeholder" height="44px"/>
+       <dl className="character-stat-list">
+        {['BASE_HP','BASE_ATTACK','BASE_DEFENSE'].map(key=><div key={key}><dt><CharacterStatIcon stat={key}/><span>{formatCharacterStat(key,0,locale).label}</span></dt><dd><ArchivePendingValue/></dd></div>)}
+        {[0,1].map(i=><div key={i}><dt><ArchiveSkeleton width="6em"/></dt><dd><ArchivePendingValue/></dd></div>)}
+       </dl>
+      </section>
+     </>:<CharacterSectionPlaceholder tab={query.tab} zh={zh}/>}
+    </div>
+   </div>
+  </div>
+  <CharacterDetailActions zh={zh}/>
+ </>;
+}
+function CharacterSectionPlaceholder({tab,zh}:{tab:CharacterQuery['tab'];zh:boolean}){
+ const copy=<div className="character-reading-placeholder"><ArchiveSkeleton width="9rem" height="1.35rem"/><ArchiveSkeleton width="96%"/><ArchiveSkeleton width="87%"/><ArchiveSkeleton width="66%"/></div>;
+ const values=<dl className="character-talent-values">{[0,1,2].map(i=><div key={i}><dt><ArchiveSkeleton width="7em"/></dt><dd><ArchivePendingValue/></dd></div>)}</dl>;
+ if(tab==='talents'||tab==='constellations')return <div className="character-ability-layout" aria-hidden="true">
+  <div className="character-ability-list"><h2>{tab==='talents'?(zh?'天赋':'Talents'):(zh?'命之座':'Constellations')}</h2>{[0,1,2,3].map(i=><div className="character-ability-placeholder" key={i}><ArchiveSkeleton width="44px" height="44px"/><ArchiveSkeleton width="6em"/></div>)}</div>
+  <div className="character-reading character-ability-reading">{copy}{tab==='talents'&&values}</div>
  </div>;
+ if(tab==='cultivation')return <div className="character-reading" aria-hidden="true">{copy}{values}</div>;
+ return <div className="character-info" aria-hidden="true"><div className="character-tabs">{[0,1,2].map(i=><ArchiveSkeleton key={i} width="4.5rem" height="44px"/>)}</div><div className="character-reading character-biography">{copy}</div></div>;
 }
 function CharacterAttributes({character,form,locale}:{character:CharacterResult['character'];form:CharacterForm|undefined;locale:Locale}){
  const zh=locale==='zh-CN',[selected,setSelected]=useState(defaultLevel(form?.levels||[])),level=form?.levels.find(l=>`${l.level}:${l.ascension}`===selected)||form?.levels.at(-1);

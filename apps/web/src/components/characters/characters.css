@@ -36,3 +36,11 @@
 .character-supplement-source>a>small{margin-left:auto;color:var(--c-muted)}
 .character-supplement-source>a>svg{flex-shrink:0}
 @media(max-width:650px){.character-card-copy .museum-rarity{--rarity-star-size:11px}}
+.character-avatar-strip>.character-avatar-placeholder{flex-shrink:0;border-radius:9px}
+.character-portrait-stage>.character-portrait-placeholder{border-radius:12px}
+.character-portrait-stage.is-pending{animation:none}
+.character-portrait-stage.is-pending img{opacity:0}
+.character-reading-placeholder{display:flex;flex-direction:column;gap:14px}
+.character-reading-placeholder>.archive-skeleton:first-child{margin-bottom:10px}
+.character-ability-placeholder{display:flex;align-items:center;gap:12px;min-height:80px;padding:14px 10px;border-bottom:1px solid var(--c-line)}
+.character-ability-placeholder>.archive-skeleton:first-child{flex-shrink:0}

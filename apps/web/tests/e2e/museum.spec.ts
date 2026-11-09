@@ -73,6 +73,25 @@ test('museum: deep link, delayed selection and broken image are safe',async({pag
  await page.goto(`/museum?category=weapon&item=weapon%3A13501&snapshotId=${snapshotId}`);await page.locator('[data-item-id="weapon:14000"]').click();await expect(page.locator('.museum-detail h2')).toHaveText('雾切之回光');await page.waitForTimeout(800);await expect(page.locator('.museum-detail h2')).toHaveText('雾切之回光');await expect(page.locator('[data-item-id="weapon:13501"]')).toContainText('图片暂缺');
  await page.reload();await expect(page.locator('.museum-detail h2')).toHaveText('雾切之回光');
 });
+test('museum: a slow weapon selection keeps the detail layout and reserves its stat values',async({page},info)=>{
+ await fixture(page);
+ let release!:()=>void;
+ const pending=new Promise<void>(resolve=>{release=resolve});
+ await page.route('**/api/items/weapon%3A14000?*',async route=>{await pending;await route.fallback()});
+ await page.goto('/');
+ await navigateArchive(page,'万象集录');
+ const panel=info.project.name==='mobile'?page.getByRole('dialog'):page.getByRole('complementary',{name:'道具详情'});
+ if(info.project.name!=='mobile')await expect(panel.getByRole('heading',{name:homa.name,exact:true})).toBeVisible();
+ try{
+  await page.locator('[data-item-id="weapon:14000"]').click();
+  const detail=panel.getByRole('article');
+  await expect(detail.getByRole('heading',{name:'雾切之回光',exact:true})).toBeVisible();
+  await expect(detail.getByRole('button',{name:'返回道具列表',exact:true})).toBeVisible();
+  await expect(panel.locator('.museum-stats dd')).toHaveText(['—','—']);
+  await page.screenshot({path:info.outputPath('item-pending.png'),scale:'css',animations:'disabled'});
+ }finally{release()}
+ await expect(panel.locator('.museum-stats dd')).toHaveText(['608','66.2%']);
+});
 test('museum: navigation preserves draft and ask pins a new unsent conversation',async({page},info)=>{
  test.skip(info.project.name==='mobile');await fixture(page);await page.goto('/');await page.locator('#question').fill('保留我的草稿');await page.getByRole('button',{name:'万象集录',exact:true}).click();await expect(page).toHaveURL(/museum/);await page.goBack();await expect(page.locator('#question')).toHaveValue('保留我的草稿');await page.goForward();await selectHoma(page);
  await page.getByRole('button',{name:'向终端询问此道具',exact:true}).click();await expect(page.locator('#question')).toHaveValue(/护摩之杖/);await page.getByRole('button',{name:'恢复之前的草稿',exact:true}).click();await expect(page.locator('#question')).toHaveValue('保留我的草稿');
