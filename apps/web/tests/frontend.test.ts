@@ -2,7 +2,7 @@ import {describe,it,expect} from 'vitest';
 import {parseSSE,remarkCitations} from '../src/lib/stream';
 import {branchConversation,conversationSnapshot,chatMessages,conversationMarkdown} from '../src/lib/history';
 import {contextWarning,branchContextNote} from '../src/lib/i18n';
-import {safePreferences,selectedProvider} from '../src/lib/preferences';
+import {safePreferences,selectedProvider,preferencesForDeployment} from '../src/lib/preferences';
 describe('frontend durable and transport behavior',()=>{
  it('omits failed and cancelled blank assistants from requests while keeping partial answers and local evidence',()=>{
   const messages=[
@@ -47,7 +47,7 @@ describe('frontend durable and transport behavior',()=>{
  it('resolves numbered citations without rewriting code or existing links',()=>{
  const tree={type:'root',children:[{type:'paragraph',children:[{type:'text',value:'Evidence [2].'},{type:'inlineCode',value:'[3]'},{type:'link',url:'https://example.com',children:[{type:'text',value:'[4]'}]}]}]};
  remarkCitations()(tree);
- expect(tree.children[0].children).toEqual([{type:'text',value:'Evidence '},{type:'link',url:'#citation-2',children:[{type:'text',value:'[2]'}]},{type:'text',value:'.'},{type:'inlineCode',value:'[3]'},{type:'link',url:'https://example.com',children:[{type:'text',value:'[4]'}]}]);
+ expect(tree.children[0].children).toEqual([{type:'text',value:'Evidence '},{type:'link',url:'#citation-2',data:{citationLabel:2},children:[{type:'text',value:'[2]'}]},{type:'text',value:'.'},{type:'inlineCode',value:'[3]'},{type:'link',url:'https://example.com',children:[{type:'text',value:'[4]'}]}]);
  });
  it('fails when connection ends without done' ,async()=>{
  const stream=new ReadableStream<Uint8Array>({start(c){c.close()}});
@@ -91,12 +91,27 @@ describe('frontend durable and transport behavior',()=>{
   expect(safePreferences({modelBaseUrl:'https://host.example/v1?key=secret'})).not.toHaveProperty('modelBaseUrl');
   expect(safePreferences({modelBaseUrl:'https://user:secret@host.example/v1'})).not.toHaveProperty('modelBaseUrl');
  });
+ it('overrides stale BYOK choices on hosted without deleting local provider preferences',()=>{
+  const saved=safePreferences({mode:'byok',locale:'en',theme:'dark',modelBaseUrl:'https://models.example.com/v1',modelName:'private-model',apiKey:'secret'});
+  const hosted=preferencesForDeployment(saved,'hosted');
+  expect(hosted).toMatchObject({mode:'shared',locale:'en',theme:'dark',modelBaseUrl:'https://models.example.com/v1',modelName:'private-model'});
+  expect(selectedProvider(hosted)).toBeUndefined();
+  expect(hosted).not.toHaveProperty('apiKey');
+  expect(saved.mode).toBe('byok');
+ });
+ it('restores BYOK on self-hosted even when shared was saved by an older release',()=>{
+  const saved=safePreferences({mode:'shared',modelBaseUrl:'https://models.example.com/v1',modelName:'my-model'});
+  const selfHosted=preferencesForDeployment(saved,'self-hosted');
+  expect(selfHosted.mode).toBe('byok');
+  expect(selectedProvider(selfHosted)).toEqual({baseUrl:'https://models.example.com/v1',model:'my-model'});
+  expect(saved.mode).toBe('shared');
+ });
 });
 
 describe('localized citation punctuation',()=>{
  it('opens full-width numeric references as citations while keeping quoted code unchanged',()=>{
   const tree={type:'root',children:[{type:'paragraph',children:[{type:'text',value:'原文解释［2］。'},{type:'inlineCode',value:'［3］'}]}]};
   remarkCitations()(tree);
-  expect(tree.children[0].children).toEqual([{type:'text',value:'原文解释'},{type:'link',url:'#citation-2',children:[{type:'text',value:'［2］'}]},{type:'text',value:'。'},{type:'inlineCode',value:'［3］'}]);
+  expect(tree.children[0].children).toEqual([{type:'text',value:'原文解释'},{type:'link',url:'#citation-2',data:{citationLabel:2},children:[{type:'text',value:'［2］'}]},{type:'text',value:'。'},{type:'inlineCode',value:'［3］'}]);
  });
 });

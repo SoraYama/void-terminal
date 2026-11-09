@@ -1,3 +1,4 @@
+import {navigateArchive,watchWarmEntry,expectNoWarmFlash} from '../helpers/archive-navigation-browser';
 import {test,expect,type Page} from '@playwright/test';
 import path from 'node:path';
 
@@ -135,4 +136,61 @@ test('library: returning from a passage restores a long list after document load
  await page.route('**/api/documents/reading-book?*',async r=>{await new Promise(resolve=>setTimeout(resolve,300));await r.fallback()});
  await card.click();await expect(page.locator('.reading-text')).toBeVisible();await page.locator('.back-link').click();
  await expect.poll(()=>scroll.evaluate(el=>el.scrollTop)).toBeCloseTo(before,0);
+});
+
+test('library: warm return keeps matching results and scroll without a loading frame',async({page})=>{
+ await openLibrary(page,'light');await page.locator('.back-link').click();
+ const items=Array.from({length:24},(_,i)=>({id:`warm-${i}`,title:`记录 ${i+1}`,type:'book',language:'zh-CN',excerpt:'用于检查跨模块列表位置。',snapshotId:'reading-fixture'}));
+ await page.route('**/api/library?*',r=>r.fulfill({json:{items,total:24,page:1,pageSize:24,snapshotId:'reading-fixture'}}));
+ await page.getByLabel('搜索书籍、任务或关键词…').fill('记录');await expect(page.locator('.document-card')).toHaveCount(24);
+ const scroll=page.locator('.library-scroll');await scroll.evaluate(el=>{el.scrollTop=600});const before=await scroll.evaluate(el=>el.scrollTop);expect(before).toBeGreaterThan(400);
+ await page.route('**/api/characters?*',r=>r.fulfill({json:{characters:[],total:0,page:1,pageSize:48,snapshotId:'reading-fixture',ready:true,regions:[],counts:{}}}));
+ await navigateArchive(page,'群星图鉴');await expect(page.locator('.character-state h2')).toContainText('没有找到');
+ await watchWarmEntry(page,'library');await navigateArchive(page,'尘世文卷');await expect(page.locator('.document-card')).toHaveCount(24);
+ await expect(page.getByLabel('搜索书籍、任务或关键词…')).toHaveValue('记录');await expect.poll(()=>scroll.evaluate(el=>el.scrollTop)).toBe(before);await expectNoWarmFlash(page);
+});
+
+test('navigation: main-only transition survives overlapping switches and reduced motion',async({page},info)=>{
+ test.skip(info.project.name!=='desktop');await openLibrary(page,'light');
+ await page.route('**/api/characters?*',r=>r.fulfill({json:{characters:[],total:0,page:1,pageSize:48,snapshotId:'reading-fixture',ready:true,regions:[],counts:{}}}));
+ await page.evaluate(()=>{
+  const original=document.startViewTransition.bind(document),states:{root:string;main:string;sidebar:string}[]=[];
+  Object.assign(window,{archiveTransitionStates:states,archiveSidebar:document.querySelector('.sidebar')});
+  document.startViewTransition=function(callback){states.push({root:getComputedStyle(document.documentElement).viewTransitionName,main:getComputedStyle(document.querySelector('main')!).viewTransitionName,sidebar:getComputedStyle(document.querySelector('.sidebar')!).viewTransitionName});return original(callback)};
+  const buttons=Array.from(document.querySelectorAll<HTMLButtonElement>('.nav-item'));
+  buttons.find(b=>b.textContent?.includes('群星图鉴'))!.click();
+  buttons.find(b=>b.textContent?.includes('尘世文卷'))!.click();
+  buttons.find(b=>b.textContent?.includes('群星图鉴'))!.click();
+ });
+ await expect(page.locator('.character-workspace')).toBeVisible();await expect(page.locator('.library-scroll')).toHaveCount(0);await expect(page).toHaveURL(/\/characters/);
+ expect(await page.evaluate(()=>document.querySelector('.sidebar')===(window as unknown as {archiveSidebar:Element}).archiveSidebar)).toBe(true);
+ const states=await page.evaluate(()=>(window as unknown as {archiveTransitionStates:{root:string;main:string;sidebar:string}[]}).archiveTransitionStates);
+ expect(states.length).toBeGreaterThan(0);expect(states.every(s=>s.root==='none'&&s.main==='terminal-main'&&s.sidebar==='none')).toBe(true);
+ await page.emulateMedia({reducedMotion:'reduce'});await navigateArchive(page,'尘世文卷');await expect(page.locator('.reading-text')).toBeVisible();
+ expect(await page.evaluate(()=>(window as unknown as {archiveTransitionStates:unknown[]}).archiveTransitionStates.length)).toBe(states.length);
+ expect(await page.locator('main').evaluate(el=>el.getAnimations().length)).toBe(0);
+});
+
+test('navigation: CSS fallback keeps the main interactive and clears its fade',async({page},info)=>{
+ test.skip(info.project.name!=='desktop');await openLibrary(page,'light');
+ await page.route('**/api/characters?*',r=>r.fulfill({json:{characters:[],total:0,page:1,pageSize:48,snapshotId:'reading-fixture',ready:true,regions:[],counts:{}}}));
+ const observed=await page.evaluate(()=>{
+  Object.defineProperty(document,'startViewTransition',{value:undefined,configurable:true});
+  Array.from(document.querySelectorAll<HTMLButtonElement>('.nav-item')).find(b=>b.textContent?.includes('群星图鉴'))!.click();
+  const main=document.querySelector('main')!;return {animation:getComputedStyle(main).animationName,pointerEvents:getComputedStyle(main).pointerEvents};
+ });
+ expect(observed).toEqual({animation:'terminal-main-in',pointerEvents:'auto'});await expect(page.locator('.character-workspace')).toBeVisible();await expect(page.locator('main')).not.toHaveAttribute('data-navigation-fade','true');
+});
+
+test('library: a query refetched from a new snapshot does not inherit the evicted snapshot scroll',async({page})=>{
+ await openLibrary(page,'light');await page.locator('.back-link').click();let activeSnapshot='snapshot-a';
+ await page.route('**/api/library?*',route=>{
+  const query=new URL(route.request().url()).searchParams.get('q')||'';
+  const items=Array.from({length:24},(_,i)=>({id:`${activeSnapshot}-${query}-${i}`,title:`${activeSnapshot}-${query}-${i}`,type:'book',language:'zh-CN',excerpt:'用于检查快照滚动隔离。',snapshotId:activeSnapshot}));
+  return route.fulfill({json:{items,total:24,page:1,pageSize:24,snapshotId:activeSnapshot}});
+ });
+ const search=page.getByLabel('搜索书籍、任务或关键词…'),scroll=page.locator('.library-scroll');
+ await search.fill('original');await expect(page.locator('.document-card').first()).toContainText('snapshot-a-original-0');await scroll.evaluate(el=>{el.scrollTop=640});await expect.poll(()=>scroll.evaluate(el=>el.scrollTop)).toBe(640);
+ for(let i=0;i<8;i++){await search.fill(`eviction-${i}`);await expect(page.locator('.document-card').first()).toContainText(`snapshot-a-eviction-${i}-0`)}
+ activeSnapshot='snapshot-b';await search.fill('original');await expect(page.locator('.document-card').first()).toContainText('snapshot-b-original-0');await expect.poll(()=>scroll.evaluate(el=>el.scrollTop)).toBe(0);
 });

@@ -642,14 +642,33 @@ class CatalogStore(CharacterStore):
             sources = [self._source(db, self._execute(db, 'SELECT * FROM chunks WHERE id=?', (key,)).fetchone(), scores[key]) for key in ranked[:limit]]
             return {'sources': sources, 'snapshotId': sid, 'mode': 'hybrid' if semantic else 'lexical', 'total': len(ranked)}
 
+    @contextmanager
+    def _budget_tx(self):
+        with self._tx(write=True) as db:
+            if self.postgres:
+                # The month total must see charges committed while waiting for its lock.
+                self._execute(db, 'SET TRANSACTION ISOLATION LEVEL READ COMMITTED')
+            yield db
+
+    def _lock_budget_month(self, db, day):
+        if self.postgres:
+            year, month = map(int, day[:7].split('-'))
+            # Separate two-key advisory namespace; serialize month totals across day rows.
+            self._execute(db, 'SELECT pg_advisory_xact_lock(?, ?)', (0x766f6964, year * 12 + month))
+
     def reserve_budget(self, request_id, identity, tokens):
         if not request_id or not identity or isinstance(tokens, bool) or not isinstance(tokens, int) or not 1 <= tokens <= 3000000:
             raise StoreError('INVALID_RESERVATION', 'Invalid budget reservation')
         day, cap = datetime.now(timezone.utc).date().isoformat(), config.budget_cap()
-        with self._tx(write=True) as db:
+        monthly_cap = config.monthly_budget_cap()
+        year, month = map(int, day[:7].split('-'))
+        month_start = f'{year:04}-{month:02}-01'
+        month_end = f'{year + (month == 12):04}-{month % 12 + 1:02}-01'
+        with self._budget_tx() as db:
             if self.postgres:
                 request_lock = int.from_bytes(hashlib.sha256(request_id.encode()).digest()[:8], 'big', signed=True)
                 self._execute(db, 'SELECT pg_advisory_xact_lock(?)', (request_lock,))
+            self._lock_budget_month(db, day)
             self._execute(db, 'INSERT INTO budget_days(day,charged) VALUES(?,0) ON CONFLICT(day) DO NOTHING', (day,))
             # Lock global daily charge, serializing across every application worker.
             daily = self._execute(db, 'SELECT charged FROM budget_days WHERE day=?' + (' FOR UPDATE' if self.postgres else ''), (day,)).fetchone()
@@ -658,8 +677,11 @@ class CatalogStore(CharacterStore):
                 if existing['identity'] != identity or existing['tokens'] != tokens:
                     raise StoreError('RESERVATION_CONFLICT', 'Request ID already used with different parameters', 409)
                 return {'allowed': bool(existing['allowed']), 'reservationId': existing['id'], 'remaining': existing['remaining']}
-            allowed = cap > 0 and daily['charged'] + tokens <= cap
-            remaining = max(0, cap - daily['charged'] - (tokens if allowed else 0))
+            monthly = self._execute(db, 'SELECT COALESCE(SUM(charged),0) AS charged FROM budget_days WHERE day>=? AND day<?',
+                                    (month_start, month_end)).fetchone()
+            headroom = min(cap - daily['charged'], monthly_cap - monthly['charged'])
+            allowed = cap > 0 and monthly_cap > 0 and tokens <= headroom
+            remaining = max(0, headroom - (tokens if allowed else 0))
             reservation_id = uuid.uuid4().hex
             self._execute(db, 'INSERT INTO budget_reservations(id,request_id,identity,day,tokens,allowed,remaining,charged) VALUES(?,?,?,?,?,?,?,?)',
                           (reservation_id, request_id, identity, day, tokens, int(allowed), remaining, tokens if allowed else 0))
@@ -670,7 +692,7 @@ class CatalogStore(CharacterStore):
     def settle_budget(self, reservation_id, used_tokens):
         if used_tokens is not None and (isinstance(used_tokens, bool) or not isinstance(used_tokens, int) or not 0 <= used_tokens <= 10000000):
             raise StoreError('INVALID_SETTLEMENT', 'Invalid token usage')
-        with self._tx(write=True) as db:
+        with self._budget_tx() as db:
             row = self._execute(db, 'SELECT * FROM budget_reservations WHERE id=?' + (' FOR UPDATE' if self.postgres else ''), (reservation_id,)).fetchone()
             if not row:
                 raise StoreError('RESERVATION_NOT_FOUND', 'Reservation not found', 404)
@@ -679,6 +701,7 @@ class CatalogStore(CharacterStore):
             if row['settled']:
                 return {'settled': True}
             charge = row['tokens'] if used_tokens is None else used_tokens
+            self._lock_budget_month(db, row['day'])
             self._execute(db, 'UPDATE budget_days SET charged=charged+? WHERE day=?', (charge - row['charged'], row['day']))
             self._execute(db, 'UPDATE budget_reservations SET settled=1,charged=? WHERE id=?', (charge, reservation_id))
             return {'settled': True}

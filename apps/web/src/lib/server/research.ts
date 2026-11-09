@@ -92,6 +92,7 @@ function boundedMetadata(value: unknown): Record<string, unknown> | undefined {
     "series",
     "volume",
     "speaker",
+    "characterName",
     "chunkStart",
     "chunkEnd",
   ];
@@ -113,6 +114,9 @@ function boundedMetadata(value: unknown): Record<string, unknown> | undefined {
     result[key] = JSON.parse(encoded);
     total += encoded.length;
   }
+  // A story/voice identity must survive even when the raw row is too large.
+  if ((value.table === "FetterStory" || value.table === "Fetters") && record(value.raw)
+    && Number.isSafeInteger(value.raw.avatarId)) result.avatarId = value.raw.avatarId;
   return Object.keys(result).length ? result : undefined;
 }
 const toolDefinitions = [

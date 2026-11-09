@@ -1,13 +1,31 @@
 import type {Locale} from './contracts';
+import type {DeploymentMode} from './deployment';
+import type {AccountSummary} from './account-contracts';
 
-export interface ChatFailure {message:string;code?:string}
+export interface ChatFailure {message:string;code?:string;retryAfter?:number}
 export class ChatRequestError extends Error {
- constructor(message:string,public code?:string){super(message)}
+ constructor(message:string,public code?:string,public retryAfter?:number){super(message)}
+}
+/** Chat errors use an envelope; connection tests may return the same code at top level. */
+export function responseErrorCode(value:unknown):string|undefined{
+ if(!value||typeof value!=='object')return undefined;
+ const result=value as {code?:unknown;error?:{code?:unknown}};
+ return typeof result.error?.code==='string'?result.error.code:typeof result.code==='string'?result.code:undefined;
 }
 
 // Display text is selected at render time so switching languages also updates
 // errors already received or restored from history.
 const messages:Record<string,[string,string]>={
+ LOGIN_REQUIRED:['请登录账户后开始考据。','Sign in to start research.'],
+ CREDITS_EXHAUSTED:['账户点数不足，请查看账户余额。','Your account has insufficient credits. Check your balance in Account & credits.'],
+ DEVICE_VERIFICATION_REQUIRED:['请完成设备验证后再试。问题已保留。','Verify this device and try again. Your question is still here.'],
+ DEVICE_CHALLENGE_FAILED:['请重新完成设备验证。问题已保留。','Complete a fresh device challenge. Your question is still here.'],
+ ACCOUNT_RISK_LIMIT:['请求过于频繁，请稍后再试。','Too many requests. Please wait and try again.'],
+ ACCOUNT_RISK_UNAVAILABLE:['设备验证暂不可用。请稍后重试。','Device verification is temporarily unavailable. Please retry.'],
+ ACCOUNT_BUSY:['此账户已有考据正在进行，请等待完成后重试。','This account already has research in progress. Wait for it to finish and retry.'],
+ REQUEST_REPLAY:['此请求已处理，请重新发起考据。','This request was already processed. Start a new research request.'],
+ REQUEST_ID_REQUIRED:['请求标识无效，请刷新页面后重试。','The request identifier is invalid. Reload the page and retry.'],
+ ACCOUNT_UNAVAILABLE:['账户额度服务暂不可用，请稍后重试。','The account credit service is temporarily unavailable. Please retry.'],
  INVALID_REQUEST:['请求内容无效或超过限制，请检查问题后重试。','The request is invalid or exceeds the allowed limits. Check your question and retry.'],
  INVALID_PROVIDER:['模型地址或名称无效，请检查设置。','The model endpoint or name is invalid. Check settings.'],
  PROVIDER_ADDRESS_BLOCKED:['仅支持公网 HTTPS 模型接口，不能访问本站内网或 localhost。','Use a public HTTPS model endpoint; private networks and localhost are unavailable.'],
@@ -19,7 +37,7 @@ const messages:Record<string,[string,string]>={
  KNOWLEDGE_UNAVAILABLE:['暂时无法读取知识库，请稍后重试。','The knowledge service is unavailable. Please retry later.'],
  SNAPSHOT_UNAVAILABLE:['这段对话使用的资料快照暂不可用，请稍后重试。','The source snapshot for this conversation is unavailable. Please retry later.'],
  NO_SNAPSHOT:['知识库尚未导入资料，请先检查数据状态。','No source snapshot has been imported. Check corpus status first.'],
- QUOTA_EXCEEDED:['共享服务额度已用完，请稍后重试或使用自己的密钥。','The shared allowance has been used up. Retry later or use your own key.'],
+ QUOTA_EXCEEDED:['公共考据预算已用完，请稍后再试。你的账户点数会保留。','The shared research budget has been reached. Please try later. Your account credits are retained.'],
  TIMEOUT:['请求超时，请重试或缩小问题范围。','The request timed out. Retry or narrow your question.'],
  NETWORK_ERROR:['连接失败，请检查网络后重试。','Could not connect. Check your network and retry.'],
  MODEL_STREAM_INCOMPLETE:['回答连接提前中断，请重试。','The answer stream ended unexpectedly. Please retry.'],
@@ -28,7 +46,9 @@ const messages:Record<string,[string,string]>={
  CONTEXT_LIMIT:['对话或资料过长，请缩小问题范围或开始新对话。','The conversation or sources are too long. Narrow your question or start a new conversation.'],
  TOOL_LIMIT:['本次检索未能完成，请简化问题或重试。','The research could not be completed. Simplify your question or retry.'],
  CANCELLED:['已停止生成','Generation stopped'],
- SHARED_DISABLED:['共享服务尚未启用，请使用自己的密钥','Shared service is disabled; use your own key'],
+ SHARED_DISABLED:['考据服务暂未开放，账户额度会保留，请稍后重试。','Research is not available yet. Your account credits are retained. Please retry later.'],
+ MODE_NOT_ALLOWED:['站点服务模式已变更，请刷新页面后重试。','The site service mode has changed. Reload the page and retry.'],
+ DEPLOYMENT_CONFIG:['站点服务配置暂不可用，请稍后重试。','The site service configuration is unavailable. Please retry later.'],
  MESSAGE_TOO_LONG:['问题最多 12000 字符','Maximum 12,000 characters per message'],
  CONVERSATION_LIMIT:['当前对话达到长度限制，请开始新对话','Conversation limit reached. Start a new conversation.'],
  COPY_FAILED:['复制失败，请手动选择文本','Copy failed. Select text manually.'],
@@ -41,6 +61,10 @@ const codeAliases:Record<string,string>={
  OUTPUT_LIMIT:'CONTEXT_LIMIT',INVALID_TOOL_CALL:'TOOL_LIMIT',
 };
 const legacy:Record<string,string>={
+ '账户额度不足，请在账户中查看余额。':'CREDITS_EXHAUSTED',
+ '账户额度不足，请查看账户余额。充值尚未开放。':'CREDITS_EXHAUSTED',
+ 'Your account has insufficient credits. Check your balance in Account & credits. Top-ups are not available yet.':'CREDITS_EXHAUSTED',
+ 'Your account has insufficient credits. Check your balance in Account & credits.':'CREDITS_EXHAUSTED',
  'The requested evidence was not found.':'NOT_FOUND',
  'The model API key was not accepted.':'MODEL_AUTH',
  'Enter a valid model API key.':'MODEL_KEY_REQUIRED',
@@ -59,19 +83,38 @@ const legacy:Record<string,string>={
 };
 for(const [code,pair] of Object.entries(messages))for(const value of pair)legacy[value]=code;
 
+export interface CreditShortage {available:number;required:number;standardCost:number;depth:'standard'|'deep';canUseStandard:boolean}
+/** A missing/invalid balance is unknown, never an invented zero. */
+export function accountCreditShortage(account:AccountSummary|null,depth:'standard'|'deep'):CreditShortage|null{
+ if(!account?.enabled||!account.authenticated||!account.credits||!account.costs)return null;
+ const {available}=account.credits,{standard,deep}=account.costs,required=account.costs[depth];
+ if(!Number.isSafeInteger(available)||available<0||![standard,deep].every(cost=>Number.isSafeInteger(cost)&&cost>0)||available>=required)return null;
+ return {available,required,standardCost:standard,depth,canUseStandard:depth==='deep'&&available>=standard};
+}
+export function creditShortageText(shortage:CreditShortage|null,locale:Locale):string{
+ if(!shortage)return messages.CREDITS_EXHAUSTED[locale==='zh-CN'?0:1];
+ const {available,required,depth,standardCost,canUseStandard}=shortage;
+ if(locale==='zh-CN')return `${available===0?'可用点数为 0':`当前可用 ${available} 点`}，${depth==='deep'?'深入':'普通'}考据需要 ${required} 点。${canUseStandard?`可切换为普通考据（${standardCost} 点）。`:''}`;
+ return `You have ${available} ${available===1?'credit':'credits'}; ${depth==='deep'?'deep':'standard'} research needs ${required}. ${canUseStandard?`You can switch to standard research (${standardCost} ${standardCost===1?'credit':'credits'}). `:''}`;
+}
+
 export function chatFailure(error:unknown):ChatFailure{
- if(error instanceof ChatRequestError)return {message:error.message,code:error.code};
+ if(error instanceof ChatRequestError)return {message:error.message,code:error.code,retryAfter:error.retryAfter};
  if(error instanceof Error&&error.name==='AbortError')return {message:'Generation stopped',code:'CANCELLED'};
  if(error instanceof TypeError)return {message:error.message,code:'NETWORK_ERROR'};
  return {message:error instanceof Error?error.message:''};
 }
-export function chatErrorText(failure:ChatFailure|string,locale:Locale):string{
+export function chatErrorText(failure:ChatFailure|string,locale:Locale,deploymentMode?:DeploymentMode):string{
  const message=typeof failure==='string'?failure:failure.message;
  const code=typeof failure==='string'?legacy[message]:failure.code||legacy[message];
- const pair=messages[codeAliases[code]||code];
- if(pair)return pair[locale==='zh-CN'?0:1];
+ const effectiveCode=codeAliases[code]||code;
+ const pair=deploymentMode==='hosted'&&['MODEL_AUTH','MODEL_KEY_REQUIRED','INVALID_PROVIDER','PROVIDER_ADDRESS_BLOCKED'].includes(effectiveCode)?messages.MODEL_UNAVAILABLE:messages[effectiveCode];
+ if(pair){
+  const zh=locale==='zh-CN',retry=typeof failure==='object'?failure.retryAfter:undefined;
+  return pair[zh?0:1]+(retry&&Number.isSafeInteger(retry)&&retry>0?(zh?`可在 ${retry} 秒后重试。`:` Try again in ${retry}s.`):'');
+ }
  const parts=message.split(' · ');
- if(parts.length>1)return parts.map(part=>chatErrorText(part,locale)).join(' · ');
+ if(parts.length>1)return parts.map(part=>chatErrorText(part,locale,deploymentMode)).join(' · ');
  const citation=/^Unknown citation \[(\d+)\]$/.exec(message);
  if(citation)return locale==='zh-CN'?`引用 [${citation[1]}] 无法对应到已取回的原文。`:`Citation [${citation[1]}] does not match a retrieved source.`;
  return messages.REQUEST_FAILED[locale==='zh-CN'?0:1];

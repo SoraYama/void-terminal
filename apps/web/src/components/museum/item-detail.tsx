@@ -1,21 +1,52 @@
 'use client';
 import {useState} from 'react';
-import {ArrowLeft,ArrowSquareOut,ChatCircle,BookOpen} from '@phosphor-icons/react';
+import {ArrowLeft,ArrowClockwise,ArrowSquareOut,ChatCircle,BookOpen} from '@phosphor-icons/react';
+import {ArchiveSkeleton,ArchivePendingValue} from '../archive-skeleton';
 import {ThemedSelect} from '../themed-select';
 import {ItemImage,Rarity,categoryNames} from './item-image';
-import {ascensionCost,formatStat,possibleSubstats,itemSubtypeLabel,type Item,type ItemResult,type ItemTcg,type TcgCost} from '../../lib/items';
+import {ascensionCost,formatStat,possibleSubstats,itemSubtypeLabel,type Item,type ItemResult,type ItemSummary,type ItemTcg,type TcgCost} from '../../lib/items';
 import type {Locale} from '../../lib/contracts';
 import {safeUrl} from '../../lib/client';
 
-interface Props {result:ItemResult;locale:Locale;onClose:()=>void;onSelect:(id:string)=>void;onOpenDocument:(id:string,snapshotId:string)=>void;onAsk:(name:string,id:string,snapshotId:string)=>void}
-export function ItemDetail({result,locale,onClose,onSelect,onOpenDocument,onAsk}:Props){
+interface Props {result:ItemResult|null;summary?:ItemSummary;selected:string;recordKey:string;error:string;onRetry:()=>void;locale:Locale;onClose:()=>void;onSelect:(id:string)=>void;onOpenDocument:(id:string,snapshotId:string)=>void;onAsk:(name:string,id:string,snapshotId:string)=>void}
+export function ItemDetail(props:Props){
+ const {result,summary,selected,recordKey,error,onRetry,locale,onClose}=props,zh=locale==='zh-CN';
+ const item=result?.item||summary,category=item?.category||(selected.startsWith('weapon:')?'weapon':selected.startsWith('artifact:')?'artifact':undefined);
+ const backLabel=zh?'返回道具列表':'Back to items';
+ return <article className="museum-detail">
+  <header className="museum-detail-heading">
+   {item?<div><h2>{item.name}</h2><p>{itemSubtypeLabel(item,categoryNames[item.category])}</p><Rarity value={item.rarity} zh={zh}/></div>:<div aria-hidden="true"><h2><ArchiveSkeleton width="9rem" height="0.85em"/></h2><p><ArchiveSkeleton width="5rem"/></p><ArchiveSkeleton width="4rem"/></div>}
+   <button onClick={onClose} aria-label={backLabel} title={backLabel}><ArrowLeft size={23}/></button>
+  </header>
+  {!result&&error?<div className="museum-detail-state"><p role="alert">{error}</p><button onClick={onRetry}><ArrowClockwise size={18}/>{zh?'重试':'Retry'}</button></div>:<>
+   {item?<ItemImage key={item.id} item={item} zh={zh} large/>:<div className="museum-image large museum-detail-art-placeholder" aria-hidden="true"/>}
+   {result?<ItemRecord key={recordKey} {...props} result={result}/>:<ItemDetailSkeleton category={category} zh={zh}/>}
+  </>}
+ </article>;
+}
+function ItemDetailSkeleton({category,zh}:{category?:ItemSummary['category'];zh:boolean}){
+ const tabs=category==='weapon'?4:category==='artifact'?3:2;
+ return <>
+  <span className="sr-only" role="status">{zh?'正在加载道具详情':'Loading item details'}</span>
+  <div className="museum-detail-body" aria-busy="true">
+   <div aria-hidden="true">
+    {category==='weapon'&&<div className="museum-weapon-stats">
+     <div className="museum-control"><span>{zh?'等级':'Level'}</span><ArchiveSkeleton className="select-trigger archive-control-placeholder" width="175px" height="44px"/></div>
+     <dl className="museum-stats"><div><dt>{zh?'基础攻击力':'Base ATK'}</dt><dd><ArchivePendingValue/></dd></div><div><dt><ArchiveSkeleton width="5em"/></dt><dd><ArchivePendingValue/></dd></div></dl>
+    </div>}
+    <div className="museum-tabs museum-tab-placeholders">{Array.from({length:tabs},(_,i)=><ArchiveSkeleton key={i} height="40px"/>)}</div>
+    <p className="museum-copy-placeholder"><ArchiveSkeleton width="93%"/><ArchiveSkeleton width="78%"/><ArchiveSkeleton width="61%"/></p>
+    {category==='artifact'&&<dl className="museum-stats"><div><dt><ArchiveSkeleton width="6em"/></dt><dd><ArchivePendingValue/></dd></div></dl>}
+   </div>
+  </div>
+ </>;
+}
+type RecordProps=Pick<Props,'locale'|'onSelect'|'onOpenDocument'|'onAsk'>&{result:ItemResult};
+function ItemRecord({result,locale,onSelect,onOpenDocument,onAsk}:RecordProps){
  const {item,snapshotId}=result,zh=locale==='zh-CN';
  const [tab,setTab]=useState('attributes');
  const tabs=[{id:'attributes',name:zh?'属性':'Details'},...(item.weapon?.ascensions.length?[{id:'growth',name:zh?'培养':'Ascension'}]:[]),...(item.story?[{id:'story',name:zh?'故事':'Story'}]:[]),...(item.tcg?[{id:'tcg',name:zh?'七圣召唤':'TCG'}]:[]),{id:'sources',name:zh?'来源':'Sources'}];
- return <article className="museum-detail">
-  <header className="museum-detail-heading"><div><h2>{item.name}</h2><p>{itemSubtypeLabel(item,categoryNames[item.category])}</p><Rarity value={item.rarity} zh={zh}/></div><button onClick={onClose} aria-label={zh?'返回道具列表':'Back to items'} title={zh?'返回道具列表':'Back to items'}><ArrowLeft size={23}/></button></header>
-  <ItemImage item={item} zh={zh} large/>
-  <div className="museum-detail-body">
+ return <div className="museum-detail-body">
    {item.weapon&&<WeaponStats item={item} locale={locale}/>}
    <div className="museum-tabs" role="tablist" aria-label={zh?'道具详情':'Item details'}>{tabs.map((t,i)=><button key={t.id} role="tab" id={`museum-tab-${t.id}`} aria-controls="museum-tabpanel" aria-selected={tab===t.id} tabIndex={tab===t.id?0:-1} onClick={()=>setTab(t.id)} onKeyDown={e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const next=e.key==='Home'?0:e.key==='End'?tabs.length-1:(i+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;setTab(tabs[next].id);document.getElementById(`museum-tab-${tabs[next].id}`)?.focus()}}>{t.name}</button>)}</div>
    <section id="museum-tabpanel" role="tabpanel" aria-labelledby={`museum-tab-${tab}`} tabIndex={0}>
@@ -26,8 +57,7 @@ export function ItemDetail({result,locale,onClose,onSelect,onOpenDocument,onAsk}
     {tab==='sources'&&<><p className="museum-record-state">{item.state==='internal'?(zh?'内部记录 · 不代表可获得道具':'Internal record · Availability not established'):(zh?'收录于源数据 · 不代表当前可获取':'Source record · Current availability not established')}</p><dl className="museum-provenance"><dt>{zh?'快照':'Snapshot'}</dt><dd>{snapshotId}</dd><dt>ID</dt><dd>{item.id}</dd></dl>{item.sources.map((s,i)=><div className="museum-source" key={i}><strong>{s.path}</strong><span>{s.commit} · {s.locator}</span>{safeUrl(s.url)&&<a href={safeUrl(s.url)} target="_blank" rel="noopener noreferrer">{zh?'查看固定版本来源':'View pinned source'}<ArrowSquareOut size={16}/></a>}</div>)}<details className="museum-coverage"><summary>{zh?'资料完整性':'Data completeness'}</summary><dl>{Object.entries(item.coverage).map(([key,value])=><div key={key}><dt>{key}</dt><dd>{({complete:zh?'完整':'Complete','not-applicable':zh?'不适用':'Not applicable','upstream-missing':zh?'上游缺失':'Missing upstream',unresolved:zh?'尚未解析':'Unresolved',unreachable:zh?'不可达':'Unreachable'})[value]}</dd></div>)}</dl></details>{item.documentIds.length?item.documentIds.map((id,i)=><button className="museum-document" key={id} onClick={()=>onOpenDocument(id,snapshotId)}><BookOpen size={18}/>{zh?'查看原始文献':'Read original document'}{i>0?` ${i+1}`:''}</button>):<p>{zh?'该记录尚未关联原始文献。':'No original document is linked to this record.'}</p>}</>}
    </section>
    <button className="museum-ask" onClick={()=>onAsk(item.name,item.id,snapshotId)}><ChatCircle size={20}/>{zh?'向终端询问此道具':'Ask the terminal about this item'}</button>
-  </div>
- </article>;
+  </div>;
 }
 const cardFaceLabels={standard:['普通卡面','Standard card face'],gold:['金色卡面','Gold card face'],platinum:['白金卡面','Platinum card face']} as const;
 const cardCostLabels:Record<string,readonly [string,string]>={
@@ -60,18 +90,18 @@ function CardDetails({card,itemName,locale}:{card:ItemTcg;itemName:string;locale
 function WeaponStats({item,locale}:{item:Item;locale:Locale}){
  const levels=item.weapon!.levels,zh=locale==='zh-CN';const [index,setIndex]=useState(Math.max(0,levels.length-1));const selected=levels[index];
  if(!selected)return <p className="museum-missing">{zh?'等级属性尚未解析。':'Level statistics are not yet available.'}</p>;
- return <div className="museum-weapon-stats"><label className="museum-control"><span>{zh?'等级':'Level'}</span><ThemedSelect label={zh?'等级与突破':'Level and ascension'} value={String(index)} onValueChange={v=>setIndex(Number(v))} options={levels.map((l,i)=>({value:String(i),label:`${l.level} · ${zh?'突破':'Ascension'} ${l.ascension}`}))}/></label><dl className="museum-stats">{selected.stats.map(stat=><div key={stat.key}><dt>{stat.label}</dt><dd>{formatStat(stat.value,stat.unit,locale)}</dd></div>)}</dl></div>;
+ return <div className="museum-weapon-stats"><label className="museum-control"><span>{zh?'等级':'Level'}</span><ThemedSelect archive label={zh?'等级与突破':'Level and ascension'} value={String(index)} onValueChange={v=>setIndex(Number(v))} options={levels.map((l,i)=>({value:String(i),label:`${l.level} · ${zh?'突破':'Ascension'} ${l.ascension}`}))}/></label><dl className="museum-stats">{selected.stats.map(stat=><div key={stat.key}><dt>{stat.label}</dt><dd>{formatStat(stat.value,stat.unit,locale)}</dd></div>)}</dl></div>;
 }
 function WeaponRefinement({item,zh}:{item:Item;zh:boolean}){
  const refinements=item.weapon!.refinements,[rank,setRank]=useState(String(refinements[0]?.rank||1)),selected=refinements.find(r=>String(r.rank)===rank);
- return selected?<><label className="museum-control"><span>{zh?'精炼':'Refinement'}</span><ThemedSelect label={zh?'精炼':'Refinement'} value={rank} onValueChange={setRank} options={refinements.map(r=>({value:String(r.rank),label:`${zh?'精炼':'Rank'} ${r.rank}`}))}/></label><h3>{selected.name}</h3><p>{selected.description}</p></>:<p>{zh?'武器技能尚未解析。':'The weapon skill is not yet available.'}</p>;
+ return selected?<><label className="museum-control"><span>{zh?'精炼':'Refinement'}</span><ThemedSelect archive label={zh?'精炼':'Refinement'} value={rank} onValueChange={setRank} options={refinements.map(r=>({value:String(r.rank),label:`${zh?'精炼':'Rank'} ${r.rank}`}))}/></label><h3>{selected.name}</h3><p>{selected.description}</p></>:<p>{zh?'武器技能尚未解析。':'The weapon skill is not yet available.'}</p>;
 }
 function AscensionCosts({item,locale,onSelect}:{item:Item;locale:Locale;onSelect:(id:string)=>void}){
  const stages=item.weapon!.ascensions,zh=locale==='zh-CN',[phase,setPhase]=useState(String(stages[0]?.phase||1)),[cumulative,setCumulative]=useState(false),cost=ascensionCost(stages,Number(phase),cumulative);
- return <><label className="museum-control"><span>{zh?'突破阶段':'Ascension stage'}</span><ThemedSelect label={zh?'突破阶段':'Ascension stage'} value={phase} onValueChange={setPhase} options={stages.map(s=>({value:String(s.phase),label:`${zh?'突破':'Phase'} ${s.phase} · ${s.levelCap}`}))}/></label><div className="museum-cost-mode"><button aria-pressed={!cumulative} onClick={()=>setCumulative(false)}>{zh?'本阶段':'This stage'}</button><button aria-pressed={cumulative} onClick={()=>setCumulative(true)}>{zh?'累计至此阶段':'Cumulative to this stage'}</button></div><h3>{zh?'突破材料':'Ascension materials'}</h3><div className="museum-cost"><p><span>{zh?'摩拉':'Mora'}</span><strong>{formatStat(cost.coin,'',locale)}</strong></p>{cost.items.map(i=><button key={i.id} onClick={()=>onSelect(i.id)}><span>{i.name}</span><strong>× {formatStat(i.count,'',locale)}</strong></button>)}</div><p className="museum-note">{zh?'仅统计突破，不含升级所需经验与摩拉。':'Ascension only; excludes level-up experience and Mora.'}</p></>;
+ return <><label className="museum-control"><span>{zh?'突破阶段':'Ascension stage'}</span><ThemedSelect archive label={zh?'突破阶段':'Ascension stage'} value={phase} onValueChange={setPhase} options={stages.map(s=>({value:String(s.phase),label:`${zh?'突破':'Phase'} ${s.phase} · ${s.levelCap}`}))}/></label><div className="museum-cost-mode"><button aria-pressed={!cumulative} onClick={()=>setCumulative(false)}>{zh?'本阶段':'This stage'}</button><button aria-pressed={cumulative} onClick={()=>setCumulative(true)}>{zh?'累计至此阶段':'Cumulative to this stage'}</button></div><h3>{zh?'突破材料':'Ascension materials'}</h3><div className="museum-cost"><p><span>{zh?'摩拉':'Mora'}</span><strong>{formatStat(cost.coin,'',locale)}</strong></p>{cost.items.map(i=><button key={i.id} onClick={()=>onSelect(i.id)}><span>{i.name}</span><strong>× {formatStat(i.count,'',locale)}</strong></button>)}</div><p className="museum-note">{zh?'仅统计突破，不含升级所需经验与摩拉。':'Ascension only; excludes level-up experience and Mora.'}</p></>;
 }
 function ArtifactRules({item,locale}:{item:Item;locale:Locale}){
  const artifact=item.artifact!,zh=locale==='zh-CN';const [rarity,setRarity]=useState(String(artifact.rules.at(-1)?.rarity||5));const rule=artifact.rules.find(r=>String(r.rarity)===rarity);const [mainKey,setMainKey]=useState(''),[level,setLevel]=useState<number|null>(null);
  const main=rule?.mainStats.find(m=>m.key===mainKey)||rule?.mainStats[0],levels=main?.values||[],selected=levels.find(v=>v.level===level)||levels.at(-1);
- return <><h3>{artifact.setName}</h3>{artifact.setEffects.map(e=><p key={e.pieces}><strong>{e.pieces}{zh?'件套':' pieces'}</strong> · {e.text}</p>)}<h3>{zh?'词条规则':'Stat rules'}</h3><p className="museum-note">{zh?'以下合并展示源数据不同配置变体的词条与属性值，不代表普通掉落可出现的词条或档位。':'Stats and values from different source configuration variants are combined here; they do not represent stats or roll tiers available on ordinary artifact drops.'}</p>{rule&&main&&selected?<><label className="museum-control"><span>{zh?'星级':'Rarity'}</span><ThemedSelect label={zh?'圣遗物星级':'Artifact rarity'} value={rarity} onValueChange={v=>{setRarity(v);setLevel(null);setMainKey('')}} options={artifact.rules.map(r=>({value:String(r.rarity),label:`${r.rarity}${zh?'星':' stars'}`}))}/></label><label className="museum-control"><span>{zh?'等级':'Level'}</span><ThemedSelect label={zh?'圣遗物等级':'Artifact level'} value={String(selected.level)} onValueChange={v=>setLevel(Number(v))} options={levels.map(v=>({value:String(v.level),label:`+${v.level}`}))}/></label><label className="museum-control"><span>{zh?'主属性':'Main stat'}</span><ThemedSelect label={zh?'主属性':'Main stat'} value={main.key} onValueChange={setMainKey} options={rule.mainStats.map(m=>({value:m.key,label:m.label}))}/></label><dl className="museum-stats"><div><dt>{main.label}</dt><dd>{formatStat(selected.value,main.unit,locale)}</dd></div></dl><h3>{zh?'可能副属性':'Possible substats'}</h3><dl className="museum-substats">{possibleSubstats(rule.substats,main.key).map(s=><div key={s.key}><dt>{s.label}</dt><dd>{s.values.map(v=>formatStat(v,s.unit,locale)).join(' / ')}</dd></div>)}</dl></>:<p>{zh?'此部位的词条规则尚未解析。':'Stat rules for this slot are not yet available.'}</p>}</>;
+ return <><h3>{artifact.setName}</h3>{artifact.setEffects.map(e=><p key={e.pieces}><strong>{e.pieces}{zh?'件套':' pieces'}</strong> · {e.text}</p>)}<h3>{zh?'词条规则':'Stat rules'}</h3><p className="museum-note">{zh?'以下合并展示源数据不同配置变体的词条与属性值，不代表普通掉落可出现的词条或档位。':'Stats and values from different source configuration variants are combined here; they do not represent stats or roll tiers available on ordinary artifact drops.'}</p>{rule&&main&&selected?<><label className="museum-control"><span>{zh?'星级':'Rarity'}</span><ThemedSelect archive label={zh?'圣遗物星级':'Artifact rarity'} value={rarity} onValueChange={v=>{setRarity(v);setLevel(null);setMainKey('')}} options={artifact.rules.map(r=>({value:String(r.rarity),label:`${r.rarity}${zh?'星':' stars'}`}))}/></label><label className="museum-control"><span>{zh?'等级':'Level'}</span><ThemedSelect archive label={zh?'圣遗物等级':'Artifact level'} value={String(selected.level)} onValueChange={v=>setLevel(Number(v))} options={levels.map(v=>({value:String(v.level),label:`+${v.level}`}))}/></label><label className="museum-control"><span>{zh?'主属性':'Main stat'}</span><ThemedSelect archive label={zh?'主属性':'Main stat'} value={main.key} onValueChange={setMainKey} options={rule.mainStats.map(m=>({value:m.key,label:m.label}))}/></label><dl className="museum-stats"><div><dt>{main.label}</dt><dd>{formatStat(selected.value,main.unit,locale)}</dd></div></dl><h3>{zh?'可能副属性':'Possible substats'}</h3><dl className="museum-substats">{possibleSubstats(rule.substats,main.key).map(s=><div key={s.key}><dt>{s.label}</dt><dd>{s.values.map(v=>formatStat(v,s.unit,locale)).join(' / ')}</dd></div>)}</dl></>:<p>{zh?'此部位的词条规则尚未解析。':'Stat rules for this slot are not yet available.'}</p>}</>;
 }

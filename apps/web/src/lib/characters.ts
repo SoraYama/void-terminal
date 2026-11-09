@@ -1,4 +1,5 @@
 import type {Locale,Provenance} from './contracts';
+import travelerPortraits from '../../public/assets/genshin-ui/traveler/manifest.json';
 export const elements=['Fire','Water','Wind','Electric','Ice','Rock','Grass'] as const;
 export const characterWeapons=['WEAPON_SWORD_ONE_HAND','WEAPON_CLAYMORE','WEAPON_POLE','WEAPON_CATALYST','WEAPON_BOW'] as const;
 export const audioLocales=['zh-CN','en','ja','ko'] as const;
@@ -19,16 +20,27 @@ export interface CharacterAscension {ascension:number;maxLevel:number;materials:
 export interface Character extends CharacterSummary {portrait:CharacterMedia;birthday:{month:number|null;day:number|null};affiliation:string;constellationName:string;cv:Partial<Record<AudioLocale,string>>;sources:Provenance[];documentIds:string[];forms:CharacterForm[];stories:Narrative[];voices:CharacterVoice[];ascensions:CharacterAscension[];coverage:Record<string,string>}
 export interface CharacterResult {character:Character;snapshotId:string}
 export interface CharacterListResult {characters:CharacterSummary[];total:number;page:number;pageSize:number;snapshotId:string|null;ready:boolean;counts:Record<string,number>;regions:string[]}
-export interface CharacterQuery {q:string;element:string;weaponType:string;rarity:string;region:string;includeInternal:boolean;sort:'rarity'|'name';page:number;character:string;form:string;tab:CharacterTab;subtab:'biography'|'stories'|'voices';snapshotId:string}
+export interface CharacterQuery {q:string;element:string;weaponType:string;rarity:string;region:string;includeInternal:boolean;sort:'rarity'|'name';page:number;character:string;browseElement:string;form:string;tab:CharacterTab;subtab:'biography'|'stories'|'voices';snapshotId:string}
 export function readCharacterQuery(search:string):CharacterQuery {
  const p=new URLSearchParams(search),value=(key:string,max=200)=>{const s=p.get(key)||'';return s.length<=max&&!/[\x00-\x1f\x7f]/.test(s)?s:''},page=Number(p.get('page')||1);
- return {q:value('q',500),element:elements.includes(value('element') as typeof elements[number])?value('element'):'',weaponType:characterWeapons.includes(value('weaponType') as typeof characterWeapons[number])?value('weaponType'):'',rarity:/^[1-5]$/.test(value('rarity'))?value('rarity'):'',region:value('region'),includeInternal:p.get('includeInternal')==='true',sort:p.get('sort')==='name'?'name':'rarity',page:Number.isInteger(page)&&page>0&&page<=100000?page:1,character:/^avatar:[0-9]{1,16}$/.test(value('character'))?value('character'):'',form:/^[0-9]{1,16}$/.test(value('form'))?value('form'):'',tab:['attributes','constellations','talents','info','cultivation'].includes(value('tab'))?value('tab') as CharacterTab:'attributes',subtab:['biography','stories','voices'].includes(value('subtab'))?value('subtab') as CharacterQuery['subtab']:'biography',snapshotId:/^[A-Za-z0-9_-]+$/.test(value('snapshotId'))?value('snapshotId'):''};
+ return {q:value('q',500),element:elements.includes(value('element') as typeof elements[number])?value('element'):'',weaponType:characterWeapons.includes(value('weaponType') as typeof characterWeapons[number])?value('weaponType'):'',rarity:/^[45]$/.test(value('rarity'))?value('rarity'):'',region:value('region'),includeInternal:p.get('includeInternal')==='true',sort:p.get('sort')==='name'?'name':'rarity',page:Number.isInteger(page)&&page>0&&page<=100000?page:1,character:/^avatar:[0-9]{1,16}$/.test(value('character'))?value('character'):'',browseElement:elements.includes(value('browseElement') as typeof elements[number])?value('browseElement'):'',form:/^[0-9]{1,16}$/.test(value('form'))?value('form'):'',tab:['attributes','constellations','talents','info','cultivation'].includes(value('tab'))?value('tab') as CharacterTab:'attributes',subtab:['biography','stories','voices'].includes(value('subtab'))?value('subtab') as CharacterQuery['subtab']:'biography',snapshotId:/^[A-Za-z0-9_-]+$/.test(value('snapshotId'))?value('snapshotId'):''};
 }
 export function characterListQuery(q:CharacterQuery,language:Locale){const p=new URLSearchParams({language,page:String(q.page),pageSize:'48',sort:q.sort});for(const key of ['q','element','weaponType','rarity','region','snapshotId'] as const)if(q[key])p.set(key,q[key]);if(q.includeInternal)p.set('includeInternal','true');return p}
-export function characterUrl(q:CharacterQuery){const p=characterListQuery(q,'zh-CN');p.delete('language');p.delete('pageSize');for(const key of ['character','form','tab','subtab'] as const)if(q[key])p.set(key,q[key]);return '/characters?'+p}
+export function characterUrl(q:CharacterQuery){const p=characterListQuery(q,'zh-CN');p.delete('language');p.delete('pageSize');for(const key of ['character','form','tab','subtab'] as const)if(q[key])p.set(key,q[key]);if(q.character&&q.browseElement)p.set('browseElement',q.browseElement);return '/characters?'+p}
 export function allowedCharacterImage(media:CharacterMedia):string|null {
  if(media.status!=='verified'||media.verification!=='image-header'||!media.url||!/^(?:UI|Skill)_[A-Za-z0-9_]+$/.test(media.identifier))return null;
  return media.url===`https://gi.yatta.moe/assets/UI/${media.identifier}.png`?media.url:null;
+}
+type PortraitRecord=Pick<Character,'id'|'avatarId'|'portrait'>&{icon:Pick<CharacterMedia,'identifier'>};
+export function resolveCharacterPortrait(character:PortraitRecord,failed?:ReadonlySet<string>){
+ const supplement=travelerPortraits.find(asset=>character.id===`avatar:${asset.avatarId}`&&character.avatarId===asset.avatarId&&character.icon.identifier===asset.iconIdentifier)||null;
+ const primary=allowedCharacterImage(character.portrait);
+ if(primary&&!failed?.has(primary))return {kind:'snapshot' as const,src:primary,supplement};
+ if(supplement){
+  const src=`/assets/genshin-ui/traveler/${supplement.file}`;
+  if(!failed?.has(src))return {kind:'supplement' as const,src,supplement};
+ }
+ return {kind:'missing' as const,src:null,supplement};
 }
 export function voiceUrl(media:CharacterMedia|undefined,character:string,voice:string,locale:AudioLocale,snapshot:string,language:Locale):string|null {
  if(!snapshot||!/^avatar:[0-9]{1,16}$/.test(character)||!/^[A-Za-z0-9_-]{1,100}$/.test(voice)||!audioLocales.includes(locale)||media?.status!=='verified'||media.verification!=='archive-index'||media.provider!=='genshin-voice'||media.url!==`/api/characters/${character}/voices/${voice}?audioLanguage=${locale}`)return null;

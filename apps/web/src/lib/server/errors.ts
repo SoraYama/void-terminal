@@ -5,6 +5,7 @@ export class AppError extends Error {
     message: string,
     public status = 503,
     public retryable = false,
+    public retryAfter?: number,
   ) {
     super(message);
   }
@@ -22,7 +23,7 @@ export function safeError(error: unknown): AppError {
 export function errorResponse(error: unknown): Response {
   const e = safeError(error);
   return Response.json(
-    { error: { code: e.code, message: e.message } },
-    { status: e.status, headers: { "Cache-Control": "no-store" } },
+    { error: { code: e.code, message: e.message, ...(e.retryAfter ? { retryAfter: e.retryAfter } : {}) } },
+    { status: e.status, headers: { "Cache-Control": "no-store", ...(e.retryAfter ? { "Retry-After": String(e.retryAfter) } : {}) } },
   );
 }

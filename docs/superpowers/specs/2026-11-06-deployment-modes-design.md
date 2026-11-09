@@ -1,0 +1,15 @@
+# Two deployment modes and compact conversation controls
+
+User direction: one open-source project users can deploy with their own API key; the official site keeps email login and credits. User explicitly selected official-site login/credits only, without a BYOK UI. Preserve existing credits, histories, corpus and citations. No payment integration in this change.
+
+Approach: one codebase and image, strict runtime DEPLOYMENT_MODE=self-hosted|hosted. Default self-hosted. Separate branches/build-time flags would drift or freeze the wrong mode into an image, so they are not used. This is an implementation choice within the authorized optimization.
+
+- self-hosted: BYOK only, no Supabase dependency, account fetch/listeners/modal/credits hidden and not required, guest local history remains intact. Operator-provided shared keys are never used in this mode. API/provider URL restrictions remain unchanged.
+- hosted: account/credits only, no provider/key settings or mode switch. Stale BYOK preferences cannot select BYOK or send a key. Every chat/model-test endpoint rejects BYOK server-side. Missing auth/model/budget configuration reports unavailable and never downgrades to BYOK.
+- invalid configuration: fail closed. Runtime public mode metadata contains no credentials and is independent of knowledge-service readiness. Next page wrappers render dynamically so runtime mode is not captured at build time.
+- history: self-hosted guest namespace vs hosted verified-user namespace; existing per-user and guest records retained. A hosted identity outage must not expose guest/private history. First self-hosted draft/key remains usable without account requests.
+- hosted UX: account entry and sign-in prompt lead directly into credit usage; settings retain language/theme/history/data status. No 'clear key', custom model or 'use your key instead' dead ends. Preserve a typed question across sign-in where safe; never carry another authenticated user's draft/history across identity switches.
+- compact conversation controls: scope chat composer, answer actions and citation controls; use current paper/slate/gold design. Smaller icon/font/visible controls on desktop; mobile touch targets remain usable. No global shrinking of navigation or homepage controls.
+- deployment: both Compose files pass mode at runtime; docs separate self-hosted quick start from hosted operations and explain BYOK trust boundaries. Official production config must explicitly set hosted before new image starts. Account volume/ledger preserved during release and rollback.
+
+Acceptance: server unit/API cases cover mode denial, stale key/header/provider injection, invalid/absent env, hosted misconfiguration and self-hosted account independence. Browser desktop/mobile checks cover actual runtime modes, stale preferences, login routing, settings fields, history isolation, compact dimensions and no overflow. Build once then run both modes. Production acceptance uses read-only checks and the already-authorized hosted route without spending credits unless a new issue justifies it.

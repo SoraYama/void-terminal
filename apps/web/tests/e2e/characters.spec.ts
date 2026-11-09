@@ -1,3 +1,4 @@
+import {navigateArchive,watchWarmEntry,expectNoWarmFlash} from '../helpers/archive-navigation-browser';
 import {test,expect,type Page} from '@playwright/test';
 import type {Character,CharacterVoice} from '../../src/lib/characters';
 
@@ -18,11 +19,13 @@ const ayaka:Character={
 };
 const nahida:Character={...ayaka,id:'avatar:10000073',avatarId:10000073,name:'纳西妲',title:'白草净华',element:'Grass',elementName:'草',region:'须弥',forms:[{...ayaka.forms[0],id:'7301',name:'草',element:'Grass',elementName:'草'}],voices:[]};
 const traveler:Character={...ayaka,id:'avatar:10000005',avatarId:10000005,name:'旅行者',title:'远行之人',element:'Wind',elementName:'风',forms:[{...ayaka.forms[0],id:'501',name:'风',element:'Wind',elementName:'风'},{...ayaka.forms[0],id:'502',name:'岩',element:'Rock',elementName:'岩'},{...ayaka.forms[0],id:'503',name:'未记录元素',element:'',elementName:''}],voices:[]};
+const travelerPortraitUrl='https://gi.yatta.moe/assets/UI/UI_Gacha_AvatarImg_PlayerBoy.png';
+const travelerWithPortrait:Character={...traveler,element:null,elementName:'',icon:{...missing,identifier:'UI_AvatarIcon_PlayerBoy'},portrait:{identifier:'UI_Gacha_AvatarImg_PlayerBoy',url:travelerPortraitUrl,status:'verified',verification:'image-header'},coverage:{...traveler.coverage,portrait:'complete'}};
 const characters=[ayaka,nahida];
 function wav(){const frames=24000*15,data=Buffer.alloc(44+frames*2);data.write('RIFF');data.writeUInt32LE(data.length-8,4);data.write('WAVEfmt ',8);data.writeUInt32LE(16,16);data.writeUInt16LE(1,20);data.writeUInt16LE(1,22);data.writeUInt32LE(24000,24);data.writeUInt32LE(48000,28);data.writeUInt16LE(2,32);data.writeUInt16LE(16,34);data.write('data',36);data.writeUInt32LE(frames*2,40);return data}
-async function fixture(page:Page,options:{delayAyaka?:boolean;failAudio?:boolean;unbuilt?:boolean;images?:boolean;traveler?:boolean}={}){
+async function fixture(page:Page,options:{delayAyaka?:boolean;failAudio?:boolean;unbuilt?:boolean;images?:boolean;traveler?:boolean;travelerPortrait?:boolean}={}){
  const calls:{audio:number;chat:number;snapshots:string[]}={audio:0,chat:0,snapshots:[]};
- const available=options.traveler?[...characters,traveler]:characters;
+ const available=options.travelerPortrait?[...characters,travelerWithPortrait]:options.traveler?[...characters,traveler]:characters;
  const records=options.images?available.map(c=>{const identifier=c===ayaka?'UI_AvatarIcon_Ayaka':'UI_AvatarIcon_Nahida';return {...c,icon:{identifier,url:`https://gi.yatta.moe/assets/UI/${identifier}.png`,provider:'yatta',status:'verified',verification:'image-header'}}}):available;
  await page.addInitScript(()=>{
   localStorage.setItem('void.preferences',JSON.stringify({theme:'light',locale:'zh-CN',sourceLanguage:'zh-CN',mode:'byok'}));
@@ -47,6 +50,41 @@ async function fixture(page:Page,options:{delayAyaka?:boolean;failAudio?:boolean
 async function choose(page:Page,label:string,option:string){await page.getByRole('combobox',{name:label,exact:true}).click();await page.getByRole('option',{name:option,exact:true}).click()}
 async function openAyaka(page:Page){await page.goto('/characters');await page.locator('.character-card[data-character-id="avatar:10000002"]').click();await expect(page.locator('[data-character-detail] h1')).toHaveText('神里绫华')}
 async function audioState(page:Page){return page.evaluate(()=>((window as unknown as {characterPlayed:HTMLMediaElement[]}).characterPlayed).map(a=>({paused:a.paused,time:a.currentTime,src:a.getAttribute('src')})))}
+
+test('characters: failed verified Traveler portrait uses local art with separate source coverage',async({page})=>{
+ await fixture(page,{travelerPortrait:true});
+ await page.route(travelerPortraitUrl,route=>route.fulfill({status:404,body:'Not found'}));
+ const failed=page.waitForResponse(r=>r.url()===travelerPortraitUrl&&r.status()===404);
+ await page.goto('/characters?character=avatar%3A10000005');
+ await failed;
+ const portrait=page.locator('.character-portrait-stage').getByRole('img',{name:'旅行者',exact:true});
+ await expect(portrait).toHaveAttribute('src','/assets/genshin-ui/traveler/UI_Gacha_AvatarImg_PlayerBoy.png');
+ await expect.poll(()=>portrait.evaluate(img=>(img as HTMLImageElement).naturalWidth)).toBe(1920);
+ await page.getByRole('button',{name:'来源与覆盖',exact:true}).click();
+ const evidence=page.getByRole('region',{name:'来源与覆盖'});
+ await expect(evidence.locator('dl').getByText('立绘',{exact:true}).locator('..')).toContainText('已覆盖');
+ await expect(evidence.getByRole('link',{name:/UI_Gacha_AvatarImg_PlayerBoy/})).toHaveAttribute('href',/Rollphes\/genshin-manager\/blob\/cfea64f3f4afbfb8cf6fd3c35088c78528515ca8\/initImages\//);
+ await expect(evidence.getByText('补充立绘来源',{exact:true})).toBeVisible();
+});
+
+test('characters: archive fonts and original stat/rarity sprites load locally',async({page})=>{
+ await fixture(page);
+ const loadedSprites=new Set<string>(),fontOrigins=new Set<string>();
+ page.on('response',r=>{if(r.ok()&&r.url().includes('/assets/genshin-ui/'))loadedSprites.add(new URL(r.url()).pathname.split('/').at(-1)!);});
+ page.on('request',r=>{if(r.resourceType()==='font')fontOrigins.add(new URL(r.url()).origin)});
+ await openAyaka(page);
+ const stats=page.locator('.character-stat-list'),hp=stats.locator('dt').filter({hasText:'基础生命值'});
+ await expect(hp.locator('[aria-hidden=true]')).toBeVisible();
+ await expect(stats.getByText('12,858',{exact:true})).toBeVisible();
+ await expect.poll(()=>[...loadedSprites]).toEqual(expect.arrayContaining(['UI_Icon_MaxHp.png','UI_Icon_Critical.png','UI_IconStar.png']));
+ await expect(hp).toHaveCSS('font-family',/ArchiveUI/);
+ const loadedFonts=await page.evaluate(async()=>{
+  await document.fonts.ready;
+  return [...document.fonts].filter(f=>f.family.replaceAll('"','')==='ArchiveUI'&&f.status==='loaded').length;
+ });
+ expect(loadedFonts).toBeGreaterThan(0);
+ expect([...fontOrigins]).toEqual([new URL(page.url()).origin]);
+});
 
 test('characters: stats, talents, narrative branches and same-snapshot cultivation',async({page},info)=>{
  const calls=await fixture(page);await openAyaka(page);
@@ -84,11 +122,66 @@ test('characters: historical unbuilt snapshot has an explicit empty state',async
  await fixture(page,{unbuilt:true});await page.goto('/characters?snapshotId=old-snapshot');await expect(page.getByRole('heading',{name:'此快照尚未构建角色图鉴'})).toBeVisible();await expect(page.locator('.character-card')).toHaveCount(0);
 });
 
+test('characters: detail browsing mixes rarities across pages and has independent element filters',async({page})=>{
+ await fixture(page);
+ const amber={...ayaka,id:'avatar:10000021',avatarId:10000021,name:'安柏',rarity:4,element:'Fire',elementName:'火'};
+ await page.route('**/api/characters**',route=>{
+  const url=new URL(route.request().url());
+  if(decodeURIComponent(url.pathname).endsWith('/'+amber.id))return route.fulfill({json:{character:amber,snapshotId}});
+  if(url.pathname!=='/api/characters')return route.fallback();
+  const p=url.searchParams,rarity=p.get('rarity'),pageNumber=Number(p.get('page')||1);
+  const rows=rarity==='4'?[amber]:rarity==='5'?[ayaka,nahida]:pageNumber===1?[ayaka,nahida]:[amber];
+  return route.fulfill({json:{characters:rows,total:rarity?rows.length:3,page:pageNumber,pageSize:2,snapshotId,ready:true,counts:{Ice:1,Grass:1,Fire:1},regions:[]}});
+ });
+ await page.goto('/characters?rarity=4&snapshotId='+snapshotId);
+ await page.getByRole('combobox',{name:'稀有度',exact:true}).click();
+ await expect(page.getByRole('option')).toHaveText(['全部星级','5星','4星']);
+ await page.keyboard.press('Escape');
+ await expect(page.locator('.character-card')).toHaveCount(1);
+ await page.locator('.character-card').click();
+ const strip=page.locator('.character-avatar-strip');
+ await expect(strip.getByRole('button')).toHaveCount(3);
+ await choose(page,'浏览元素','冰');
+ await expect(strip.getByRole('button')).toHaveCount(1);
+ await strip.getByRole('button',{name:'神里绫华'}).click();
+ await expect(page.locator('[data-character-detail] h1')).toHaveText('神里绫华');
+ await page.goBack();
+ await expect(page.locator('[data-character-detail] h1')).toHaveText('安柏');
+ await expect(strip.getByRole('button',{name:'神里绫华'})).toBeVisible();
+ await page.getByRole('button',{name:'返回图鉴',exact:true}).click();
+ await expect(page.locator('.character-card')).toHaveCount(1);
+ await expect(page.locator('.character-card')).toContainText('安柏');
+ await expect(page).toHaveURL(/rarity=4/);
+});
+
 test('characters: browser back cancels a slower character response',async({page})=>{
  await fixture(page,{delayAyaka:true});await page.goto('/characters?character=avatar:10000073&snapshotId='+snapshotId);
  await expect(page.locator('[data-character-detail] h1')).toHaveText('纳西妲');
  await page.locator('.character-avatar-strip [data-character-id="avatar:10000002"]').click();await page.goBack();
  await expect(page.locator('[data-character-detail] h1')).toHaveText('纳西妲');await page.waitForTimeout(500);await expect(page.locator('[data-character-detail] h1')).toHaveText('纳西妲');
+});
+
+test('characters: a slow switch keeps the focused avatar and reserves the stat values',async({page},info)=>{
+ await fixture(page);
+ let release!:()=>void;
+ const pending=new Promise<void>(resolve=>{release=resolve});
+ await page.route('**/api/characters/avatar%3A10000002?*',async route=>{await pending;await route.fallback()});
+ await page.goto('/');
+ await navigateArchive(page,'群星图鉴');
+ await page.locator('.character-card[data-character-id="avatar:10000073"]').click();
+ await expect(page.locator('[data-character-detail] h1')).toHaveText('纳西妲');
+ const avatar=page.locator('.character-avatar-strip [data-character-id="avatar:10000002"]');
+ try{
+  await avatar.focus();
+  await avatar.press('Enter');
+  await expect(avatar).toBeFocused();
+  await expect(avatar).toHaveAttribute('aria-pressed','true');
+  await expect(page.getByRole('heading',{name:'神里绫华',exact:true})).toBeVisible();
+  await expect(page.locator('.character-stat-list dd').first()).toHaveText('—');
+  await page.screenshot({path:info.outputPath('character-pending.png'),scale:'css',animations:'disabled'});
+ }finally{release()}
+ await expect(page.locator('.character-stat-list dd').first()).toHaveText('12,858');
+ await expect(avatar).toBeFocused();
 });
 
 test('characters: preparing a question preserves an existing unsent draft',async({page},info)=>{
@@ -170,4 +263,67 @@ test('characters: Traveler identity follows the selected form and leaves missing
  await choose(page,'元素形态','岩 · 502');await expect(identity.getByRole('img',{name:'岩',exact:true})).toBeVisible();await expect(identity).not.toContainText('岩');await expect(identity.locator('[data-element-icon="Rock"]')).toBeVisible();await expect(identity.locator('[data-element-icon="Wind"]')).toHaveCount(0);
  await page.getByRole('tab',{name:'资料',exact:true}).click();await expect(identity).toBeInViewport();await expect(identity.locator('[data-element-icon="Rock"]')).toBeVisible();
  await choose(page,'元素形态','未记录元素 · 503');await expect(identity.locator('[data-element-icon]')).toHaveCount(0);await expect(identity).not.toContainText('风');await expect(identity.getByRole('heading',{name:'旅行者',exact:true})).toBeVisible();
+});
+
+test('characters: warm return restores filtered query and profile without loading, and stops audio on exit',async({page})=>{
+ await fixture(page);let requests=0;page.on('request',r=>{if(new URL(r.url()).pathname.startsWith('/api/characters')&&!r.url().includes('/voices/'))requests++});
+ await page.goto('/characters');await page.getByRole('searchbox').fill('神里');await expect(page.locator('.character-card')).toHaveCount(1);
+ await page.locator('.character-card').click();await page.getByRole('tab',{name:'资料',exact:true}).click();await page.getByRole('tab',{name:'语音',exact:true}).click();
+ await page.getByRole('button',{name:'播放语音',exact:true}).click();await expect.poll(async()=> (await audioState(page)).some(a=>!a.paused)).toBe(true);
+ const url=page.url(),before=requests;
+ await navigateArchive(page,'尘世文卷');await expect(page.locator('.character-workspace')).toHaveCount(0);
+ await expect.poll(async()=> (await audioState(page)).every(a=>a.paused&&!a.src)).toBe(true);
+ await watchWarmEntry(page,'characters');await navigateArchive(page,'群星图鉴');
+ await expect(page.locator('[data-character-detail] h1')).toHaveText('神里绫华');await expect(page.getByRole('tab',{name:'语音',exact:true})).toHaveAttribute('aria-selected','true');
+ expect(page.url()).toBe(url);await expectNoWarmFlash(page);expect(requests).toBe(before);
+ await page.getByRole('button',{name:'返回图鉴',exact:true}).click();await expect(page.getByRole('searchbox')).toHaveValue('神里');await expect(page.locator('.character-card')).toHaveCount(1);
+ await page.goBack();await expect(page.locator('[data-character-detail] h1')).toHaveText('神里绫华');await expectNoWarmFlash(page);
+});
+
+test('characters: warm profile restores its own tab scroll after a module switch',async({page})=>{
+ await fixture(page);await page.route('**/api/characters/avatar%3A10000002?*',r=>r.fulfill({json:{character:{...ayaka,description:Array.from({length:60},()=>ayaka.description).join('\n\n')},snapshotId}}));
+ await page.goto('/characters?character=avatar:10000002&tab=info&snapshotId='+snapshotId);await expect(page.locator('[data-character-detail] h1')).toHaveText('神里绫华');
+ const scroll=page.locator('.character-section-content');await scroll.evaluate(el=>{el.scrollTop=420});const before=await scroll.evaluate(el=>el.scrollTop);expect(before).toBeGreaterThan(300);
+ await navigateArchive(page,'尘世文卷');await expect(page.locator('.character-workspace')).toHaveCount(0);await navigateArchive(page,'群星图鉴');
+ await expect(page.locator('[data-character-detail] h1')).toHaveText('神里绫华');await expect.poll(()=>scroll.evaluate(el=>el.scrollTop)).toBe(before);
+});
+
+test('characters: leaving before snapshot resolution cannot replace the new module URL',async({page})=>{
+ await fixture(page);let started=false;
+ await page.route('**/api/characters?*',async r=>{started=true;await new Promise(resolve=>setTimeout(resolve,500));await r.fallback()});
+ await page.goto('/characters');await expect.poll(()=>started).toBe(true);await navigateArchive(page,'尘世文卷');await expect(page.locator('.library-scroll')).toBeVisible();
+ await page.waitForTimeout(600);await expect(page).toHaveURL(/\/$/);await expect(page.locator('.character-workspace')).toHaveCount(0);
+});
+
+test('characters: a material link supersedes a pending generic Museum transition with its explicit snapshot',async({page})=>{
+ await fixture(page);await page.route('**/api/items**',route=>{
+  const url=new URL(route.request().url()),snapshot=url.searchParams.get('snapshotId')||'generic-snapshot';
+  const item={id:material.itemId,language:'zh-CN',name:'哀叙冰玉碎屑',category:'material',subtype:'角色突破材料',rarity:2,description:'用于角色突破的材料。',story:'',state:'source-record',icon:missing,rawIds:[material.id],documentIds:[],sources:[source],attributes:[],acquisition:[],coverage:{}};
+  return route.fulfill({json:url.pathname==='/api/items'?{items:[item],total:1,page:1,pageSize:48,snapshotId:snapshot,ready:true,counts:{material:1}}:{item,snapshotId:snapshot}});
+ });
+ await openAyaka(page);await page.getByRole('tab',{name:'培养',exact:true}).click();await expect(page.locator('.character-material-list').first().getByRole('link')).toContainText('哀叙冰玉碎屑');
+ await page.evaluate(()=>{
+  const native=document.startViewTransition.bind(document);let release!:()=>void;const held=new Promise<void>(resolve=>{release=resolve});
+  Object.assign(window,{releaseMaterialTransition:release});
+  document.startViewTransition=callback=>native(async()=>{await held;await (callback as ()=>void|Promise<void>)()});
+  document.querySelector<HTMLButtonElement>('#desktop-navigation .nav-item[aria-label="万象集录"]')!.click();
+  document.querySelector<HTMLAnchorElement>('.character-material-list a')!.click();
+ });
+ expect(new URL(page.url()).searchParams.get('item')).toBe(material.itemId);expect(new URL(page.url()).searchParams.get('snapshotId')).toBe(snapshotId);
+ await page.evaluate(()=>(window as unknown as {releaseMaterialTransition:()=>void}).releaseMaterialTransition());
+ await expect(page.locator('.museum-detail h2')).toHaveText('哀叙冰玉碎屑');expect(new URL(page.url()).searchParams.get('snapshotId')).toBe(snapshotId);
+});
+
+test('characters: browser Back restores language-specific list scroll after changing source language',async({page})=>{
+ await fixture(page);await page.route('**/api/characters?*',route=>{
+  const params=new URL(route.request().url()).searchParams,language=params.get('language')||'zh-CN',element=params.get('element')||'Ice';
+  const records=Array.from({length:48},(_,i)=>({...ayaka,id:`avatar:${10000100+i}`,name:`${language==='en'?'EN':'ZH'}-${element}-${i}`,language,element}));
+  return route.fulfill({json:{characters:records,total:48,page:1,pageSize:48,snapshotId,ready:true,counts:{Ice:48,Grass:48},regions:[]}});
+ });
+ await page.goto('/characters?element=Ice&snapshotId='+snapshotId);await expect(page.locator('.character-card')).toHaveCount(48);
+ const grid=page.locator('.character-grid-scroll');await grid.evaluate(el=>{el.scrollTop=360});await expect.poll(()=>page.evaluate(()=>history.state.characterScroll)).toBe(360);
+ await navigateArchive(page,'设置');await choose(page,'资料语言','English sources');await page.getByRole('dialog',{name:'设置',exact:true}).getByRole('button',{name:'关闭',exact:true}).click();
+ await expect(page.locator('.character-card strong').first()).toHaveText('EN-Ice-0');await grid.evaluate(el=>{el.scrollTop=720});await expect.poll(()=>page.evaluate(()=>history.state.characterScroll)).toBe(720);
+ await page.locator('.character-elements button[data-element="Grass"]').click();await expect(page.locator('.character-card strong').first()).toHaveText('EN-Grass-0');
+ await page.goBack();await expect(page.locator('.character-card strong').first()).toHaveText('EN-Ice-0');await expect.poll(()=>grid.evaluate(el=>el.scrollTop)).toBe(720);
 });

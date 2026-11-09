@@ -1,2 +1,5 @@
 import {Terminal} from '../components/terminal';
-export default function Page(){return <Terminal/>}
+import {deploymentMode} from '../lib/server/deployment';
+import {supportConfig} from '../lib/server/support-config';
+export const dynamic = 'force-dynamic';
+export default function Page(){const mode=deploymentMode();return <Terminal deploymentMode={mode} support={supportConfig(mode)}/>}

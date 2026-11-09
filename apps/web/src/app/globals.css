@@ -125,7 +125,7 @@
 .conversation-header .icon-button{color:inherit;background:#173d5233;border-color:#fff5;flex-shrink:0}
 .chat .icon-button{min-height:44px;min-width:44px}
 .chat .citations{display:block;margin:12px 0 6px;font-size:12px;max-width:100%}
-.citations summary{display:flex;align-items:center;gap:7px;list-style:none;width:max-content;max-width:100%;min-height:36px;color:var(--muted);cursor:pointer;border-radius:7px;padding:0 8px 0 0;user-select:none}
+.citations summary{display:flex;align-items:center;gap:6px;list-style:none;width:max-content;max-width:100%;min-height:30px;color:var(--muted);cursor:pointer;border-radius:7px;padding:0 6px 0 0;user-select:none}
 .citations summary::-webkit-details-marker{display:none}
 .citations summary:hover{color:var(--accent)}
 .citations summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
@@ -133,18 +133,25 @@
 .citation-caret{transition:transform .18s}
 .citations[open] .citation-caret{transform:rotate(180deg)}
 .citation-items{display:flex;flex-wrap:wrap;gap:4px 7px;padding:6px 0 10px}
-.chat .citations button{min-height:30px;max-width:min(100%,240px);padding:3px 8px;gap:6px;font-size:11px;line-height:1.6;background:color-mix(in srgb,var(--accent-soft) 65%,transparent);border-radius:5px;text-align:left}
+.chat .citations button{min-height:28px;max-width:min(100%,240px);padding:3px 7px;gap:5px;font-size:11px;line-height:1.6;background:color-mix(in srgb,var(--accent-soft) 65%,transparent);border-radius:5px;text-align:left}
+.chat .message-actions button{min-height:28px;padding:4px 6px}
+.chat .message-actions svg,.chat .citations summary svg{width:14px;height:14px}
 .citation-number{flex-shrink:0;font-variant-numeric:tabular-nums;color:var(--accent)}
 .citation-title{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .chat .citations button:hover{background:var(--accent-soft)}
 .chat .chat-bottom{flex-shrink:0;padding:10px var(--chat-gutter) max(8px,env(safe-area-inset-bottom));position:relative;background:var(--paper)}
 .chat-bottom>.composer,.chat-bottom>.inline-error,.chat-bottom>.disclaimer{max-width:var(--chat-measure);margin-left:auto;margin-right:auto}
-.chat-bottom .composer{--composer-surface:var(--chat-input-surface);--composer-text:var(--text);--composer-input:var(--text);--composer-muted:var(--chat-composer-muted);--composer-primary:var(--accent);background:var(--composer-surface);border:1px solid var(--chat-input-border);box-shadow:var(--chat-input-shadow);padding:9px 14px 8px;border-radius:16px}
+.chat-bottom .composer{--composer-surface:var(--chat-input-surface);--composer-text:var(--text);--composer-input:var(--text);--composer-muted:var(--chat-composer-muted);--composer-primary:var(--accent);background:var(--composer-surface);border:1px solid var(--chat-input-border);box-shadow:var(--chat-input-shadow);padding:8px 12px 7px;border-radius:14px}
 .chat-bottom .composer textarea{display:block;min-height:34px;max-height:140px;overflow-y:auto;padding:5px 3px;font-size:15px;line-height:24px;scrollbar-width:thin;caret-color:var(--accent)}
-.chat-bottom .composer-tools{min-height:42px;gap:8px}
-.chat-bottom .composer .send{width:38px;height:38px;min-height:38px;color:var(--paper)}
-.chat-bottom .composer .select-composer,.chat-bottom .composer .depth{font-size:12px}
-.chat-bottom .composer .depth{min-height:38px;padding:6px 9px}
+.chat-bottom .composer-tools{min-height:34px;gap:7px}
+.chat-bottom .composer .send{width:32px;height:32px;min-height:32px;flex-shrink:0;padding:6px;color:var(--paper)}
+.chat-bottom .composer .send svg{width:20px;height:20px}
+.chat-bottom .composer .select-composer,.chat-bottom .composer .depth{font-size:11px;min-height:32px;gap:5px}
+.chat-bottom .composer .select-composer svg,.chat-bottom .composer .depth svg{width:15px;height:15px}
+.chat-bottom .composer .depth{padding:4px 7px}
+.chat-bottom .tool-divider{height:16px}
+.composer-cost{font-size:11px;line-height:1.4;color:var(--composer-muted);white-space:nowrap;margin-left:auto}
+.composer-cost+.send{margin-left:0}
 .chat-bottom .composer .depth[aria-pressed=true]{color:var(--paper)}
 .chat-bottom .disclaimer{font-size:10px;margin-top:8px;margin-bottom:0;line-height:1.5;color:var(--muted)}
 .chat-bottom .inline-error{font-size:12px;line-height:1.5;margin-top:0;margin-bottom:8px}
@@ -152,9 +159,11 @@
 .chat ::selection{background:var(--accent-soft);color:var(--text)}
 @media(pointer:coarse){
  .citations summary{min-height:44px}
- .chat .citations button{min-height:44px}
- .chat-bottom .composer .send,.chat-bottom .composer .depth{min-height:44px}
- .chat-bottom .composer .send{width:44px;height:44px}
+ .chat .citations button{min-height:44px;border-block:8px solid transparent;background-clip:padding-box}
+ .chat .message-actions button{min-height:44px;min-width:44px}
+ .chat-bottom .composer .send,.chat-bottom .composer .depth,.chat-bottom .composer .select-composer{min-height:44px}
+ .chat-bottom .composer .send{width:44px;height:44px;border:6px solid transparent;background-clip:padding-box;padding:0}
+ .chat-bottom .composer .depth{border-block:6px solid transparent;background-clip:padding-box}
 }
 @media(max-width:650px){
  :root{--chat-gutter:16px}
@@ -176,6 +185,11 @@
  .chat-bottom .composer .select-composer{font-size:11px;max-width:115px}
  .chat-bottom .disclaimer{font-size:9px;margin-top:6px}
  .chat .citations button{max-width:210px}
+}
+@media(max-width:420px){
+ .composer-tools:has(.composer-cost){flex-wrap:wrap;row-gap:0}
+ .composer-cost{order:1;width:100%;margin:1px 0 2px;font-size:10px}
+ .composer-cost+.send{margin-left:auto}
 }
 @media(max-height:700px){.chat-bottom .disclaimer{display:none}.conversation-cover>.banner{height:76px}}
 
@@ -317,3 +331,128 @@
 .museum-restore-draft{font-size:12px;color:var(--composer-text);padding:4px 8px;min-height:36px;border:1px solid var(--line);margin-bottom:8px}
 
 .game-icon{display:inline-block;flex-shrink:0;mask-position:center;mask-repeat:no-repeat;mask-size:contain;-webkit-mask-position:center;-webkit-mask-repeat:no-repeat;-webkit-mask-size:contain}.game-navigation-icon{width:25px;height:25px;background:currentColor}
+:is([data-element=Fire],[data-element-icon=Fire]){--element-color:#ba604c;--element-tint:#ead5c7}:is([data-element=Water],[data-element-icon=Water]){--element-color:#397ea1;--element-tint:#c7dce7}:is([data-element=Wind],[data-element-icon=Wind]){--element-color:#398579;--element-tint:#cde4dc}:is([data-element=Electric],[data-element-icon=Electric]){--element-color:#8a69a1;--element-tint:#ded3e8}:is([data-element=Ice],[data-element-icon=Ice]){--element-color:#478493;--element-tint:#cce3e5}:is([data-element=Rock],[data-element-icon=Rock]){--element-color:#997d35;--element-tint:#e8deba}:is([data-element=Grass],[data-element-icon=Grass]){--element-color:#628341;--element-tint:#dce4c6}
+[data-theme=dark] :is([data-element=Fire],[data-element-icon=Fire]){--element-color:#f29279}[data-theme=dark] :is([data-element=Water],[data-element-icon=Water]){--element-color:#80c8ef}[data-theme=dark] :is([data-element=Wind],[data-element-icon=Wind]){--element-color:#7bd4bd}[data-theme=dark] :is([data-element=Electric],[data-element-icon=Electric]){--element-color:#c8a7eb}[data-theme=dark] :is([data-element=Ice],[data-element-icon=Ice]){--element-color:#92d3de}[data-theme=dark] :is([data-element=Rock],[data-element-icon=Rock]){--element-color:#e3c269}[data-theme=dark] :is([data-element=Grass],[data-element-icon=Grass]){--element-color:#b1cd77}
+
+/* Account credits extend the existing settings surface and its paper/slate palette. */
+.account-dialog{width:min(520px,calc(100vw - 32px));max-height:calc(100dvh - 40px)}
+.account-description,.account-policy{font-size:12px;line-height:1.8;color:var(--text);margin:0 0 16px;opacity:.85}
+.account-description{max-width:58ch;padding-right:8px}
+.account-form{display:flex;flex-direction:column;gap:18px}
+.account-form>label{display:flex;flex-direction:column;gap:8px;font-size:13px}
+.account-form input{width:100%;min-width:0;font-size:16px;caret-color:var(--accent)}
+.account-form input[readonly]{background:var(--paper)}
+.account-form input::selection{background:var(--accent-soft);color:var(--text)}
+.account-form .account-policy,.account-form .account-notice{margin:0}
+.account-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:18px 0}
+.account-actions button,.account-identity button{font-size:12px}
+.account-actions .primary:disabled{cursor:not-allowed}
+.account-form .account-actions{margin:0}
+.account-notice,.account-loading{font-size:12px;line-height:1.8}
+.account-error{padding:12px 14px;margin-bottom:18px;background:var(--paper);border:1px solid var(--border);border-radius:var(--radius-control);color:var(--text);font-size:12px}
+.account-error p{margin:0;line-height:1.8}
+.account-error button{margin:6px 0 -3px;padding-left:0}
+.account-identity{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:22px;font-size:13px}
+.account-identity>span{min-width:0;overflow-wrap:anywhere}
+.account-identity>button{flex-shrink:0}
+.account-balance{margin:0 0 18px}
+.account-balance>div{display:flex;justify-content:space-between;align-items:baseline;gap:20px;padding:10px 0;border-bottom:1px solid var(--line)}
+.account-balance dt{font-size:13px}
+.account-balance dd{margin:0;font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
+.account-usage{border-top:1px solid var(--line);padding-top:22px;margin-top:22px}
+.account-usage h3{font-size:16px;margin:0 0 14px}
+.account-usage ul{list-style:none;padding:0;margin:0}
+.account-usage li{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 0;border-bottom:1px solid var(--line);font-size:12px}
+.account-usage li>div{display:flex;flex-direction:column;gap:5px;min-width:0}.account-usage-meta{overflow-wrap:anywhere}
+.account-usage li strong{font-weight:500}
+.account-usage li span,.account-usage time{font-size:11px;color:var(--text);opacity:.85}
+.account-usage time{flex-shrink:0;font-variant-numeric:tabular-nums}
+.account-grant-units{font-variant-numeric:tabular-nums}
+.credit-shortage{border-bottom:1px solid var(--line);padding:0 0 10px;margin-bottom:7px;color:var(--composer-text);font-size:13px;line-height:1.6}
+.credit-shortage p{margin:0;overflow-wrap:anywhere}
+.credit-shortage-actions{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:3px}
+.credit-shortage-actions button,.credit-rejected-draft button{min-height:44px;padding:6px 2px;color:var(--composer-text);font-size:12px;text-decoration:underline;text-underline-offset:3px}
+.credit-rejected-draft{margin-bottom:8px;font-size:12px;color:var(--composer-text)}
+.credit-rejected-draft summary{cursor:pointer;min-height:44px;align-content:center}
+.credit-rejected-draft p{white-space:pre-wrap;overflow-wrap:anywhere;max-height:160px;overflow:auto;margin:4px 0}
+.account-nav-balance{font-size:11px;font-variant-numeric:tabular-nums;margin-left:auto}
+.sidebar[data-collapsed=true] .account-nav-balance{display:none}
+.account-settings-help{margin:18px 0 0}
+.account-settings-help button{padding:2px 7px;font-size:12px;text-decoration:underline;text-underline-offset:3px}
+@media(max-width:650px){.account-dialog{padding:25px 22px;max-height:calc(100dvh - 28px);width:calc(100vw - 28px)}.account-description{padding-right:12px}.account-usage li{gap:8px}.account-usage time{max-width:95px;text-align:right}.account-identity{gap:8px}.account-actions{gap:5px}}
+
+/* Hosted account and support dialogs share the paper surface and gold divider. */
+.account-dialog>h2{padding-right:45px}
+.account-dialog .account-identity{margin-bottom:12px}
+.account-buckets>div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 16px;padding:12px 0}
+.account-buckets dd:not(.account-bucket-note){text-align:right;font-size:23px}
+.account-buckets dd.account-pending{font-size:13px;color:var(--accent)}
+.account-buckets .account-bucket-note{grid-column:1/-1;font-size:12px;font-weight:400;line-height:1.65;color:color-mix(in srgb,var(--text) 75%,var(--muted))}
+.account-buckets time{white-space:nowrap}
+.account-records{margin-top:8px}
+.account-records summary,.support-qr summary{cursor:pointer;min-height:44px;align-content:center;font-size:13px;font-weight:500}
+.account-records summary{border-top:1px solid var(--line)}
+.account-record-totals{margin:4px 0 0}
+.account-record-totals dd{font-size:14px}
+.account-records .account-usage{margin-top:14px;padding-top:14px}
+.account-secondary{width:100%;justify-content:flex-start;font-size:13px;padding-inline:4px;border-radius:0}
+.account-secondary svg:first-child{color:var(--accent)}
+.account-dialog .account-secondary+.account-secondary{border-top:1px solid var(--line)}
+.account-challenge{padding:14px 0;border-block:1px solid var(--line);margin:0 0 14px}
+.account-form .account-challenge{margin:0}
+.account-challenge h3,.support-section h3,.credit-request h3{font-size:15px;margin:0 0 6px}
+.account-challenge .account-policy{margin:0 0 8px}
+.account-challenge-widget{min-width:0;max-width:100%}
+.account-challenge .account-actions{margin:6px 0 0}
+.credit-request{border-top:1px solid var(--line);padding-top:15px;scroll-margin:16px}
+.support-dialog .support-section+.support-section{border-top:1px solid var(--line);padding-top:16px;margin-top:12px}
+.support-section .account-policy{margin:0 0 6px}
+.support-link{display:inline-flex;align-items:center;gap:8px;min-height:44px;font-size:13px;text-decoration:underline;text-underline-offset:3px}
+.support-qr img{display:block;object-fit:contain;max-width:100%;height:auto;background:white}
+.support-qr .account-policy{margin:10px 0 0}
+.support-qr .account-policy+img{margin-top:12px}
+.support-chain{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;color:color-mix(in srgb,var(--text) 75%,var(--muted));font-size:12px;margin:0 0 14px}
+.support-chain>span{font-weight:600;color:var(--text)}
+.support-copy label{display:grid;gap:5px;font-size:12px}
+.support-copy textarea{display:block;width:100%;font-size:16px;line-height:1.55;resize:none;overflow-wrap:anywhere;padding:9px 10px;min-width:0}
+.support-copy textarea.support-code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:14px;word-break:break-all}
+.support-copy textarea::selection{background:var(--accent-soft);color:var(--text)}
+.support-actions{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;font-size:12px}
+.support-actions button{padding-inline:2px 8px;font-size:12px}
+.support-actions span{color:color-mix(in srgb,var(--text) 75%,var(--muted))}
+.support-nav{color:color-mix(in srgb,var(--text) 75%,var(--muted))}
+.hosted-signin-hint{margin:9px 0 0;font-size:12px;line-height:1.55;color:#fff;text-shadow:0 1px 4px #10293d}
+.hosted-signin-hint+.suggestions{margin-top:15px}
+@media(max-width:650px){
+ .support-copy textarea.support-code{font-size:16px}
+ .account-buckets>div{gap:4px 8px}
+ .account-buckets dd:not(.account-bucket-note){font-size:21px}
+ .account-buckets dd.account-pending{font-size:12px}
+}
+@media(max-width:650px){
+ .account-dialog>.ornament{margin-block:16px}
+ .account-dialog .account-balance>div{padding-block:9px}
+ .account-dialog .account-identity{margin-bottom:8px}
+ .main.home:has(.credit-shortage,.home-error){overflow-y:auto}
+ .main.home:has(.credit-shortage,.home-error) .hero{margin-top:clamp(76px,14dvh,110px)}
+}
+
+/* Capture only the main workspace. The sidebar remains live during navigation. */
+:root[data-terminal-transition]{view-transition-name:none}
+:root[data-terminal-transition] .main{view-transition-name:terminal-main}
+:root[data-terminal-transition]::view-transition{pointer-events:none}
+::view-transition-group(terminal-main){animation-duration:180ms}
+::view-transition-old(terminal-main){animation:terminal-main-out 180ms ease both;mix-blend-mode:normal}
+::view-transition-new(terminal-main){animation:terminal-main-in 180ms ease both;mix-blend-mode:normal}
+.main[data-navigation-fade]{animation:terminal-main-in 180ms ease both}
+@keyframes terminal-main-in{from{opacity:0}to{opacity:1}}
+@keyframes terminal-main-out{from{opacity:1}to{opacity:0}}
+@media(prefers-reduced-motion:reduce){
+ .main[data-navigation-fade]{animation:none}
+ ::view-transition-group(terminal-main),::view-transition-old(terminal-main),::view-transition-new(terminal-main){animation:none}
+}
+
+/* Archive typography; decorative module titles keep their own display fonts. */
+:root{--archive-font:ArchiveUI,var(--font)}
+.character-workspace,.museum-workspace,.museum-mobile-detail,.library-content,.library-toolbar .search,.library-filters,.select-menu-archive{font-family:var(--archive-font);font-weight:500}
+.character-stat-list dd,.character-talent-meta dd,.character-talent-values dd,.museum-stats dd,.museum-substats dd,.museum-cost strong{font-variant-numeric:tabular-nums;font-weight:600}

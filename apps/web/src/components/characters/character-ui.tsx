@@ -1,12 +1,30 @@
 'use client';
 import {useState,type KeyboardEvent} from 'react';
 import {UserCircle} from '@phosphor-icons/react';
-import {allowedCharacterImage,readableCharacterText,type CharacterMedia} from '../../lib/characters';
+import {ArchiveSkeleton} from '../archive-skeleton';
+import {allowedCharacterImage,readableCharacterText,resolveCharacterPortrait,type Character,type CharacterMedia} from '../../lib/characters';
 
-export function CharacterImage({media,name,portrait=false}:{media:CharacterMedia;name:string;portrait?:boolean}){
+export function CharacterImage({media,name}:{media:CharacterMedia;name:string}){
  const url=allowedCharacterImage(media),[failed,setFailed]=useState('');
- return <span className={'character-image'+(portrait?' portrait':'')}>
-  {url&&failed!==url?<img src={url} alt={name} loading={portrait?'eager':'lazy'} decoding="async" referrerPolicy="no-referrer" onError={()=>setFailed(url)}/>:<span className="character-image-fallback"><UserCircle size={portrait?72:32} weight="thin"/><span>{name}</span></span>}
+ return <CharacterImageFrame src={url&&failed!==url?url:null} name={name} onError={setFailed}/>;
+}
+export function CharacterPortrait({character,zh}:{character:Character;zh:boolean}){
+ const [failed,setFailed]=useState<ReadonlySet<string>>(()=>new Set());
+ const [loaded,setLoaded]=useState<string|null>(null);
+ const art=resolveCharacterPortrait(character,failed);
+ const pending=!!art.src&&loaded!==art.src;
+ return <div className={'character-portrait-stage'+(pending?' is-pending':'')}>
+  {pending&&<CharacterPortraitPlaceholder/>}
+  <CharacterImageFrame src={art.src} name={character.name} portrait supplement={art.kind==='supplement'} onLoad={setLoaded} onError={url=>setFailed(previous=>new Set([...previous,url]))}/>
+  {art.kind==='missing'&&<p>{zh?'此角色的原始立绘暂缺':'Original portrait unavailable'}</p>}
+ </div>;
+}
+export function CharacterPortraitPlaceholder(){
+ return <ArchiveSkeleton className="character-portrait-placeholder" width="min(78%, 360px)" height="84%"/>;
+}
+function CharacterImageFrame({src,name,onError,onLoad,portrait=false,supplement=false}:{src:string|null;name:string;onError:(url:string)=>void;onLoad?:(url:string)=>void;portrait?:boolean;supplement?:boolean}){
+ return <span className={'character-image'+(portrait?' portrait':'')+(supplement?' traveler-portrait':'')}>
+  {src?<img key={src} src={src} alt={name} loading={portrait?'eager':'lazy'} decoding="async" referrerPolicy="no-referrer" onLoad={onLoad?()=>onLoad(src):undefined} onError={()=>onError(src)}/>:<span className="character-image-fallback"><UserCircle size={portrait?72:32} weight="thin" aria-hidden="true"/><span>{name}</span></span>}
  </span>;
 }
 export function CharacterText({text,className=''}:{text:string;className?:string}){return <div className={'character-prose '+className}>{readableCharacterText(text).split(/\n\s*\n/).filter(Boolean).map((line,i)=><p key={i}>{line}</p>)}</div>}

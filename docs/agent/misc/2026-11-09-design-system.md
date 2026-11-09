@@ -16,6 +16,7 @@
 - `.impeccable/design.json` 记录组件预览、阴影、动效和断点等扩展。预览片段是从现有实现提取的简化示例；面板用色阶为展示而合成，不是代码中的设计 token。两者均不取代源码。
 - Impeccable init：用户确认根目录 `PRODUCT.md` 继续作为全站共享上下文，现有产品事实无需补充；补上 schema 标记和 web 平台。用户选择宣传页、展示页默认先视觉稿，写入 `.impeccable/config.json` 的 `buildPath`；应用界面与文档仍直接写代码。
 - Live 首次配置位于 `apps/web/.impeccable/live/config.json`，指向 Next.js App Router 的 `src/app/layout.tsx`。`detect-csp` 未检测到 CSP；实际交互依赖本地开发服务器与 Live helper。
+- 合并远端后核对最新代码，补记资料库和图鉴的 ArchiveUI 字体及回答中的图鉴卡片；Live 入口及插入锚点仍存在。
 
 ## 4. Conclusions / Lessons
 

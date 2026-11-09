@@ -1,6 +1,10 @@
 import type {Locale,ModelProvider} from './contracts';
+import type {DeploymentMode} from './deployment';
 export interface Preferences {theme:'light'|'dark'|'system';locale:Locale;sourceLanguage:Locale;mode:'byok'|'shared';modelBaseUrl?:string;modelName?:string;sidebarCollapsed?:boolean}
 export const defaults:Preferences={theme:'light',locale:'zh-CN',sourceLanguage:'zh-CN',mode:'byok'};
+// Deployment policy always wins over a preference saved by an older release.
+// Keep provider settings so returning to a self-hosted deployment loses no data.
+export function preferencesForDeployment(p:Preferences,mode:DeploymentMode):Preferences{return {...p,mode:mode==='hosted'?'shared':'byok'}}
 export function safePreferences(value:unknown):Preferences {
  const v=(value&&typeof value==='object'?value:{}) as Record<string,unknown>;
  const result:Preferences={theme:v.theme==='dark'||v.theme==='system'?v.theme:'light',locale:v.locale==='en'?'en':'zh-CN',sourceLanguage:v.sourceLanguage==='en'?'en':'zh-CN',mode:v.mode==='shared'?'shared':'byok'};

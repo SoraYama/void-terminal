@@ -7,5 +7,32 @@ export async function* parseSSE(stream:ReadableStream<Uint8Array>):AsyncGenerato
  }}finally{await reader.cancel().catch(()=>{});reader.releaseLock()}
 }
 // Resolve citation marks as local links, preserving markdown code and existing links.
-type MarkdownNode={type:string;value?:string;url?:string;children?:MarkdownNode[]};
-export function remarkCitations(){return (tree:MarkdownNode)=>{const visit=(node:MarkdownNode)=>{if(!node.children||['link','code','inlineCode'].includes(node.type))return;node.children=node.children.flatMap(child=>{if(child.type!=='text'){visit(child);return [child]}const value=child.value||'',matches=[...value.matchAll(/[\[［](\d+)[\]］]/g)];if(!matches.length)return [child];const result:MarkdownNode[]=[];let start=0;for(const match of matches){if(match.index!>start)result.push({type:'text',value:value.slice(start,match.index)});result.push({type:'link',url:'#citation-'+match[1],children:[{type:'text',value:match[0]}]});start=match.index!+match[0].length}if(start<value.length)result.push({type:'text',value:value.slice(start)});return result})};visit(tree)}}
+export type MarkdownNode={
+ type:string;
+ value?:string;
+ url?:string;
+ children?:MarkdownNode[];
+ data?:{citationLabel?:number;hName?:string;hProperties?:Record<string,unknown>};
+};
+export function remarkCitations(options?:{onCitation:(label:number)=>void}){
+ return (tree:MarkdownNode)=>{
+  const visit=(node:MarkdownNode)=>{
+   if(!node.children||['link','linkReference','code','inlineCode'].includes(node.type))return;
+   node.children=node.children.flatMap(child=>{
+    if(child.type!=='text'){visit(child);return [child]}
+    const value=child.value||'',matches=[...value.matchAll(/[\[［](\d+)[\]］]/g)];
+    if(!matches.length)return [child];
+    const result:MarkdownNode[]=[];let start=0;
+    for(const match of matches){
+     if(match.index!>start)result.push({type:'text',value:value.slice(start,match.index)});
+     options?.onCitation(Number(match[1]));
+     result.push({type:'link',url:'#citation-'+match[1],data:{citationLabel:Number(match[1])},children:[{type:'text',value:match[0]}]});
+     start=match.index!+match[0].length;
+    }
+    if(start<value.length)result.push({type:'text',value:value.slice(start)});
+    return result;
+   });
+  };
+  visit(tree);
+ };
+}

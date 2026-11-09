@@ -1,8 +1,10 @@
+import { assertAccountOrigin, getAccountSession, applyAccountAuthCookies } from "../../../../lib/server/account-auth";
 import { credentials } from "../../../../lib/server/config";
 import { AppError, safeError } from "../../../../lib/server/errors";
-import { issueIdentity } from "../../../../lib/server/identity";
+import { accountRisk, riskUnavailable } from "../../../../lib/server/account-risk";
 import { boundedJson } from "../../../../lib/server/knowledge";
 import { openProviderTransport, resolveProvider, type ProviderTransport } from "../../../../lib/server/provider";
+import { assertRequestMode } from "../../../../lib/server/deployment";
 import {
   exactKeys,
   invalid,
@@ -15,20 +17,31 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function POST(request: Request): Promise<Response> {
   let model = "deepseek-flash";
+  let applyCookies = (response: Response) => response;
   let transport: ProviderTransport | undefined;
   try {
     const body = await readJson(request);
     if (!record(body)) throw invalid();
     exactKeys(body, ["mode", "provider"]);
     const mode = parseMode(body.mode);
+    assertRequestMode(mode);
     const provider = parseProvider(body.provider, mode);
     model = provider?.model || model;
     const key = credentials(mode, request);
+    if (mode === "shared") {
+      assertAccountOrigin(request);
+      const session = await getAccountSession(request);
+      applyCookies = session.applyCookies;
+      if (!session.user) throw new AppError("LOGIN_REQUIRED", "Sign in to use trial credits.", 401);
+      const risk = accountRisk(request);
+      if (!risk) throw riskUnavailable();
+      // GET /models only checks connectivity and never generates or reserves tokens.
+      await risk.admit("request", session.user.id);
+    }
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(10000)]);
     const config = await resolveProvider(mode, provider, signal);
     model = config.model;
     transport = openProviderTransport(config, signal);
-    const identity = mode === "shared" ? issueIdentity(request) : undefined;
     let response: Response;
     try {
       response = await transport.fetch("/models", {
@@ -66,7 +79,7 @@ export async function POST(request: Request): Promise<Response> {
         "The configured model is not available for this key.",
         503,
       );
-    return Response.json(
+    return applyCookies(Response.json(
       {
         ok: true,
         model,
@@ -76,15 +89,14 @@ export async function POST(request: Request): Promise<Response> {
       {
         headers: {
           "Cache-Control": "no-store",
-          ...(identity?.cookie ? { "Set-Cookie": identity.cookie } : {}),
         },
       },
-    );
+    ));
   } catch (error) {
     const e = safeError(error);
-    return Response.json(
-      { ok: false, model, code: e.code, message: e.message },
-      { status: e.status, headers: { "Cache-Control": "no-store" } },
-    );
+    return applyAccountAuthCookies(error, applyCookies(Response.json(
+      { ok: false, model, code: e.code, message: e.message, ...(e.retryAfter ? { retryAfter: e.retryAfter } : {}) },
+      { status: e.status, headers: { "Cache-Control": "no-store", ...(e.retryAfter ? { "Retry-After": String(e.retryAfter) } : {}) } },
+    )));
   } finally { await transport?.close().catch(() => {}); }
 }
