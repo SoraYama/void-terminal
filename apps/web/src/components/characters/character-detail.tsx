@@ -5,15 +5,15 @@ import {ArchiveSkeleton,ArchivePendingValue} from '../archive-skeleton';
 import {ThemedSelect} from '../themed-select';
 import {Rarity} from '../museum/item-image';
 import type {Locale} from '../../lib/contracts';
-import {defaultLevel,formatCharacterStat,orderedCharacterStats,readableCharacterText,resolveCharacterPortrait,type CharacterResult,type CharacterSummary,type CharacterQuery,type CharacterForm} from '../../lib/characters';
+import {defaultLevel,elements,formatCharacterStat,orderedCharacterStats,readableCharacterText,resolveCharacterPortrait,type CharacterResult,type CharacterSummary,type CharacterQuery,type CharacterForm} from '../../lib/characters';
 import {CharacterStatIcon,ElementIcon} from '../game-icons';
 import {CharacterImage,CharacterPortrait,CharacterPortraitPlaceholder,CharacterTabs,CharacterText} from './character-ui';
 import {CharacterVoices,voiceLocaleNames} from './character-voices';
 import {CharacterStories} from './character-narrative';
 import {CharacterCultivation} from './character-materials';
-interface Props {result:CharacterResult|null;recordKey:string;error:string;onRetry:()=>void;query:CharacterQuery;locale:Locale;language:Locale;characters:CharacterSummary[];onUpdate:(patch:Partial<CharacterQuery>,replace?:boolean)=>void;onBack:()=>void;onOpenDocument:(id:string,snapshot:string)=>void;onAsk:(name:string,id:string,snapshot:string)=>void;onOpenMaterial:(id:string,snapshot:string)=>void}
+interface Props {result:CharacterResult|null;recordKey:string;error:string;onRetry:()=>void;query:CharacterQuery;locale:Locale;language:Locale;characters:CharacterSummary[];poolPending:boolean;onRetryPool?:()=>void;onUpdate:(patch:Partial<CharacterQuery>,replace?:boolean)=>void;onBack:()=>void;onOpenDocument:(id:string,snapshot:string)=>void;onAsk:(name:string,id:string,snapshot:string)=>void;onOpenMaterial:(id:string,snapshot:string)=>void}
 export function CharacterDetail(props:Props){
- const {result,recordKey,error,onRetry,query,locale,characters,onUpdate,onBack}=props,zh=locale==='zh-CN';
+ const {result,recordKey,error,onRetry,query,locale,characters,poolPending,onRetryPool,onUpdate,onBack}=props,zh=locale==='zh-CN';
  const character=result?.character;
  const summary=characters.find(c=>c.id===query.character);
  const form=character?.forms.find(f=>f.id===query.form)||character?.forms[0];
@@ -21,14 +21,23 @@ export function CharacterDetail(props:Props){
  const element=(form?form.element:baseIdentity?.element)||'',elementName=(form?form.elementName:baseIdentity?.elementName)||'';
  const identity=<CharacterIdentity character={profile} element={element} elementName={elementName} zh={zh}/>;
  const avatarStrip=useRef<HTMLDivElement>(null),extra=character&&!summary?character:null;
- useLayoutEffect(()=>{avatarStrip.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.scrollIntoView({block:'nearest',inline:'center',behavior:'auto'})},[query.character,characters,extra]);
+ const strip=(extra?[extra,...characters]:characters).filter(c=>!query.browseElement||c.element===query.browseElement);
+ useLayoutEffect(()=>{
+  const rail=avatarStrip.current,active=rail?.querySelector<HTMLButtonElement>('[aria-pressed="true"]');
+  if(active)active.scrollIntoView({block:'nearest',inline:'center',behavior:'auto'});
+  else if(rail)rail.scrollLeft=0;
+ },[query.character,query.browseElement,characters,extra]);
  return <div className="character-detail" data-element={element} data-character-detail={character?.id}>
   <header className="character-detail-header">
    <button className="character-back" aria-label={zh?'返回图鉴':'Back to archive'} onClick={onBack}><ArrowLeft size={23}/><span>{zh?'返回图鉴':'Back to archive'}</span></button>
-   <div ref={avatarStrip} className="character-avatar-strip" aria-label={zh?'当前筛选角色':'Characters in current results'}>
-    {(extra?[extra,...characters]:characters).map(c=><button key={c.id} data-character-id={c.id} aria-label={c.name} aria-pressed={c.id===query.character} onClick={()=>onUpdate({character:c.id,form:''})}><CharacterImage media={c.icon} name={c.name}/></button>)}
-    {!extra&&!characters.length&&Array.from({length:5},(_,i)=><ArchiveSkeleton key={i} className="character-avatar-placeholder" width="46px" height="50px"/>)}
+   <div className="character-browse-select"><ThemedSelect archive label={zh?'浏览元素':'Browse by element'} value={query.browseElement} onValueChange={browseElement=>onUpdate({browseElement})}
+    options={[{value:'',label:zh?'全部元素':'All elements'},...elements.map((value,i)=>({value,icon:<ElementIcon element={value}/>,label:(zh?['火','水','风','雷','冰','岩','草']:['Pyro','Hydro','Anemo','Electro','Cryo','Geo','Dendro'])[i]}))]}/></div>
+   <div ref={avatarStrip} className="character-avatar-strip" role="group" aria-label={zh?'切换角色':'Switch character'} aria-busy={poolPending}>
+    {strip.map(c=><button key={c.id} data-character-id={c.id} aria-label={c.name} aria-pressed={c.id===query.character} onClick={()=>{if(c.id!==query.character)onUpdate({character:c.id,form:''})}}><CharacterImage media={c.icon} name={c.name}/></button>)}
+    {poolPending&&!strip.length&&Array.from({length:5},(_,i)=><ArchiveSkeleton key={i} className="character-avatar-placeholder" width="46px" height="50px"/>)}
+    {!poolPending&&!onRetryPool&&!strip.length&&<span className="character-browse-empty" role="status">{zh?'没有匹配的角色':'No matching characters'}</span>}
    </div>
+   {onRetryPool&&<button className="character-browse-retry" aria-label={zh?'重试加载角色列表':'Retry loading characters'} onClick={onRetryPool}><ArrowClockwise size={19}/></button>}
   </header>
   {result?<CharacterRecord key={`${recordKey}:${query.form}`} {...props} result={result} form={form} identity={identity}/>:error?<div className="character-state"><h2>{zh?'角色资料暂时无法读取':'Character details could not be loaded'}</h2><p role="alert">{error}</p><button onClick={onRetry}><ArrowClockwise size={18}/>{zh?'重试':'Retry'}</button></div>:<CharacterDetailSkeleton key={recordKey} query={query} locale={locale} onUpdate={onUpdate} identity={identity}/>}
  </div>;

@@ -84,6 +84,68 @@ describe("context-budget recovery", () => {
       runtime.mockRestore();
     }
   });
+  it("attaches same-snapshot archive cards for cited subjects, without cards for incidental evidence", async () => {
+    const ids = ["agd:zh-CN:character:FetterStory:89200", "agd:zh-CN:weapon:Document:191407:Weapon11407_1", "gdb:zh-CN:artifact:artifacts:15020"];
+    const fetch = vi.fn(async (url) => {
+      const u = new URL(String(url));
+      if (u.pathname === "/v1/search") return search([
+        {...source("furina"), type:"character", documentId:ids[0], title:"芙宁娜 · 角色详细", metadata:{table:"FetterStory", characterName:"芙宁娜", raw:{avatarId:10000089}}},
+        {...source("sting"), type:"weapon", documentId:ids[1], title:"铁蜂刺",metadata:{itemSummary:{id:"weapon:11407"}}},
+        {...source("emblem"), type:"artifact", documentId:ids[2], title:"绝缘之旗印"},
+        {...source("amber"), type:"character", documentId:"agd:zh-CN:character:Avatar:10000021", title:"安柏"},
+      ]);
+      const common = {state:"source-record", language:"zh-CN", rarity:5, description:"来自档案", icon:{status:"missing", url:null}};
+      if (u.pathname.includes("/v1/characters/")) return Response.json({snapshotId:"s1", character:{...common,id:"avatar:10000089",name:"芙宁娜",documentIds:[ids[0]],element:"Water",weaponName:"单手剑"}});
+      if (u.pathname.includes("/v1/items/")) {
+        const weapon = decodeURIComponent(u.pathname).endsWith("weapon:11407");
+        return Response.json({snapshotId:"s1",item:weapon
+          ? {...common,id:"weapon:11407",name:"铁蜂刺",category:"weapon",rarity:4,documentIds:[ids[1]]}
+          : {...common,id:"artifact:15020:flower",name:"明威之镡",category:"artifact",documentIds:[ids[2]],artifact:{setId:15020,setName:"绝缘之旗印",setEffects:[{pieces:2,text:"元素充能效率提高20%。"}]}}});
+      }
+      return upstream([textChunk("芙宁娜[1]、铁蜂刺[2]、绝缘之旗印[3]。安柏仅是旁及。[4]", "stop")]);
+    });
+    stubFetch(fetch);
+    const events = await collect({...request,messages:[{role:"user",content:"芙宁娜是谁？铁蜂刺和绝缘之旗印怎么样？"}]});
+    expect(events.at(-1)).toMatchObject({event:"done",data:{cards:[
+      {kind:"character",id:"avatar:10000089",name:"芙宁娜",snapshotId:"s1",citation:1},
+      {kind:"weapon",id:"weapon:11407",name:"铁蜂刺",rarity:4,snapshotId:"s1",citation:2},
+      {kind:"artifact",id:"artifact:15020:flower",name:"绝缘之旗印",snapshotId:"s1",citation:3},
+    ]}});
+    const paths = fetch.mock.calls.map(([url]) => new URL(String(url))).filter(u => /\/v1\/(characters|items)\//.test(u.pathname));
+    expect(paths).toHaveLength(3);
+    expect(paths.every(u => u.searchParams.get("snapshotId") === "s1" && u.searchParams.get("language") === "zh-CN")).toBe(true);
+  });
+  it("keeps the cited answer when a catalog response has the wrong snapshot", async () => {
+    const documentId = "agd:zh-CN:character:Avatar:10000089";
+    const fetch = vi.fn(async url => {
+      const path = new URL(String(url)).pathname;
+      if (path === "/v1/search") return search([{...source("furina"), type:"character", title:"芙宁娜", documentId}]);
+      if (path.startsWith("/v1/characters/")) return Response.json({snapshotId:"s2",character:{
+        id:"avatar:10000089", name:"芙宁娜", language:"zh-CN", state:"source-record", documentIds:[documentId], icon:{status:"missing"},
+      }});
+      return upstream([textChunk("芙宁娜来自枫丹。[1]", "stop")]);
+    });
+    stubFetch(fetch);
+    const events = await collect({...request,messages:[{role:"user",content:"芙宁娜是谁？"}]});
+    expect(fetch.mock.calls.some(([url])=>String(url).includes("/v1/characters/"))).toBe(true);
+    expect(events).toContainEqual({event:"text_delta",data:{text:"芙宁娜来自枫丹。[1]"}});
+    const final = events.at(-1);
+    expect(final).toMatchObject({event:"done",data:{snapshotId:"s1"}});
+    expect(final?.data).not.toHaveProperty("cards");
+  });
+  it("recognizes an unambiguous short English character name", async () => {
+    const documentId = "agd:en:character:Avatar:10000002";
+    stubFetch(vi.fn(async url => {
+      const path = new URL(String(url)).pathname;
+      if (path === "/v1/search") return search([{...source("ayaka","en"), type:"character", title:"Kamisato Ayaka", documentId}]);
+      if (path.startsWith("/v1/characters/")) return Response.json({snapshotId:"s1",character:{
+        id:"avatar:10000002", name:"Kamisato Ayaka", language:"en", state:"source-record", documentIds:[documentId], icon:{status:"missing"},
+      }});
+      return upstream([textChunk("Kamisato Ayaka is from Inazuma.[1]", "stop")]);
+    }));
+    const events = await collect({...request,language:"en",messages:[{role:"user",content:"Who is Ayaka?"}]});
+    expect(events.at(-1)).toMatchObject({event:"done",data:{cards:[{name:"Kamisato Ayaka"}]}});
+  });
   it("preserves chapter membership, graph identity and multipart book order from normalized records", async () => {
     const items = [
       {

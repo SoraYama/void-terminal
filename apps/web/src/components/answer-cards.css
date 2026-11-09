@@ -1,0 +1,60 @@
+.answer-card-passage{display:flow-root;container-type:inline-size}
+.answer-card-passage>.answer-card-float+ :is(p,ul,ol,blockquote){margin-block-start:0}
+.answer-card-passage> :is(table,pre,hr){clear:left}
+.answer-card-float{
+ float:left;inline-size:clamp(108px,36cqi,158px);
+ margin:.25em clamp(11px,2.5cqi,17px) .6em 0;
+ display:grid;gap:7px;
+}
+.markdown .answer-card{
+ --entry-tint:#8295a9;
+ position:relative;display:block;min-width:0;overflow:hidden;
+ border:1px solid color-mix(in srgb,var(--entry-tint) 40%,var(--border));border-radius:9px;
+ background:var(--panel);color:var(--text);text-decoration:none;
+}
+.markdown .answer-card[data-rarity='4']{--entry-tint:#9980b4}
+.markdown .answer-card[data-rarity='5']{--entry-tint:#c39a5b}
+.markdown .answer-card[data-element='Fire']{--entry-tint:#cd7966}
+.markdown .answer-card[data-element='Water']{--entry-tint:#67a0cc}
+.markdown .answer-card[data-element='Wind']{--entry-tint:#71aa9c}
+.markdown .answer-card[data-element='Electric']{--entry-tint:#a889bf}
+.markdown .answer-card[data-element='Ice']{--entry-tint:#80b1c1}
+.markdown .answer-card[data-element='Rock']{--entry-tint:#c4a05f}
+.markdown .answer-card[data-element='Grass']{--entry-tint:#89a05a}
+.answer-card:hover{border-color:var(--entry-tint);background:color-mix(in srgb,var(--entry-tint) 7%,var(--panel))}
+.answer-card:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.answer-card-art{
+ position:relative;display:grid;place-items:center;aspect-ratio:1.7;
+ background:radial-gradient(ellipse at 48% 40%,color-mix(in srgb,var(--entry-tint) 25%,var(--paper)),color-mix(in srgb,var(--entry-tint) 60%,var(--paper)));
+ color:var(--text)
+}
+.answer-card-art img{position:absolute;inset:4px;width:calc(100% - 8px);height:calc(100% - 8px);object-fit:contain}
+.answer-card[data-kind=character] .answer-card-art img{object-fit:cover;object-position:center 28%;inset:0;width:100%;height:100%}
+.answer-card-copy{padding:7px 9px 8px;min-width:0;overflow-wrap:anywhere}
+.answer-card-title{display:flex;flex-wrap:wrap;gap:2px 5px;align-items:center;font-size:14px;line-height:1.35}
+.answer-card-title strong{font-weight:650}
+.answer-card-title .character-element-icon{width:14px;height:14px;background:var(--element-color,currentColor)}
+.answer-card-title .museum-rarity{--rarity-star-size:10px}
+.answer-card-meta,.answer-card-description,.answer-card-facts{font-size:11px;line-height:1.5}
+.answer-card-meta{display:block;margin-top:3px;color:color-mix(in srgb,var(--text) 82%,var(--panel))}
+.answer-card-description,.answer-card-facts{margin:4px 0 0}
+.answer-card-description,.answer-card-facts dd{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.answer-card-description{-webkit-line-clamp:1}
+.answer-card-facts>div{display:grid;grid-template-columns:auto minmax(0,1fr);gap:5px;align-items:baseline}
+.answer-card-facts dt{font-weight:600}
+.answer-card-facts dd{margin:0;font-variant-numeric:tabular-nums}
+.answer-card-arrow{
+ position:absolute;inset:5px 5px auto auto;width:21px;height:21px;padding:3px;border-radius:5px;
+ color:var(--text);background:color-mix(in srgb,var(--panel) 86%,transparent);
+}
+.answer-card-float-group .answer-card{display:grid;grid-template-columns:42px minmax(0,1fr)}
+.answer-card-float-group .answer-card-art{aspect-ratio:auto}
+.answer-card-float-group :is(.answer-card-arrow,.answer-card-description,.answer-card-facts){display:none}
+@container (max-width:390px){
+ .answer-card-copy{padding-inline:7px}
+ .answer-card-title{font-size:13px}
+ .answer-card-facts>div{gap:3px}
+}
+@container (max-width:250px){
+ .answer-card-float{float:none;inline-size:min(100%,158px);margin:0 0 .6em}
+}

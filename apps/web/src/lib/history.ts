@@ -1,6 +1,7 @@
 import type {Citation,ChatRequest,Locale} from './contracts';
+import type {AnswerCard} from './answer-cards';
 import {chatErrorText} from './chat-errors';
-export interface Message {role:'user'|'assistant';content:string;sources?:Citation[];snapshotId?:string;error?:string;errorCode?:string}
+export interface Message {role:'user'|'assistant';content:string;sources?:Citation[];snapshotId?:string;error?:string;errorCode?:string;cards?:AnswerCard[]}
 export interface Conversation {id:string;parentId?:string;snapshotId?:string;title:string;updatedAt:number;messages:Message[]}
 /** Failed/aborted placeholders stay visible locally but are not model messages. */
 export function chatMessages(messages:ReadonlyArray<ChatRequest['messages'][number]>):ChatRequest['messages']{

@@ -28,6 +28,9 @@ async function settleImages(page:Page){await expect.poll(()=>page.locator('.muse
 for(const theme of ['light','dark'])test(`museum ${theme}: real controls, assets, source and viewport`,async({page},info)=>{
  if(info.project.name==='mobile')await page.setViewportSize({width:390,height:844});
  await fixture(page,theme);await page.goto('/museum');await expect(page.locator('.museum-card')).toHaveCount(24);await settleImages(page);
+ const weapon=page.locator(`[data-item-id="${homa.id}"]`);
+ const [art,stars]=await Promise.all([weapon.locator('.museum-image').boundingBox(),weapon.getByLabel('5星').boundingBox()]);
+ expect(stars!.y).toBeGreaterThanOrEqual(art!.y+art!.height+4);
  await page.screenshot({path:path.resolve(`../../artifacts/screenshots/${info.project.name}-museum-${theme}-grid.png`),scale:'css'});
  await selectHoma(page);await choose(page,'等级与突破','1 · 突破 0');await expect(page.locator('.museum-stats')).toContainText('46');await choose(page,'等级与突破','20 · 突破 0');await expect(page.locator('.museum-stats')).toContainText('122');
  await choose(page,'等级与突破','20 · 突破 1');await expect(page.locator('.museum-stats')).toContainText('153');

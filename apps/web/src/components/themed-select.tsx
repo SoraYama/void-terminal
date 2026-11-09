@@ -2,8 +2,9 @@
 
 import * as Select from '@radix-ui/react-select';
 import {CaretDown, CaretUp, Check} from '@phosphor-icons/react';
+import type {ReactNode} from 'react';
 
-interface Option {value: string; label: string; disabled?: boolean}
+interface Option {value: string; label: string; disabled?: boolean; icon?: ReactNode}
 interface Props {
   label: string;
   value: string;
@@ -25,7 +26,7 @@ export function ThemedSelect({label, value, options, onValueChange, variant = 's
         <Select.ScrollUpButton className="select-scroll"><CaretUp size={16} aria-hidden="true"/></Select.ScrollUpButton>
         <Select.Viewport className="select-options">
           {options.map(option => <Select.Item key={option.value} value={option.value || emptyValue} disabled={option.disabled} className="select-option">
-            <Select.ItemText>{option.label}</Select.ItemText>
+            <Select.ItemText>{option.icon?<span className="select-option-with-icon">{option.icon}{option.label}</span>:option.label}</Select.ItemText>
             <Select.ItemIndicator className="select-check"><Check size={16} weight="bold" aria-hidden="true"/></Select.ItemIndicator>
           </Select.Item>)}
         </Select.Viewport>

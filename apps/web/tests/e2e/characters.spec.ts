@@ -122,6 +122,38 @@ test('characters: historical unbuilt snapshot has an explicit empty state',async
  await fixture(page,{unbuilt:true});await page.goto('/characters?snapshotId=old-snapshot');await expect(page.getByRole('heading',{name:'此快照尚未构建角色图鉴'})).toBeVisible();await expect(page.locator('.character-card')).toHaveCount(0);
 });
 
+test('characters: detail browsing mixes rarities across pages and has independent element filters',async({page})=>{
+ await fixture(page);
+ const amber={...ayaka,id:'avatar:10000021',avatarId:10000021,name:'安柏',rarity:4,element:'Fire',elementName:'火'};
+ await page.route('**/api/characters**',route=>{
+  const url=new URL(route.request().url());
+  if(decodeURIComponent(url.pathname).endsWith('/'+amber.id))return route.fulfill({json:{character:amber,snapshotId}});
+  if(url.pathname!=='/api/characters')return route.fallback();
+  const p=url.searchParams,rarity=p.get('rarity'),pageNumber=Number(p.get('page')||1);
+  const rows=rarity==='4'?[amber]:rarity==='5'?[ayaka,nahida]:pageNumber===1?[ayaka,nahida]:[amber];
+  return route.fulfill({json:{characters:rows,total:rarity?rows.length:3,page:pageNumber,pageSize:2,snapshotId,ready:true,counts:{Ice:1,Grass:1,Fire:1},regions:[]}});
+ });
+ await page.goto('/characters?rarity=4&snapshotId='+snapshotId);
+ await page.getByRole('combobox',{name:'稀有度',exact:true}).click();
+ await expect(page.getByRole('option')).toHaveText(['全部星级','5星','4星']);
+ await page.keyboard.press('Escape');
+ await expect(page.locator('.character-card')).toHaveCount(1);
+ await page.locator('.character-card').click();
+ const strip=page.locator('.character-avatar-strip');
+ await expect(strip.getByRole('button')).toHaveCount(3);
+ await choose(page,'浏览元素','冰');
+ await expect(strip.getByRole('button')).toHaveCount(1);
+ await strip.getByRole('button',{name:'神里绫华'}).click();
+ await expect(page.locator('[data-character-detail] h1')).toHaveText('神里绫华');
+ await page.goBack();
+ await expect(page.locator('[data-character-detail] h1')).toHaveText('安柏');
+ await expect(strip.getByRole('button',{name:'神里绫华'})).toBeVisible();
+ await page.getByRole('button',{name:'返回图鉴',exact:true}).click();
+ await expect(page.locator('.character-card')).toHaveCount(1);
+ await expect(page.locator('.character-card')).toContainText('安柏');
+ await expect(page).toHaveURL(/rarity=4/);
+});
+
 test('characters: browser back cancels a slower character response',async({page})=>{
  await fixture(page,{delayAyaka:true});await page.goto('/characters?character=avatar:10000073&snapshotId='+snapshotId);
  await expect(page.locator('[data-character-detail] h1')).toHaveText('纳西妲');

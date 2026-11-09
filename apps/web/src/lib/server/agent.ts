@@ -11,6 +11,8 @@ import { loreSystemPrompt, needsNarrativeContext } from "./lore-policy";
 import { prepareResearch, modelSource, contextPayload } from "./research";
 import { runDshResearch } from "./dsh-runtime";
 import type { ModelBody } from "./model-bridge";
+import { buildAnswerCards } from "./answer-cards";
+import { citationLabels } from "./citation-labels";
 
 const MAX_ANSWER_CHARS = 120000;
 type Options = {
@@ -334,29 +336,31 @@ ${JSON.stringify({ snapshotId: evidence.snapshotId, sources: selected, selection
         503,
         true,
       );
-    const labels = [...aggregate.matchAll(/[\[［](\d+)[\]］]/g)].map((match) =>
-      Number(match[1]),
-    );
-    const provided = new Set(
-      (answerSources ?? evidence.sources).map((source) => source.citation),
-    );
+    const labels = citationLabels(aggregate);
+    const citedEvidence = answerSources ?? evidence.sources;
+    const provided = new Set(citedEvidence.map((source) => source.citation));
     const warnings = [...new Set(labels.filter((n) => !provided.has(n)))].map(
       (n) => `Unknown citation [${n}]`,
     );
     if (evidence.sources.length && !labels.length)
       warnings.push("The answer contains no source citations.");
-    emit({
+    const cards = await buildAnswerCards(initialQuery, citedEvidence, labels,
+      evidence.snapshotId!, input.answerLanguage ?? input.language, signal).catch(() => []);
+    // Archive lookups share the deadline, but a finished generation can
+    // still be delivered if only the optional decoration was interrupted.
+    if (!options.signal.aborted) options.emit({
       event: "done",
       data: {
         snapshotId: evidence.snapshotId!,
         ...(unknownBilling || earlierUnknownBilling ? {} : { usage }),
         finishReason: result.finishReason,
         ...(warnings.length ? { citationWarnings: warnings } : {}),
+        ...(cards.length ? { cards } : {}),
       },
     });
     return {
       usedTokens: unknownBilling || earlierUnknownBilling ? null : usedTokens,
-      outcome: signal.aborted ? "released" : "completed",
+      outcome: options.signal.aborted ? "released" : "completed",
     };
   } catch (error) {
     if (options.signal.aborted) return { usedTokens: dispatched ? null : 0, outcome: "released" };

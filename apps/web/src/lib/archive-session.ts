@@ -1,4 +1,4 @@
-import type {CharacterListResult,CharacterResult} from './characters';
+import type {CharacterListResult,CharacterResult,CharacterSummary} from './characters';
 import type {ItemListResult,ItemResult} from './items';
 import type {LibraryResult,DocumentResult} from './contracts';
 
@@ -25,8 +25,9 @@ export function archiveDetailKey(language:string,snapshotId:string,id:string){re
 function listIdentity(key:string){const params=new URLSearchParams(key);params.sort();return params.toString()}
 export function createArchiveCache<List,Detail>(){return {visited:false,lists:new PublicResponseCache<List>(8,listIdentity),details:new PublicResponseCache<Detail>(),scroll:new PublicResponseCache<number>(32)}}
 export type ArchiveCache<List,Detail>=ReturnType<typeof createArchiveCache<List,Detail>>;
+export type CharacterArchiveCache=ArchiveCache<CharacterListResult,CharacterResult>&{browse:PublicResponseCache<CharacterSummary[]>};
 export function createArchiveSession(){return {
- characters:createArchiveCache<CharacterListResult,CharacterResult>(),
+ characters:{...createArchiveCache<CharacterListResult,CharacterResult>(),browse:new PublicResponseCache<CharacterSummary[]>(4)},
  museum:createArchiveCache<ItemListResult,ItemResult>(),
  library:createArchiveCache<LibraryResult,DocumentResult>(),
 }}

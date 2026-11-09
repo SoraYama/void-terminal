@@ -1,4 +1,5 @@
 import type { DeploymentMode } from './deployment';
+import type { AnswerCard } from './answer-cards';
 export type Locale = 'zh-CN' | 'en';
 export type ContentType = 'quest'|'dialogue'|'book'|'weapon'|'artifact'|'material'|'furniture'|'character'|'voice'|'enemy'|'food'|'achievement'|'tcg'|'other';
 export const CONTENT_TYPES: ContentType[] = ['quest','dialogue','book','weapon','artifact','material','furniture','character','voice','enemy','food','achievement','tcg','other'];
@@ -22,5 +23,5 @@ export type ChatEvent =
  | {event:'status';data:{stage:'searching'|'reading'|'writing';message?:string}}
  | {event:'sources';data:{sources:Citation[];snapshotId:string}}
  | {event:'text_delta';data:{text:string}}
- | {event:'done';data:{snapshotId:string;usage?:Usage;finishReason:string;citationWarnings?:string[]}}
+ | {event:'done';data:{snapshotId:string;usage?:Usage;finishReason:string;citationWarnings?:string[];cards?:AnswerCard[]}}
  | {event:'error';data:{code:string;message:string;retryable:boolean}};
