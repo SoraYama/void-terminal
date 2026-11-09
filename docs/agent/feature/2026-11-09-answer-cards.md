@@ -19,4 +19,12 @@
 
 ## 4. Conclusions / Lessons
 
-验证必须覆盖实际引用、旧快照及历史记录恢复；角色详情需用小于总数的分页夹具验证池子完整性。本次变更不涉及线上模型调用和部署。
+验证必须覆盖实际引用、旧快照及历史记录恢复；角色详情需用小于总数的分页夹具验证池子完整性。
+
+## 5. 生产发布
+
+2026-11-09 16:04（北京时间），三项改动随 `2ce87db` 一起发布到[官网](https://void-terminal.sorayama.moe/)。[完整 CI](https://github.com/SoraYama/void-terminal/actions/runs/42582242629) 通过：Web 单测 489 项，Python 552 项通过／1 项跳过，Chromium 253 项通过／13 项跳过；类型检查、生产构建、评估及目录控制器检查也已通过。
+
+发布仅重建 Web 容器，沿用原有 Compose 配置（包含赞助挂载）；知识服务、Caddy 和账户卷未重建。切换前在线备份账户账本并检查 SQLite 完整性；没有迁移账本。生产健康检查与公网 `/api/status` 确认 hosted 模式、模型可用配置和活动资料快照 `agd-d7f2135c7eb0-26ae8d6dbac3` 保持正常（1,560,947 条文档、1,697,353 个分片）。服务器发布回执位于 `/opt/void-terminal/releases/answer-cards-2ce87db4c526`，旧 Web 镜像保留为 `void-terminal-web:before-2ce87db4c526`。
+
+线上浏览器验证通过：仅显示全部、五星、四星三种筛选；从安柏详情筛选冰元素并切换至神里绫华；铁蜂刺网格的星级区域低于图片。使用真实快照图鉴数据和固定 SSE 回答验证三种卡片均贴着各自正文左浮动，角色卡可跳到同快照图鉴。验证未登录真实账户，也未发起真实模型生成。回执和截图保存在本地 `artifacts/answer-cards-production/`。

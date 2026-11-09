@@ -1,4 +1,4 @@
-> **Last updated**: 2026-11-09 (回答图鉴卡片、角色混合浏览与武器星级排版)
+> **Last updated**: 2026-11-09 (回答图鉴卡片、角色混合浏览与武器星级排版上线)
 
 # Agent Notes
 
@@ -16,7 +16,7 @@
 
 | Note | Summary |
 | --- | --- |
-| [2026-11-09-answer-cards](feature/2026-11-09-answer-cards.md) | Chat SSE 从实际引用解析同快照角色／武器／圣遗物卡片并随历史保存；角色详情共用跨页头像池与独立元素筛选；武器星级移至图片下方 |
+| [2026-11-09-answer-cards](feature/2026-11-09-answer-cards.md) | 2ce87db 官网发布：同快照角色／武器／圣遗物卡在回答正文左浮动；角色详情共用跨页头像池与独立元素筛选；武器星级移至图片下方 |
 | [2026-11-07-sponsor-config](feature/2026-11-07-sponsor-config.md) | 官网BSC地址二维码动态生成/保存，拒绝旧地址与自部署访问；原图/手机/桌面解码一致；支付宝及设备配置上线状态见 hosted-release |
 | [2026-11-06-hosted-free](feature/2026-11-06-hosted-free.md) | schema v3 每日 3 点优先、新人 20 点保留、跨午夜预留、Turnstile 与持久设备限流、官网赞助/BSC、自部署无账户流程；外部配置与生产验收分别记录 |
 | [2026-11-06-credit-foundation](feature/2026-11-06-credit-foundation.md) | schema v2 追加式入账、订单与支付幂等核心、独立账本备份恢复 CLI、额度不足草稿及分支恢复；保留历史支付基础，后续已暂停充值并转为免费点数与赞助 |
