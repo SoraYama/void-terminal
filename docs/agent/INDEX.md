@@ -1,4 +1,4 @@
-> **Last updated**: 2026-11-06 (修复手机 Safari 首页中文标题白块)
+> **Last updated**: 2026-11-09 (记录 Impeccable 设计规范和产品上下文初始化)
 
 # Agent Notes
 
@@ -55,3 +55,7 @@
 | [2026-10-29-dropdowns](optimize/2026-10-29-dropdowns.md) | Native select popup ignores theme: themed-select.tsx uses shared Radix Select with theme tokens, keyboard/touch, collision handling and settings portals |
 
 ## Misc
+
+| Note | Summary |
+| --- | --- |
+| [2026-11-09-design-system](misc/2026-11-09-design-system.md) | Impeccable DESIGN.md、共享 PRODUCT.md、宣传页视觉稿偏好与 Next.js Live 配置；图鉴预览边界 |

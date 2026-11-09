@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-09T10:56:15Z",
+  "title": "Design System: void-terminal",
+  "extensions": {
+    "colorMeta": {
+      "paper": { "role": "neutral", "displayName": "暖纸", "tonalRamp": ["color-mix(in oklch, #f7f4ed 20%, black)","color-mix(in oklch, #f7f4ed 40%, black)","color-mix(in oklch, #f7f4ed 60%, black)","color-mix(in oklch, #f7f4ed 80%, black)","color-mix(in oklch, #f7f4ed 80%, white)","color-mix(in oklch, #f7f4ed 60%, white)","color-mix(in oklch, #f7f4ed 40%, white)","color-mix(in oklch, #f7f4ed 20%, white)"] },
+      "panel": { "role": "neutral", "displayName": "亮纸面", "tonalRamp": ["color-mix(in oklch, #fffdf8 20%, black)","color-mix(in oklch, #fffdf8 40%, black)","color-mix(in oklch, #fffdf8 60%, black)","color-mix(in oklch, #fffdf8 80%, black)","color-mix(in oklch, #fffdf8 80%, white)","color-mix(in oklch, #fffdf8 60%, white)","color-mix(in oklch, #fffdf8 40%, white)","color-mix(in oklch, #fffdf8 20%, white)"] },
+      "ink": { "role": "neutral", "displayName": "蓝灰墨", "tonalRamp": ["color-mix(in oklch, #385371 20%, black)","color-mix(in oklch, #385371 40%, black)","color-mix(in oklch, #385371 60%, black)","color-mix(in oklch, #385371 80%, black)","color-mix(in oklch, #385371 80%, white)","color-mix(in oklch, #385371 60%, white)","color-mix(in oklch, #385371 40%, white)","color-mix(in oklch, #385371 20%, white)"] },
+      "muted": { "role": "neutral", "displayName": "浅蓝灰", "tonalRamp": ["color-mix(in oklch, #7b8999 20%, black)","color-mix(in oklch, #7b8999 40%, black)","color-mix(in oklch, #7b8999 60%, black)","color-mix(in oklch, #7b8999 80%, black)","color-mix(in oklch, #7b8999 80%, white)","color-mix(in oklch, #7b8999 60%, white)","color-mix(in oklch, #7b8999 40%, white)","color-mix(in oklch, #7b8999 20%, white)"] },
+      "accent": { "role": "primary", "displayName": "青蓝", "tonalRamp": ["color-mix(in oklch, #476e90 20%, black)","color-mix(in oklch, #476e90 40%, black)","color-mix(in oklch, #476e90 60%, black)","color-mix(in oklch, #476e90 80%, black)","color-mix(in oklch, #476e90 80%, white)","color-mix(in oklch, #476e90 60%, white)","color-mix(in oklch, #476e90 40%, white)","color-mix(in oklch, #476e90 20%, white)"] },
+      "accent-soft": { "role": "primary", "displayName": "浅雾蓝", "tonalRamp": ["color-mix(in oklch, #e2eaf0 20%, black)","color-mix(in oklch, #e2eaf0 40%, black)","color-mix(in oklch, #e2eaf0 60%, black)","color-mix(in oklch, #e2eaf0 80%, black)","color-mix(in oklch, #e2eaf0 80%, white)","color-mix(in oklch, #e2eaf0 60%, white)","color-mix(in oklch, #e2eaf0 40%, white)","color-mix(in oklch, #e2eaf0 20%, white)"] },
+      "gold": { "role": "secondary", "displayName": "暖金", "tonalRamp": ["color-mix(in oklch, #baa47f 20%, black)","color-mix(in oklch, #baa47f 40%, black)","color-mix(in oklch, #baa47f 60%, black)","color-mix(in oklch, #baa47f 80%, black)","color-mix(in oklch, #baa47f 80%, white)","color-mix(in oklch, #baa47f 60%, white)","color-mix(in oklch, #baa47f 40%, white)","color-mix(in oklch, #baa47f 20%, white)"] },
+      "border": { "role": "neutral", "displayName": "灰色边框", "tonalRamp": ["color-mix(in oklch, #d8d9d9 20%, black)","color-mix(in oklch, #d8d9d9 40%, black)","color-mix(in oklch, #d8d9d9 60%, black)","color-mix(in oklch, #d8d9d9 80%, black)","color-mix(in oklch, #d8d9d9 80%, white)","color-mix(in oklch, #d8d9d9 60%, white)","color-mix(in oklch, #d8d9d9 40%, white)","color-mix(in oklch, #d8d9d9 20%, white)"] }
+    },
+    "typographyMeta": {
+      "body": { "displayName": "正文与控件", "purpose": "共享外壳的正文和操作文字。" },
+      "archive-heading": { "displayName": "万象集录标题", "purpose": "标题专用字体子集，不用于任意正文。" },
+      "reading": { "displayName": "阅读正文", "purpose": "原文阅读内容。" }
+    },
+    "shadows": [
+      { "name": "shared-panel", "value": "0 16px 60px #142f4814", "purpose": "浅色主题的弹窗及卡片悬停。" },
+      { "name": "shared-panel-dark", "value": "0 16px 60px #0003", "purpose": "深色主题的共享面板。" },
+      { "name": "archive-panel", "value": "0 9px 24px #18343828", "purpose": "图鉴面板与风景背景分层。" }
+    ],
+    "motion": [
+      { "name": "sidebar", "value": "280ms cubic-bezier(.16,1,.3,1)", "purpose": "侧栏展开和收起；减少动态效果时关闭。" }
+    ],
+    "breakpoints": [
+      { "name": "mobile", "value": "650px" },
+      { "name": "sidebar-medium", "value": "850px" },
+      { "name": "archive-layout", "value": "1100px" },
+      { "name": "wide", "value": "1600px" }
+    ]
+  },
+  "components": [
+    { "name": "主要按钮", "kind": "button", "refersTo": "button-primary", "description": "主题强调色的主要操作。", "html": "<button class=\"ds-primary\">确认</button>", "css": ".ds-primary{font:13px var(--font,ui-rounded,system-ui,sans-serif);min-height:44px;padding:10px 15px;border:1px solid transparent;border-radius:9px;background:var(--accent,#476e90);color:var(--panel,#fffdf8);cursor:pointer;transition:background .18s,color .18s}.ds-primary:hover{filter:brightness(1.08)}.ds-primary:focus-visible{outline:3px solid #77b6d2;outline-offset:3px}.ds-primary:disabled{opacity:.45;cursor:not-allowed}" },
+    { "name": "普通按钮", "kind": "button", "description": "轻量操作与悬停反馈。", "html": "<button class=\"ds-button\">设置</button>", "css": ".ds-button{font:13px var(--font,ui-rounded,system-ui,sans-serif);min-height:44px;padding:9px 13px;border:0;border-radius:9px;background:transparent;color:var(--text,#385371);cursor:pointer}.ds-button:hover{background:var(--accent-soft,#e2eaf0)}.ds-button:focus-visible{outline:3px solid #77b6d2;outline-offset:3px}" },
+    { "name": "输入框", "kind": "input", "refersTo": "field", "description": "共享设置与输入控件。", "html": "<input class=\"ds-field\" aria-label=\"输入\" placeholder=\"输入内容\">", "css": ".ds-field{font:14px var(--font,ui-rounded,system-ui,sans-serif);min-height:44px;padding:12px;border:1px solid var(--border,#d8d9d9);border-radius:10px;background:var(--panel,#fffdf8);color:var(--text,#385371)}.ds-field:focus-visible{outline:3px solid #77b6d2;outline-offset:3px}" },
+    { "name": "当前导航", "kind": "nav", "description": "侧栏选中项。", "html": "<nav aria-label=\"示例导航\"><button class=\"ds-nav\" aria-current=\"page\">尘世文卷</button></nav>", "css": ".ds-nav{font:17px var(--font,ui-rounded,system-ui,sans-serif);letter-spacing:1px;text-align:left;min-height:55px;padding:14px;border:0;border-radius:9px;background:var(--accent,#476e90);color:var(--panel,#fffdf8);cursor:pointer}.ds-nav:hover{filter:brightness(1.08)}.ds-nav:focus-visible{outline:3px solid #77b6d2;outline-offset:3px}" },
+    { "name": "引用标签", "kind": "chip", "description": "对话中指向来源的轻量标签。", "html": "<button class=\"ds-citation\">来源 1</button>", "css": ".ds-citation{font:12px var(--font,ui-rounded,system-ui,sans-serif);min-height:35px;padding:5px 10px;border:0;border-radius:9px;background:var(--accent-soft,#e2eaf0);color:var(--accent,#476e90);cursor:pointer}.ds-citation:hover{filter:brightness(.97)}.ds-citation:focus-visible{outline:3px solid #77b6d2;outline-offset:3px}" },
+    { "name": "原文卡片", "kind": "card", "refersTo": "document-card", "description": "包含类型、标题和摘要的阅读入口。", "html": "<article class=\"ds-card\"><small>书籍</small><h2>原文标题</h2><p>资料摘要与阅读入口</p></article>", "css": ".ds-card{font-family:var(--font,ui-rounded,system-ui,sans-serif);padding:21px;border:1px solid var(--line,#d6c9b54f);border-radius:15px;background:var(--panel,#fffdf8);color:var(--text,#385371)}.ds-card:hover{border-color:var(--gold,#baa47f);box-shadow:var(--shadow,0 16px 60px #142f4814)}.ds-card h2{font-size:19px;line-height:1.5}.ds-card small,.ds-card p{font-size:12px;color:var(--muted,#7b8999)}" }
+  ],
+  "narrative": {
+    "northStar": "原作风格终端",
+    "overview": "界面以《原神》游戏内菜单和须弥场景为视觉参照：风景、徽记、细金线、纸面和蓝灰文字共同构成可阅读的资料终端。游戏感与装饰性是明确的方向，但内容、操作状态和来源仍需清楚辨认。\n\n共享外壳使用蓝灰与暖纸色；万象集录和群星图鉴则在同一背景上使用更接近游戏菜单的嵌线面板、物品稀有度和元素色。保留这两种已有层次，不把单个模块的颜色当成所有页面的默认值。",
+    "keyCharacteristics": ["须弥风景与原作相关图标提供世界感，纸面承载阅读和操作。", "蓝灰字色、暖纸底色、细金线和叶形徽记贯穿共享外壳。", "图鉴用游戏菜单式的分类、选中态、图像、稀有度或元素色组织内容。", "浅色与深色主题、中文与英文以及桌面与手机均有对应处理。"],
+    "rules": [],
+    "dos": ["Do 以现有游戏内菜单与须弥场景为参照，使用纸面、蓝灰文字和适量金色细节。", "Do 使用主题变量，并同时检查深色、移动端、键盘焦点和减少动态效果。", "Do 对稀有度、元素、选中和不可用状态使用已有模块语义与可辨认的文字或图标。", "Do 保留可阅读的正文层级、独立滚动区域和可追溯的来源入口。"],
+    "donts": ["Don't 把图鉴的局部色彩或页面布局直接推广为全站默认规范。", "Don't 将标题专用的字体子集当作支持所有正文字符的通用字体。", "Don't 仅用颜色传达元素、选中或错误状态，也不要移除键盘焦点提示。", "Don't 为填补视觉空缺而臆造原作图标、素材或缺失数据。"]
+  }
+}

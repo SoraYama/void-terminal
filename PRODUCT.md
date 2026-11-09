@@ -1,5 +1,13 @@
 # void-terminal
 
+<!-- impeccable:product-schema 1 -->
+
+## Platform
+
+web
+
+## Product Context
+
 An unofficial bilingual Genshin Impact source archive and research terminal. Readers browse original records and ask questions grounded in immutable knowledge snapshots; citations lead back to their source documents. It is a Next.js website backed by the existing Python knowledge service and SQLite/PostgreSQL storage.
 
 The source-reading module is 尘世文卷 / Teyvat Archive. The three archive navigation entries use original book, bag and character-list UI icons. Character filters, cards and identity use the original seven elemental symbols with localized accessible labels. Below the avatar strip, character identity reads element icon, bold name, then rarity; the second line joins title and weapon type with a middle dot. The detail element has no visible text label. On wide screens, the base-stat heading shares the name's top alignment, with the artwork beneath identity; narrow screens stack identity, artwork and stats. Asset provenance is recorded alongside the local sprites; unknown elements are never guessed.
