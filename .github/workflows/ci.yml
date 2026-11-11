@@ -48,9 +48,22 @@ jobs:
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: '1'
-      - run: npx playwright install --with-deps chromium
+      # GitHub's Ubuntu runner already supplies Chromium's native libraries.
+      # Keep Playwright's dependency validation and browser tests enabled,
+      # without reinstalling optional fonts through the runner's apt mirror.
+      - run: npx playwright install chromium
         working-directory: apps/web
-      - run: npm run test:e2e
+      - name: Install pinned Chinese font for browser rendering
+        run: |
+          font_path="$HOME/.local/share/fonts/NotoSansCJKsc-Regular.otf"
+          mkdir -p "$(dirname "$font_path")"
+          curl --fail --location --retry 3 \
+            https://raw.githubusercontent.com/notofonts/noto-cjk/523d033d6cb47f4a80c58a35753646f5c3608a78/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf \
+            --output "$font_path"
+          printf '%s  %s\n' 2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b "$font_path" | sha256sum --check
+          fc-cache --force "$HOME/.local/share/fonts"
+          fc-match ':lang=zh-cn' | grep -F 'NotoSansCJKsc-Regular.otf'
+      - run: npm run test:e2e --workspace @void-terminal/web -- --max-failures=1
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

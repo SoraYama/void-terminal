@@ -1,0 +1,9 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <defs><mask id="folded-map">
+    <path d="m5 11 17-6 20 6 17-6v48l-17 6-20-6-17 6Z" fill="white"/>
+    <path d="M22 8v42M42 14v42" stroke="black" stroke-width="1.8"/>
+    <path d="M15 39c-1-8 2-16 8-14 7 2 9 12 17 12 7 0 11-8 11-14" fill="none" stroke="black" stroke-width="2" stroke-dasharray="2 4.5" stroke-linecap="round"/>
+    <path d="m11 43 7 7m0-7-7 7" stroke="black" stroke-width="2.3" stroke-linecap="round"/>
+  </mask></defs>
+  <path d="M0 0h64v64H0z" fill="white" mask="url(#folded-map)"/>
+</svg>

@@ -5,6 +5,7 @@ import {
   type ModelProvider,
 } from "../contracts";
 import { AppError } from "./errors";
+import {mapSnapshotIdSchema} from "../map-cards";
 import { chatMessages } from "../history";
 export const invalid = () =>
   new AppError(
@@ -82,9 +83,11 @@ export function parseChat(value: unknown): ChatRequest {
     "mode",
     "depth",
     "snapshotId",
+    "mapSnapshotId",
     "types",
     "provider",
   ]);
+  if (value.mapSnapshotId !== undefined && !mapSnapshotIdSchema.safeParse(value.mapSnapshotId).success) throw invalid();
   const mode = parseMode(value.mode);
   const provider = parseProvider(value.provider, mode);
   if (
@@ -148,6 +151,7 @@ export function parseChat(value: unknown): ChatRequest {
       ? { answerLanguage: value.answerLanguage as ChatRequest["language"] }
       : {}),
     depth: value.depth as ChatRequest["depth"],
+    ...(value.mapSnapshotId ? {mapSnapshotId: value.mapSnapshotId as string} : {}),
     ...(value.snapshotId ? { snapshotId: value.snapshotId as string } : {}),
     ...(value.types ? { types: value.types as ContentType[] } : {}),
   };

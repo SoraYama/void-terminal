@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>提瓦特资源图志 7.2 · 虚空终端</title>
+<style>/* CSS */</style>
+</head>
+<body>
+<header class="mast">
+  <div class="brand">
+    <!-- MAP_ICON -->
+    <div><p>虚空终端 <span>／</span> 探索档案</p><h1>提瓦特资源图志</h1></div>
+  </div>
+  <div class="edition"><span>版本 7.2</span><span id="snapshot-date"></span></div>
+</header>
+<main class="sheet">
+  <nav class="scenes" aria-label="地图场景">
+    <div id="region-tabs" class="region-tabs" role="group" aria-label="世界地区"></div>
+    <label class="more-maps"><span>独立与分层地图</span><span class="select-wrap"><select id="map-select" aria-label="切换独立地图"><option value="">选择地图</option><optgroup label="独立地图"><option value="enkanomiya">渊下宫</option><option value="chasm">层岩巨渊</option><option value="sea">旧日之海</option><option value="sacred">远古圣山</option><option value="space">空之神殿</option><option value="moon">霜月</option></optgroup><optgroup label="分层地图"><option value="castle">褪色古堡</option></optgroup></select><svg class="select-chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="m2 4 4 4 4-4"/></svg></span></label>
+  </nav>
+  <div class="desk">
+    <section class="map-wrap" aria-label="地图画布">
+      <canvas id="map" tabindex="0" aria-label="枫丹地图，可用方向键移动，用加减号缩放"></canvas>
+      <div id="map-portals" class="map-portals" role="group" aria-label="地图入口"></div>
+      <div class="plate"><span id="scene-tag"></span><strong id="scene-title"></strong><small id="scene-hint"></small></div>
+      <svg class="compass" viewBox="0 0 62 76" aria-hidden="true"><text x="31" y="11" text-anchor="middle">N</text><circle cx="31" cy="44" r="20"/><path d="M31 19 36 39 56 44 36 49 31 69 26 49 6 44 26 39Z"/><path d="m31 19 5 20-5 5Z" class="needle"/><circle cx="31" cy="44" r="3"/></svg>
+      <div id="floors" class="floors" aria-label="古堡楼层" hidden></div>
+      <div id="access-switch" class="access-switch" hidden><label><input id="access" type="checkbox" checked>显示入口</label></div>
+      <div id="region-control" class="region-select select-wrap"><select id="region-select" aria-label="定位地区"><option value="">定位地区</option></select><svg class="select-chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="m2 4 4 4 4-4"/></svg></div>
+      <div class="zoom" aria-label="地图缩放">
+        <button id="plus" type="button" aria-label="放大">+</button>
+        <button id="minus" type="button" aria-label="缩小">−</button>
+        <button id="reset" type="button" aria-label="重置视野">◎</button>
+      </div>
+      <div class="map-foot"><span id="map-scale">100%</span><span>拖动平移 · 滚轮或双指缩放</span></div>
+    </section>
+    <aside class="catalog" aria-label="标点索引">
+      <div class="catalog-top">
+        <h2>资源索引</h2>
+        <div class="search">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.8"/><path d="m15 15 4.3 4.3"/></svg>
+          <input id="search" type="search" placeholder="搜材料、宝箱、摩拉或标点编号" aria-label="搜索标点" autocomplete="off">
+        </div>
+        <div id="filters" class="filters" role="group" aria-label="资源分类">
+          <button type="button" data-filter="all">全部</button>
+          <button type="button" data-filter="material">突破材料</button>
+          <button type="button" data-filter="oculus">神瞳</button>
+          <button type="button" data-filter="chest">宝箱</button>
+          <button type="button" data-filter="mora">摩拉</button>
+          <button type="button" data-filter="enemy">敌人与首领</button>
+          <button type="button" data-filter="puzzle">解谜</button>
+        </div>
+        <span class="select-wrap type-control"><select id="type-select" aria-label="筛选具体资源"><option value="">全部资源类型</option></select><svg class="select-chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="m2 4 4 4 4-4"/></svg></span>
+      </div>
+      <section id="detail" class="detail" aria-label="标点详情" hidden></section>
+      <div class="result-head"><span id="results-label">探索标点</span><strong id="result-count" aria-live="polite"></strong></div>
+      <p id="filter-note" class="filter-note" hidden></p>
+      <div id="group-note" class="group-note">按类型聚合，点击地图标点查看详情。</div>
+      <div id="results" class="results" aria-label="搜索结果"></div>
+      <footer class="credits">底图与标点 <a href="https://genshin-impact-map.appsample.com/" target="_blank" rel="noopener noreferrer">AppSample</a><span id="snapshot-count"></span></footer>
+    </aside>
+  </div>
+</main>
+<script id="atlas-data" type="application/json">/* DATA */</script>
+<script>/* JS */</script>
+</body>
+</html>

@@ -13,6 +13,7 @@ import { runDshResearch } from "./dsh-runtime";
 import type { ModelBody } from "./model-bridge";
 import { buildAnswerCards } from "./answer-cards";
 import { citationLabels } from "./citation-labels";
+import {MAP_RESEARCH_POLICY} from './map-research';
 
 const MAX_ANSWER_CHARS = 120000;
 type Options = {
@@ -47,7 +48,7 @@ export async function runAgent(
     transport = openProviderTransport(config, signal);
     const prepared = await prepareResearch(input, signal, emit);
     if (!prepared) return { usedTokens: 0, outcome: "released" };
-    const { evidence, researchSelections, contextReads, initialQuery } =
+    const { evidence, researchSelections, contextReads, initialQuery, maps } =
       prepared;
     const deliberateAnswer =
       needsNarrativeContext(initialQuery) || input.depth === "deep";
@@ -70,7 +71,7 @@ export async function runAgent(
       pendingUsage = undefined;
     };
     const instructions =
-      loreSystemPrompt(input) +
+      loreSystemPrompt(input) + MAP_RESEARCH_POLICY + `\nVerified map results:\n${maps.context()}` +
       `
 Research selections:
 ${JSON.stringify(researchSelections)}
@@ -93,7 +94,7 @@ ${contextPayload(evidence.sources)}`;
           {
             role: "system",
             content:
-              loreSystemPrompt(input) +
+              loreSystemPrompt(input) + MAP_RESEARCH_POLICY + `\nVerified map results:\n${maps.context()}` +
               `
 Research is complete. Give the best supported answer to the user now. No more searches or tool calls are available. Do not output research narration or tool syntax.
 If selection.truncated is true, excerpts or sources were omitted to fit this request, not because the corpus lacks evidence. Only cite sources included below; keep all uncertainty and branch conditions.
@@ -344,14 +345,15 @@ ${JSON.stringify({ snapshotId: evidence.snapshotId, sources: selected, selection
     );
     if (evidence.sources.length && !labels.length)
       warnings.push("The answer contains no source citations.");
-    const cards = await buildAnswerCards(initialQuery, citedEvidence, labels,
-      evidence.snapshotId!, input.answerLanguage ?? input.language, signal).catch(() => []);
+    const cards = evidence.snapshotId && citedEvidence.length ? await buildAnswerCards(initialQuery, citedEvidence, labels,
+      evidence.snapshotId, input.answerLanguage ?? input.language, signal).catch(() => []) : [];
     // Archive lookups share the deadline, but a finished generation can
     // still be delivered if only the optional decoration was interrupted.
     if (!options.signal.aborted) options.emit({
       event: "done",
       data: {
-        snapshotId: evidence.snapshotId!,
+        ...(evidence.snapshotId ? {snapshotId: evidence.snapshotId} : {}),
+        ...(maps.snapshotId ? {mapSnapshotId: maps.snapshotId, maps: maps.cards} : {}),
         ...(unknownBilling || earlierUnknownBilling ? {} : { usage }),
         finishReason: result.finishReason,
         ...(warnings.length ? { citationWarnings: warnings } : {}),

@@ -17,3 +17,8 @@ each downloaded file was checked against the pinned repository tree.
 Game images belong to miHoYo / HoYoverse and their respective rights holders.
 Neither this project's MIT license nor the mirror's software license grants
 rights to these game assets. See the root THIRD_PARTY_NOTICES.md.
+
+`Map_Folded.svg` is the project's own folded-map icon, adapted from
+`prototypes/world-map/icons/map.svg` for a transparent navigation mask on
+2026-11-11. It is not an original game sprite and is not included in the PNG
+provenance manifest above.

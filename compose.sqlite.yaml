@@ -66,6 +66,7 @@ services:
       context: .
       dockerfile: deploy/Dockerfile.web
     environment:
+      MAP_DATA_DIR: /data/maps
       DEPLOYMENT_MODE: ${DEPLOYMENT_MODE-self-hosted}
       KNOWLEDGE_URL: http://knowledge:8000
       KNOWLEDGE_API_TOKEN: ${KNOWLEDGE_API_TOKEN:?Set KNOWLEDGE_API_TOKEN in .env}
@@ -91,6 +92,8 @@ services:
       SUPPORT_BSC_ASSETS: ${SUPPORT_BSC_ASSETS:-}
       PUBLIC_APP_ORIGIN: https://${SITE_DOMAIN:?Set SITE_DOMAIN to a bare public hostname}
       TRUST_PROXY: 'true'
+    volumes:
+      - ${MAP_DATA_HOST_DIR:-./data/maps}:/data/maps:ro
     depends_on:
       knowledge:
         condition: service_healthy

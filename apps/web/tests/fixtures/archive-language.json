@@ -1,0 +1,1581 @@
+{
+  "provenance": {
+    "note": "Reduced bilingual browser fixtures extracted from local immutable catalogs. Lists, levels and narrative entries are truncated; images/audio are disabled. These fixtures do not call a live knowledge service.",
+    "characterSnapshot": "character-preview-53eea8cb88906a53",
+    "itemSnapshot": "agd-bd35e243fa43-9f534ea4c12d"
+  },
+  "characters": {
+    "zh-CN": {
+      "id": "avatar:10000002",
+      "avatarId": 10000002,
+      "language": "zh-CN",
+      "name": "神里绫华",
+      "title": "白鹭霜华",
+      "description": "稻妻「社奉行」神里家的大小姐。端庄而文雅，聪慧又坚韧。",
+      "rarity": 5,
+      "element": "Ice",
+      "elementName": "冰",
+      "weaponType": "WEAPON_SWORD_ONE_HAND",
+      "weaponName": "单手剑",
+      "region": "稻妻",
+      "state": "source-record",
+      "icon": {
+        "identifier": "",
+        "url": null,
+        "provider": "none",
+        "status": "missing"
+      },
+      "portrait": {
+        "identifier": "",
+        "url": null,
+        "provider": "none",
+        "status": "missing"
+      },
+      "birthday": {
+        "month": 9,
+        "day": 28
+      },
+      "affiliation": "社奉行",
+      "constellationName": "雪鹤座",
+      "cv": {
+        "en": "艾丽卡·门德斯",
+        "ja": "早见沙织",
+        "ko": "李侑俐",
+        "zh-CN": "小N"
+      },
+      "sources": [
+        {
+          "repo": "DimbreathBot/AnimeGameData",
+          "commit": "bd35e243fa436f141f015cf221a6e19d0c34b7ca",
+          "path": "ExcelBinOutput/AvatarExcelConfigData.json",
+          "locator": "/1",
+          "url": "https://github.com/DimbreathBot/AnimeGameData/blob/bd35e243fa436f141f015cf221a6e19d0c34b7ca/ExcelBinOutput/AvatarExcelConfigData.json"
+        }
+      ],
+      "documentIds": [
+        "agd:zh-CN:character:Avatar:10000002"
+      ],
+      "forms": [
+        {
+          "id": "201",
+          "name": "冰",
+          "element": "Ice",
+          "elementName": "冰",
+          "levels": [
+            {
+              "level": 90,
+              "ascension": 6,
+              "stats": {
+                "FIGHT_PROP_BASE_ATTACK": 342.0250874,
+                "FIGHT_PROP_BASE_DEFENSE": 783.9254574,
+                "FIGHT_PROP_BASE_HP": 12858.206654,
+                "FIGHT_PROP_CHARGE_EFFICIENCY": 1.0,
+                "FIGHT_PROP_CRITICAL": 0.05,
+                "FIGHT_PROP_CRITICAL_HURT": 0.884
+              }
+            }
+          ],
+          "talents": [
+            {
+              "id": "10024",
+              "kind": "normal",
+              "name": "神里流·倾",
+              "description": "普通攻击\n进行至多五段的连续剑击。\n\n重击\n消耗一定体力，在居合中放出连续的剑风。\n\n下落攻击\n从空中下坠冲击地面，攻击下落路径上的敌人，并在落地时造成范围伤害。",
+              "icon": {
+                "identifier": "",
+                "url": null,
+                "provider": "none",
+                "status": "missing"
+              },
+              "cooldown": null,
+              "energyCost": null,
+              "unlockAscension": null,
+              "levels": [
+                {
+                  "level": 1,
+                  "requiredAscension": null,
+                  "attributes": [
+                    {
+                      "template": "一段伤害|{param1:F1P}",
+                      "text": "一段伤害|45.7%",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "二段伤害|{param2:F1P}",
+                      "text": "二段伤害|48.7%",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "三段伤害|{param3:F1P}",
+                      "text": "三段伤害|62.6%",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "四段伤害|{param4:F1P}*3",
+                      "text": "四段伤害|22.6%*3",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "五段伤害|{param7:F1P}",
+                      "text": "五段伤害|78.2%",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "重击伤害|{param8:F1P}*3",
+                      "text": "重击伤害|55.1%*3",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "重击体力消耗|{param9:F1}点",
+                      "text": "重击体力消耗|20.0点",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "下坠期间伤害|{param10:P}",
+                      "text": "下坠期间伤害|64%",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "低空/高空坠地冲击伤害|{param11:P}/{param12:P}",
+                      "text": "低空/高空坠地冲击伤害|128%/160%",
+                      "status": "complete"
+                    }
+                  ],
+                  "unresolvedAttributeHashes": [
+                    "52626703",
+                    "1482802484",
+                    "12206299",
+                    "2551127383",
+                    "1393569243",
+                    "2769765566",
+                    "2667271485",
+                    "1491039441",
+                    "3224785211",
+                    "1051825631",
+                    "1369557397"
+                  ],
+                  "materials": [],
+                  "mora": null,
+                  "upgradeable": true
+                },
+                {
+                  "level": 2,
+                  "requiredAscension": 2,
+                  "attributes": [
+                    {
+                      "template": "一段伤害|{param1:F1P}",
+                      "text": "一段伤害|49.4%",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "二段伤害|{param2:F1P}",
+                      "text": "二段伤害|52.6%",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "三段伤害|{param3:F1P}",
+                      "text": "三段伤害|67.7%",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "四段伤害|{param4:F1P}*3",
+                      "text": "四段伤害|24.5%*3",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "五段伤害|{param7:F1P}",
+                      "text": "五段伤害|84.5%",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "重击伤害|{param8:F1P}*3",
+                      "text": "重击伤害|59.6%*3",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "重击体力消耗|{param9:F1}点",
+                      "text": "重击体力消耗|20.0点",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "下坠期间伤害|{param10:P}",
+                      "text": "下坠期间伤害|69%",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "低空/高空坠地冲击伤害|{param11:P}/{param12:P}",
+                      "text": "低空/高空坠地冲击伤害|138%/173%",
+                      "status": "complete"
+                    }
+                  ],
+                  "unresolvedAttributeHashes": [
+                    "256994711",
+                    "2782249260",
+                    "3157802443",
+                    "3193854111",
+                    "3343030371",
+                    "3104304510",
+                    "3487312965",
+                    "3028689177",
+                    "1058302275",
+                    "3022020055",
+                    "4123164773"
+                  ],
+                  "materials": [
+                    {
+                      "id": "104323",
+                      "itemId": "material:104323",
+                      "count": 3.0
+                    },
+                    {
+                      "id": "112044",
+                      "itemId": "material:112044",
+                      "count": 6.0
+                    }
+                  ],
+                  "mora": 12500.0,
+                  "upgradeable": true
+                }
+              ],
+              "coverage": {
+                "parameters": "unresolved"
+              }
+            }
+          ],
+          "constellations": [
+            {
+              "id": "21",
+              "order": 1,
+              "name": "霜杀墨染樱",
+              "description": "神里绫华的普通攻击或重击对敌人造成冰元素伤害时，有50%的几率使神里流·冰华的冷却时间缩减0.3秒。该效果每0.1秒只能触发一次。",
+              "icon": {
+                "identifier": "",
+                "url": null,
+                "provider": "none",
+                "status": "missing"
+              }
+            }
+          ],
+          "coverage": {
+            "constellations": "complete",
+            "stats": "complete",
+            "talents": "complete"
+          }
+        }
+      ],
+      "stories": [
+        {
+          "id": "3201",
+          "title": "角色详细",
+          "text": "继承稻妻城中至为尊崇的三家名门之一——神里家族的，是一对兄妹。\n哥哥绫人出任「家主」一职，掌管政务，妹妹绫华贵为「公主」，平日主理家族内外事宜。\n绫华常出现在社交场合，与民间交集也较多。因此，更被人们所熟悉的她反而获得了高于兄长的名望，被雅称为「白鹭公主」。\n众所周知，神里家的女儿绫华小姐容姿端丽、品行高洁，是深受民众钦慕的人物。",
+          "conditions": {
+            "finishConds": [
+              {
+                "condType": "FETTER_COND_NOT_OPEN"
+              }
+            ],
+            "openConds": [
+              {},
+              {}
+            ],
+            "tips": []
+          },
+          "rawTitle": "角色详细",
+          "rawText": "继承稻妻城中至为尊崇的三家名门之一——神里家族的，是一对兄妹。\\n哥哥绫人出任「家主」一职，掌管政务，妹妹绫华贵为「公主」，平日主理家族内外事宜。\\n绫华常出现在社交场合，与民间交集也较多。因此，更被人们所熟悉的她反而获得了高于兄长的名望，被雅称为「白鹭公主」。\\n众所周知，神里家的女儿绫华小姐容姿端丽、品行高洁，是深受民众钦慕的人物。",
+          "displayStatus": "complete",
+          "order": 1,
+          "branches": [],
+          "sources": [
+            {
+              "repo": "DimbreathBot/AnimeGameData",
+              "commit": "bd35e243fa436f141f015cf221a6e19d0c34b7ca",
+              "path": "ExcelBinOutput/FetterStoryExcelConfigData.json",
+              "locator": "/280",
+              "url": "https://github.com/DimbreathBot/AnimeGameData/blob/bd35e243fa436f141f015cf221a6e19d0c34b7ca/ExcelBinOutput/FetterStoryExcelConfigData.json"
+            }
+          ]
+        }
+      ],
+      "voices": [
+        {
+          "id": "3100",
+          "title": "初次见面…",
+          "text": "稻妻神里流太刀术皆传——神里绫华，参上！\n请多指教哦。",
+          "conditions": {
+            "openConds": [
+              {},
+              {},
+              {},
+              {}
+            ],
+            "tips": []
+          },
+          "rawTitle": "初次见面…",
+          "rawText": "稻妻神里流太刀术皆传——神里绫华，参上！\\n请多指教哦。",
+          "displayStatus": "complete",
+          "category": "1",
+          "resource": "1000",
+          "audio": {},
+          "sources": [
+            {
+              "repo": "DimbreathBot/AnimeGameData",
+              "commit": "bd35e243fa436f141f015cf221a6e19d0c34b7ca",
+              "path": "ExcelBinOutput/FettersExcelConfigData.json",
+              "locator": "/508",
+              "url": "https://github.com/DimbreathBot/AnimeGameData/blob/bd35e243fa436f141f015cf221a6e19d0c34b7ca/ExcelBinOutput/FettersExcelConfigData.json"
+            }
+          ],
+          "branches": []
+        }
+      ],
+      "ascensions": [
+        {
+          "ascension": 0,
+          "maxLevel": 20,
+          "materials": [],
+          "mora": null
+        },
+        {
+          "ascension": 1,
+          "maxLevel": 40,
+          "materials": [
+            {
+              "id": "104161",
+              "itemId": "material:104161",
+              "count": 1.0
+            },
+            {
+              "id": "101202",
+              "itemId": "material:101202",
+              "count": 3.0
+            },
+            {
+              "id": "112044",
+              "itemId": "material:112044",
+              "count": 3.0
+            }
+          ],
+          "mora": 20000.0
+        }
+      ],
+      "coverage": {
+        "affiliation": "complete",
+        "ascensions": "complete",
+        "audio": "complete",
+        "birthday": "complete",
+        "constellationName": "complete",
+        "constellations": "complete",
+        "cv": "complete",
+        "description": "complete",
+        "element": "complete",
+        "image": "complete",
+        "name": "complete",
+        "parameters": "unresolved",
+        "portrait": "complete",
+        "rarity": "complete",
+        "region": "complete",
+        "stats": "complete",
+        "stories": "complete",
+        "talents": "complete",
+        "title": "complete",
+        "voices": "complete",
+        "weapon": "complete"
+      }
+    },
+    "en": {
+      "id": "avatar:10000002",
+      "avatarId": 10000002,
+      "language": "en",
+      "name": "Kamisato Ayaka",
+      "title": "Frostflake Heron",
+      "description": "Daughter of the Yashiro Commission's Kamisato Clan. Dignified and elegant, as well as wise and strong.",
+      "rarity": 5,
+      "element": "Ice",
+      "elementName": "Cryo",
+      "weaponType": "WEAPON_SWORD_ONE_HAND",
+      "weaponName": "Sword",
+      "region": "Inazuma",
+      "state": "source-record",
+      "icon": {
+        "identifier": "",
+        "url": null,
+        "provider": "none",
+        "status": "missing"
+      },
+      "portrait": {
+        "identifier": "",
+        "url": null,
+        "provider": "none",
+        "status": "missing"
+      },
+      "birthday": {
+        "month": 9,
+        "day": 28
+      },
+      "affiliation": "Yashiro Commission",
+      "constellationName": "Grus Nivis",
+      "cv": {
+        "en": "Erica Mendez",
+        "ja": "早見沙織",
+        "ko": "Lee Yoo-ri",
+        "zh-CN": "小N"
+      },
+      "sources": [
+        {
+          "repo": "DimbreathBot/AnimeGameData",
+          "commit": "bd35e243fa436f141f015cf221a6e19d0c34b7ca",
+          "path": "ExcelBinOutput/AvatarExcelConfigData.json",
+          "locator": "/1",
+          "url": "https://github.com/DimbreathBot/AnimeGameData/blob/bd35e243fa436f141f015cf221a6e19d0c34b7ca/ExcelBinOutput/AvatarExcelConfigData.json"
+        }
+      ],
+      "documentIds": [
+        "agd:en:character:Avatar:10000002"
+      ],
+      "forms": [
+        {
+          "id": "201",
+          "name": "Cryo",
+          "element": "Ice",
+          "elementName": "Cryo",
+          "levels": [
+            {
+              "level": 90,
+              "ascension": 6,
+              "stats": {
+                "FIGHT_PROP_BASE_ATTACK": 342.0250874,
+                "FIGHT_PROP_BASE_DEFENSE": 783.9254574,
+                "FIGHT_PROP_BASE_HP": 12858.206654,
+                "FIGHT_PROP_CHARGE_EFFICIENCY": 1.0,
+                "FIGHT_PROP_CRITICAL": 0.05,
+                "FIGHT_PROP_CRITICAL_HURT": 0.884
+              }
+            }
+          ],
+          "talents": [
+            {
+              "id": "10024",
+              "kind": "normal",
+              "name": "Kamisato Art: Kabuki",
+              "description": "Normal Attack\nPerforms up to 5 rapid strikes.\n\nCharged Attack\nConsumes a certain amount of Stamina to unleash a flurry of sword ki.\n\nPlunging Attack\nPlunges from mid-air to strike the ground below, damaging enemies along the path and dealing AoE DMG upon impact.",
+              "icon": {
+                "identifier": "",
+                "url": null,
+                "provider": "none",
+                "status": "missing"
+              },
+              "cooldown": null,
+              "energyCost": null,
+              "unlockAscension": null,
+              "levels": [
+                {
+                  "level": 1,
+                  "requiredAscension": null,
+                  "attributes": [
+                    {
+                      "template": "1-Hit DMG|{param1:F1P}",
+                      "text": "1-Hit DMG|45.7%",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "2-Hit DMG|{param2:F1P}",
+                      "text": "2-Hit DMG|48.7%",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "3-Hit DMG|{param3:F1P}",
+                      "text": "3-Hit DMG|62.6%",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "4-Hit DMG|{param4:F1P}×3",
+                      "text": "4-Hit DMG|22.6%×3",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "5-Hit DMG|{param7:F1P}",
+                      "text": "5-Hit DMG|78.2%",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "Charged Attack DMG|{param8:F1P}×3",
+                      "text": "Charged Attack DMG|55.1%×3",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "Charged Attack Stamina Cost|{param9:F1}",
+                      "text": "Charged Attack Stamina Cost|20.0",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "Plunge DMG|{param10:P}",
+                      "text": "Plunge DMG|64%",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "Low/High Plunge DMG|{param11:P}/{param12:P}",
+                      "text": "Low/High Plunge DMG|128%/160%",
+                      "status": "complete"
+                    }
+                  ],
+                  "unresolvedAttributeHashes": [
+                    "52626703",
+                    "1482802484",
+                    "12206299",
+                    "2551127383",
+                    "1393569243",
+                    "2769765566",
+                    "2667271485",
+                    "1491039441",
+                    "3224785211",
+                    "1051825631",
+                    "1369557397"
+                  ],
+                  "materials": [],
+                  "mora": null,
+                  "upgradeable": true
+                },
+                {
+                  "level": 2,
+                  "requiredAscension": 2,
+                  "attributes": [
+                    {
+                      "template": "1-Hit DMG|{param1:F1P}",
+                      "text": "1-Hit DMG|49.4%",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "2-Hit DMG|{param2:F1P}",
+                      "text": "2-Hit DMG|52.6%",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "3-Hit DMG|{param3:F1P}",
+                      "text": "3-Hit DMG|67.7%",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "4-Hit DMG|{param4:F1P}×3",
+                      "text": "4-Hit DMG|24.5%×3",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "5-Hit DMG|{param7:F1P}",
+                      "text": "5-Hit DMG|84.5%",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "Charged Attack DMG|{param8:F1P}×3",
+                      "text": "Charged Attack DMG|59.6%×3",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "Charged Attack Stamina Cost|{param9:F1}",
+                      "text": "Charged Attack Stamina Cost|20.0",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "Plunge DMG|{param10:P}",
+                      "text": "Plunge DMG|69%",
+                      "status": "complete"
+                    },
+                    {
+                      "template": "Low/High Plunge DMG|{param11:P}/{param12:P}",
+                      "text": "Low/High Plunge DMG|138%/173%",
+                      "status": "complete"
+                    }
+                  ],
+                  "unresolvedAttributeHashes": [
+                    "256994711",
+                    "2782249260",
+                    "3157802443",
+                    "3193854111",
+                    "3343030371",
+                    "3104304510",
+                    "3487312965",
+                    "3028689177",
+                    "1058302275",
+                    "3022020055",
+                    "4123164773"
+                  ],
+                  "materials": [
+                    {
+                      "id": "104323",
+                      "itemId": "material:104323",
+                      "count": 3.0
+                    },
+                    {
+                      "id": "112044",
+                      "itemId": "material:112044",
+                      "count": 6.0
+                    }
+                  ],
+                  "mora": 12500.0,
+                  "upgradeable": true
+                }
+              ],
+              "coverage": {
+                "parameters": "unresolved"
+              }
+            }
+          ],
+          "constellations": [
+            {
+              "id": "21",
+              "order": 1,
+              "name": "Snowswept Sakura",
+              "description": "When Kamisato Ayaka's Normal or Charged Attacks deal Cryo DMG to opponents, it has a 50% chance of decreasing the CD of Kamisato Art: Hyouka by 0.3s. This effect can occur once every 0.1s.",
+              "icon": {
+                "identifier": "",
+                "url": null,
+                "provider": "none",
+                "status": "missing"
+              }
+            }
+          ],
+          "coverage": {
+            "constellations": "complete",
+            "stats": "complete",
+            "talents": "complete"
+          }
+        }
+      ],
+      "stories": [
+        {
+          "id": "3201",
+          "title": "Character Details",
+          "text": "A pair of siblings have inherited the Kamisato Clan, one of the three most respected and prestigious clans in Inazuma City.\nThe elder brother, Ayato, is the head of the clan and is in charge of government affairs. While his younger sister, Ayaka, known by all as the Princess, takes care of the clan's internal and external affairs.\nAyaka often appears at social occasions and has more interactions with the common folk. As such, she is better known by the people and has gained a higher reputation than her elder brother. This has earned her the elegant title of Shirasagi Himegimi.\nAs is known to all, Ayaka, the daughter of the Kamisato family, is a figure greatly admired by the people for her beauty, dignified demeanor, and noble character.",
+          "conditions": {
+            "finishConds": [
+              {
+                "condType": "FETTER_COND_NOT_OPEN"
+              }
+            ],
+            "openConds": [
+              {},
+              {}
+            ],
+            "tips": []
+          },
+          "rawTitle": "Character Details",
+          "rawText": "A pair of siblings have inherited the Kamisato Clan, one of the three most respected and prestigious clans in Inazuma City.\\nThe elder brother, Ayato, is the head of the clan and is in charge of government affairs. While his younger sister, Ayaka, known by all as the Princess, takes care of the clan's internal and external affairs.\\nAyaka often appears at social occasions and has more interactions with the common folk. As such, she is better known by the people and has gained a higher reputation than her elder brother. This has earned her the elegant title of Shirasagi Himegimi.\\nAs is known to all, Ayaka, the daughter of the Kamisato family, is a figure greatly admired by the people for her beauty, dignified demeanor, and noble character.",
+          "displayStatus": "complete",
+          "order": 1,
+          "branches": [],
+          "sources": [
+            {
+              "repo": "DimbreathBot/AnimeGameData",
+              "commit": "bd35e243fa436f141f015cf221a6e19d0c34b7ca",
+              "path": "ExcelBinOutput/FetterStoryExcelConfigData.json",
+              "locator": "/280",
+              "url": "https://github.com/DimbreathBot/AnimeGameData/blob/bd35e243fa436f141f015cf221a6e19d0c34b7ca/ExcelBinOutput/FetterStoryExcelConfigData.json"
+            }
+          ]
+        }
+      ],
+      "voices": [
+        {
+          "id": "3100",
+          "title": "Hello",
+          "text": "Master of Inazuma Kamisato Art Tachi Jutsu — Kamisato Ayaka, present!\nDelighted to make your acquaintance.",
+          "conditions": {
+            "openConds": [
+              {},
+              {},
+              {},
+              {}
+            ],
+            "tips": []
+          },
+          "rawTitle": "Hello",
+          "rawText": "Master of Inazuma Kamisato Art Tachi Jutsu — Kamisato Ayaka, present!\\nDelighted to make your acquaintance.",
+          "displayStatus": "complete",
+          "category": "1",
+          "resource": "1000",
+          "audio": {},
+          "sources": [
+            {
+              "repo": "DimbreathBot/AnimeGameData",
+              "commit": "bd35e243fa436f141f015cf221a6e19d0c34b7ca",
+              "path": "ExcelBinOutput/FettersExcelConfigData.json",
+              "locator": "/508",
+              "url": "https://github.com/DimbreathBot/AnimeGameData/blob/bd35e243fa436f141f015cf221a6e19d0c34b7ca/ExcelBinOutput/FettersExcelConfigData.json"
+            }
+          ],
+          "branches": []
+        }
+      ],
+      "ascensions": [
+        {
+          "ascension": 0,
+          "maxLevel": 20,
+          "materials": [],
+          "mora": null
+        },
+        {
+          "ascension": 1,
+          "maxLevel": 40,
+          "materials": [
+            {
+              "id": "104161",
+              "itemId": "material:104161",
+              "count": 1.0
+            },
+            {
+              "id": "101202",
+              "itemId": "material:101202",
+              "count": 3.0
+            },
+            {
+              "id": "112044",
+              "itemId": "material:112044",
+              "count": 3.0
+            }
+          ],
+          "mora": 20000.0
+        }
+      ],
+      "coverage": {
+        "affiliation": "complete",
+        "ascensions": "complete",
+        "audio": "complete",
+        "birthday": "complete",
+        "constellationName": "complete",
+        "constellations": "complete",
+        "cv": "complete",
+        "description": "complete",
+        "element": "complete",
+        "image": "complete",
+        "name": "complete",
+        "parameters": "unresolved",
+        "portrait": "complete",
+        "rarity": "complete",
+        "region": "complete",
+        "stats": "complete",
+        "stories": "complete",
+        "talents": "complete",
+        "title": "complete",
+        "voices": "complete",
+        "weapon": "complete"
+      }
+    }
+  },
+  "items": {
+    "zh-CN": [
+      {
+        "id": "weapon:13501",
+        "language": "zh-CN",
+        "name": "护摩之杖",
+        "category": "weapon",
+        "subtype": "长柄武器",
+        "rarity": 5,
+        "description": "在早已失落的古老祭仪中，使用的朱赤「柴火杖」。",
+        "story": "以炽焰洗净一切不洁之物，让污秽与火光一同升向可容纳一切的高天：\n这种祭仪曾在浇季中，点亮过大陆各处的薪柴，升起求福退邪的狼烟。\n\n这种炽热的祭仪在悠古的纷争高扬的时代一度盛行。\n因为静默神骸的妄念与梦想会化为凭附的恶瘴菑疠，\n将不再属于他们的子民与不曾属于他们的人子带走。\n\n彼时，救死的医者从耀若黄昏的烈火中听见，\n油脂沸腾枯草崩裂的响声中的低吟。\n「只有无羁之火能净化天地的污浊」\n「升起朱赤的柴禾，摒退一切妖邪」\n\n医者持妖红的手杖，引燃沾染了邪污的事物。\n那些被恶业与灾殃缠上的往者，未能承受深重哀伤的逝者，\n将在火中化作灰之蛱蝶，自浊世的一切不幸与嗟伤中解脱。\n而点燃无数柴禾堆的医者，传说也最终化成了飞蝶般的烟。\n\n即使这种祭仪随着和平与岁月被遗忘，\n漆黑的明威面前中，心中怀着烈火的人总能听见，\n炫惑的火之舞低吟，只有无羁的炽焰能净化天地…",
+        "state": "source-record",
+        "rawIds": [
+          "13501"
+        ],
+        "documentIds": [
+          "agd:zh-CN:weapon:Weapon:13501"
+        ],
+        "sources": [
+          {
+            "repo": "DimbreathBot/AnimeGameData",
+            "commit": "bd35e243fa436f141f015cf221a6e19d0c34b7ca",
+            "path": "ExcelBinOutput/WeaponExcelConfigData.json",
+            "locator": "/148",
+            "url": "https://github.com/DimbreathBot/AnimeGameData/blob/bd35e243fa436f141f015cf221a6e19d0c34b7ca/ExcelBinOutput/WeaponExcelConfigData.json"
+          }
+        ],
+        "icon": {
+          "identifier": "",
+          "url": null,
+          "provider": "none",
+          "status": "missing"
+        },
+        "attributes": [],
+        "acquisition": [],
+        "coverage": {
+          "acquisition": "upstream-missing",
+          "ascensions": "complete",
+          "description": "complete",
+          "image": "complete",
+          "name": "complete",
+          "refinements": "complete",
+          "relations": "not-applicable",
+          "stats": "complete",
+          "story": "complete"
+        },
+        "weapon": {
+          "type": "WEAPON_POLE",
+          "levels": [
+            {
+              "level": 90,
+              "ascension": 6,
+              "stats": [
+                {
+                  "key": "FIGHT_PROP_BASE_ATTACK",
+                  "label": "基础攻击力",
+                  "value": 608.0745972,
+                  "unit": ""
+                },
+                {
+                  "key": "FIGHT_PROP_CRITICAL_HURT",
+                  "label": "暴击伤害",
+                  "value": 66.1536,
+                  "unit": "%"
+                }
+              ]
+            }
+          ],
+          "refinements": [
+            {
+              "rank": 1,
+              "name": "无羁的朱赤之蝶",
+              "description": "生命值提升20%。此外，基于装备该武器的角色生命值上限的0.8%，获得攻击力加成。当装备该武器的角色生命值低于50%时，进一步获得1%基于生命值上限的攻击力提升。"
+            }
+          ],
+          "ascensions": [
+            {
+              "phase": 1,
+              "levelCap": 40,
+              "coin": 10000,
+              "items": [
+                {
+                  "id": "material:114021",
+                  "name": "漆黑陨铁的一粒",
+                  "count": 5
+                },
+                {
+                  "id": "material:112020",
+                  "name": "地脉的旧枝",
+                  "count": 5
+                },
+                {
+                  "id": "material:112002",
+                  "name": "史莱姆凝液",
+                  "count": 3
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "artifact:15001:flower",
+        "language": "zh-CN",
+        "name": "角斗士的留恋",
+        "category": "artifact",
+        "subtype": "生之花",
+        "rarity": 5,
+        "description": "无人知晓传奇的斗士为何始终将这朵小花戴在胸口，这是残酷的战士身上唯一的弱点。",
+        "story": "本是寻常的小花，被角斗士温柔的主人摘下。\n别在角斗士胸前，化作了战士最柔软的一面。\n\n角斗士还未成为传奇时曾与年幼主人在庄园漫步。\n过去，主人随手折下一支小花，赠予沉默的奴仆。\n「恩赐未必都是酬报。或许仅是心血来潮」\n在很久以后的未来，狡黠的主人如是笑道。\n\n当不败的角斗士终于倒在异域少女的脚下，\n方才想起，许多年前，自己曾经也梦想过，\n「真好看的花朵啊。不知何时能启程看看」\n「生长在野外的花儿的模样会是怎样的呢」",
+        "state": "source-record",
+        "rawIds": [
+          "23414",
+          "23419",
+          "24124",
+          "24244",
+          "24334",
+          "24344",
+          "24354",
+          "24364",
+          "24764",
+          "75340",
+          "75341",
+          "75342",
+          "75343",
+          "75344",
+          "75440",
+          "75441",
+          "75442",
+          "75443",
+          "75444",
+          "75540",
+          "75541",
+          "75542",
+          "75543",
+          "75544"
+        ],
+        "documentIds": [
+          "agd:zh-CN:artifact:Reliquary:23414"
+        ],
+        "sources": [
+          {
+            "repo": "DimbreathBot/AnimeGameData",
+            "commit": "bd35e243fa436f141f015cf221a6e19d0c34b7ca",
+            "path": "ExcelBinOutput/ReliquaryExcelConfigData.json",
+            "locator": "/3655",
+            "url": "https://github.com/DimbreathBot/AnimeGameData/blob/bd35e243fa436f141f015cf221a6e19d0c34b7ca/ExcelBinOutput/ReliquaryExcelConfigData.json"
+          }
+        ],
+        "icon": {
+          "identifier": "",
+          "url": null,
+          "provider": "none",
+          "status": "missing"
+        },
+        "attributes": [],
+        "acquisition": [],
+        "coverage": {
+          "acquisition": "upstream-missing",
+          "description": "complete",
+          "image": "complete",
+          "name": "complete",
+          "relations": "not-applicable",
+          "setEffects": "complete",
+          "setName": "complete",
+          "stats": "complete",
+          "story": "complete"
+        },
+        "artifact": {
+          "setId": 15001,
+          "setName": "角斗士的终幕礼",
+          "slot": "flower",
+          "setEffects": [
+            {
+              "pieces": 2,
+              "text": "攻击力提高18%。"
+            },
+            {
+              "pieces": 4,
+              "text": "装备该圣遗物套装的角色为单手剑、双手剑、长柄武器角色时，角色普通攻击造成的伤害提高35%。"
+            }
+          ],
+          "rarities": [
+            3,
+            4,
+            5
+          ],
+          "rules": [
+            {
+              "rarity": 5,
+              "maxLevel": 20,
+              "mainStats": [
+                {
+                  "key": "FIGHT_PROP_HP",
+                  "label": "生命值",
+                  "unit": "",
+                  "values": [
+                    {
+                      "level": 20,
+                      "value": 4780.0
+                    }
+                  ]
+                }
+              ],
+              "substats": [
+                {
+                  "key": "FIGHT_PROP_ATTACK",
+                  "label": "攻击力",
+                  "unit": "",
+                  "values": [
+                    13.62,
+                    15.56,
+                    17.51,
+                    19.45,
+                    48.63
+                  ]
+                },
+                {
+                  "key": "FIGHT_PROP_ATTACK_PERCENT",
+                  "label": "攻击力",
+                  "unit": "%",
+                  "values": [
+                    4.08,
+                    4.66,
+                    5.25,
+                    5.83,
+                    14.57
+                  ]
+                },
+                {
+                  "key": "FIGHT_PROP_CHARGE_EFFICIENCY",
+                  "label": "元素充能效率",
+                  "unit": "%",
+                  "values": [
+                    4.53,
+                    5.18,
+                    5.83,
+                    6.4799999999999995,
+                    16.189999999999998
+                  ]
+                },
+                {
+                  "key": "FIGHT_PROP_CRITICAL",
+                  "label": "暴击率",
+                  "unit": "%",
+                  "values": [
+                    2.7199999999999998,
+                    3.11,
+                    3.5000000000000004,
+                    3.8899999999999997,
+                    9.71
+                  ]
+                },
+                {
+                  "key": "FIGHT_PROP_CRITICAL_HURT",
+                  "label": "暴击伤害",
+                  "unit": "%",
+                  "values": [
+                    5.4399999999999995,
+                    6.22,
+                    6.99,
+                    7.7700000000000005,
+                    19.43
+                  ]
+                },
+                {
+                  "key": "FIGHT_PROP_DEFENSE",
+                  "label": "防御力",
+                  "unit": "",
+                  "values": [
+                    16.2,
+                    18.52,
+                    20.83,
+                    23.15,
+                    57.87
+                  ]
+                },
+                {
+                  "key": "FIGHT_PROP_DEFENSE_PERCENT",
+                  "label": "防御力",
+                  "unit": "%",
+                  "values": [
+                    5.1,
+                    5.83,
+                    6.5600000000000005,
+                    7.290000000000001,
+                    18.21
+                  ]
+                },
+                {
+                  "key": "FIGHT_PROP_ELEMENT_MASTERY",
+                  "label": "元素精通",
+                  "unit": "",
+                  "values": [
+                    16.32,
+                    18.65,
+                    20.98,
+                    23.31,
+                    58.28
+                  ]
+                },
+                {
+                  "key": "FIGHT_PROP_HP_PERCENT",
+                  "label": "生命值",
+                  "unit": "%",
+                  "values": [
+                    4.08,
+                    4.66,
+                    5.25,
+                    5.83,
+                    14.57
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "material:104161",
+        "language": "zh-CN",
+        "name": "哀叙冰玉碎屑",
+        "category": "material",
+        "subtype": "角色突破素材",
+        "rarity": 2,
+        "description": "角色突破素材。",
+        "story": "",
+        "state": "source-record",
+        "rawIds": [
+          "104161"
+        ],
+        "documentIds": [
+          "agd:zh-CN:material:Material:104161"
+        ],
+        "sources": [
+          {
+            "repo": "DimbreathBot/AnimeGameData",
+            "commit": "bd35e243fa436f141f015cf221a6e19d0c34b7ca",
+            "path": "ExcelBinOutput/MaterialExcelConfigData.json",
+            "locator": "/2165",
+            "url": "https://github.com/DimbreathBot/AnimeGameData/blob/bd35e243fa436f141f015cf221a6e19d0c34b7ca/ExcelBinOutput/MaterialExcelConfigData.json"
+          }
+        ],
+        "icon": {
+          "identifier": "",
+          "url": null,
+          "provider": "none",
+          "status": "missing"
+        },
+        "attributes": [
+          {
+            "label": "配方材料",
+            "value": "燃愿玛瑙碎屑 × 1; 嬗变之尘 × 1"
+          },
+          {
+            "label": "配方材料",
+            "value": "涤净青金碎屑 × 1; 嬗变之尘 × 1"
+          },
+          {
+            "label": "配方材料",
+            "value": "生长碧翡碎屑 × 1; 嬗变之尘 × 1"
+          },
+          {
+            "label": "配方材料",
+            "value": "最胜紫晶碎屑 × 1; 嬗变之尘 × 1"
+          },
+          {
+            "label": "配方材料",
+            "value": "自在松石碎屑 × 1; 嬗变之尘 × 1"
+          },
+          {
+            "label": "配方材料",
+            "value": "坚牢黄玉碎屑 × 1; 嬗变之尘 × 1"
+          }
+        ],
+        "acquisition": [
+          "纪念品商店兑换",
+          "冒险之证讨伐页签查看",
+          "合成台-转化页签：转化获取"
+        ],
+        "coverage": {
+          "acquisition": "complete",
+          "description": "complete",
+          "image": "complete",
+          "name": "complete",
+          "recipes": "complete",
+          "relations": "not-applicable",
+          "stats": "not-applicable",
+          "story": "upstream-missing"
+        }
+      }
+    ],
+    "en": [
+      {
+        "id": "weapon:13501",
+        "language": "en",
+        "name": "Staff of Homa",
+        "category": "weapon",
+        "subtype": "Polearm",
+        "rarity": 5,
+        "description": "A \"firewood staff\" that was once used in ancient and long-lost rituals.",
+        "story": "To cleanse by fire all that is impure, to allow the impurities to rise with the flames unto the all-accommodating high heavens.\nThese rites would see fresh tinder lit during the rainy seasons, and wolf smoke would arise from those fires as prayers for blessings and the defeat of evil.\n\nThese blazing rituals were especially commonplace during that ancient period of strife.\nFor the dreams and delusions of the silent corpses of gods would produce evil miasmas,\nSnatching away the citizens who were no longer theirs, and those who never were theirs also.\n\nThen, a merciful doctor heard a whisper from within the flame as fierce as the red sunset,\nFrom within the crackling and snapping of withered grass.\n\"Only an unbound flame can purify the filth of this world.\"\n\"Lift up this scarlet firewood. With it, you shall repel every demon.\"\n\nSo the doctor took up that devilishly red staff, igniting all that was impure.\nThose who have passed, unable to bear deep sadness, but who have since become shrouded by ill karma and calamity,\nThey shall be reduced to ashen butterflies in this flame, and receive relief from their misfortunes and hurts.\nAs for the doctor who lit those countless flames, legend has it that they, too, were reduced to smoke in the shape of a lovely butterfly.\n\nThough these rites have been forgotten over time and with the coming of peace,\nThose with fire in their hearts can still hear these whispered words from flickering flames when they find themselves faced with an imposing darkness:\n\"Only an unbound flame can purify this world.\"",
+        "state": "source-record",
+        "rawIds": [
+          "13501"
+        ],
+        "documentIds": [
+          "agd:en:weapon:Weapon:13501"
+        ],
+        "sources": [
+          {
+            "repo": "DimbreathBot/AnimeGameData",
+            "commit": "bd35e243fa436f141f015cf221a6e19d0c34b7ca",
+            "path": "ExcelBinOutput/WeaponExcelConfigData.json",
+            "locator": "/148",
+            "url": "https://github.com/DimbreathBot/AnimeGameData/blob/bd35e243fa436f141f015cf221a6e19d0c34b7ca/ExcelBinOutput/WeaponExcelConfigData.json"
+          }
+        ],
+        "icon": {
+          "identifier": "",
+          "url": null,
+          "provider": "none",
+          "status": "missing"
+        },
+        "attributes": [],
+        "acquisition": [],
+        "coverage": {
+          "acquisition": "upstream-missing",
+          "ascensions": "complete",
+          "description": "complete",
+          "image": "complete",
+          "name": "complete",
+          "refinements": "complete",
+          "relations": "not-applicable",
+          "stats": "complete",
+          "story": "complete"
+        },
+        "weapon": {
+          "type": "WEAPON_POLE",
+          "levels": [
+            {
+              "level": 90,
+              "ascension": 6,
+              "stats": [
+                {
+                  "key": "FIGHT_PROP_BASE_ATTACK",
+                  "label": "Base ATK",
+                  "value": 608.0745972,
+                  "unit": ""
+                },
+                {
+                  "key": "FIGHT_PROP_CRITICAL_HURT",
+                  "label": "CRIT DMG",
+                  "value": 66.1536,
+                  "unit": "%"
+                }
+              ]
+            }
+          ],
+          "refinements": [
+            {
+              "rank": 1,
+              "name": "Reckless Cinnabar",
+              "description": "HP increased by 20%. Additionally, provides an ATK Bonus based on 0.8% of the wielder's Max HP. When the wielder's HP is less than 50%, this ATK Bonus is increased by an additional 1% of Max HP."
+            }
+          ],
+          "ascensions": [
+            {
+              "phase": 1,
+              "levelCap": 40,
+              "coin": 10000,
+              "items": [
+                {
+                  "id": "material:114021",
+                  "name": "Grain of Aerosiderite",
+                  "count": 5
+                },
+                {
+                  "id": "material:112020",
+                  "name": "Dead Ley Line Branch",
+                  "count": 5
+                },
+                {
+                  "id": "material:112002",
+                  "name": "Slime Condensate",
+                  "count": 3
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "artifact:15001:flower",
+        "language": "en",
+        "name": "Gladiator's Nostalgia",
+        "category": "artifact",
+        "subtype": "Flower of Life",
+        "rarity": 5,
+        "description": "No one knows why the legendary gladiator wore this flower on his chest. It was the brutal warrior's only weakness.",
+        "story": "An ordinary flower picked gently by the gladiator's master.\nHe made a brooch with it and pinned it on the gladiator's chest. It came to symbolize his gentler side.\n\nBefore the gladiator became a living legend, he once strolled with his young master in the garden.\nThe master picked a flower and gave it to the silent slave.\n\"Not all gifts are given out of benevolence. Sometimes they are nothing more than acts of whimsy.\"\nOne day in the far-off future, the gladiator's sly master would say these words to him.\n\nThe invincible gladiator finally fell at the foreign girl's feet.\nAt that moment, he recalled a dream he had had many years ago.\n\"Such beautiful flowers. I wonder when I'll be able to begin my own journey to see them.\"\n\"I'd like to see how beautiful the wild flowers are.\"",
+        "state": "source-record",
+        "rawIds": [
+          "23414",
+          "23419",
+          "24124",
+          "24244",
+          "24334",
+          "24344",
+          "24354",
+          "24364",
+          "24764",
+          "75340",
+          "75341",
+          "75342",
+          "75343",
+          "75344",
+          "75440",
+          "75441",
+          "75442",
+          "75443",
+          "75444",
+          "75540",
+          "75541",
+          "75542",
+          "75543",
+          "75544"
+        ],
+        "documentIds": [
+          "agd:en:artifact:Reliquary:23414"
+        ],
+        "sources": [
+          {
+            "repo": "DimbreathBot/AnimeGameData",
+            "commit": "bd35e243fa436f141f015cf221a6e19d0c34b7ca",
+            "path": "ExcelBinOutput/ReliquaryExcelConfigData.json",
+            "locator": "/3655",
+            "url": "https://github.com/DimbreathBot/AnimeGameData/blob/bd35e243fa436f141f015cf221a6e19d0c34b7ca/ExcelBinOutput/ReliquaryExcelConfigData.json"
+          }
+        ],
+        "icon": {
+          "identifier": "",
+          "url": null,
+          "provider": "none",
+          "status": "missing"
+        },
+        "attributes": [],
+        "acquisition": [],
+        "coverage": {
+          "acquisition": "upstream-missing",
+          "description": "complete",
+          "image": "complete",
+          "name": "complete",
+          "relations": "not-applicable",
+          "setEffects": "complete",
+          "setName": "complete",
+          "stats": "complete",
+          "story": "complete"
+        },
+        "artifact": {
+          "setId": 15001,
+          "setName": "Gladiator's Finale",
+          "slot": "flower",
+          "setEffects": [
+            {
+              "pieces": 2,
+              "text": "ATK +18%."
+            },
+            {
+              "pieces": 4,
+              "text": "If the wielder of this artifact set uses a Sword, Claymore or Polearm, increases their Normal Attack DMG by 35%."
+            }
+          ],
+          "rarities": [
+            3,
+            4,
+            5
+          ],
+          "rules": [
+            {
+              "rarity": 5,
+              "maxLevel": 20,
+              "mainStats": [
+                {
+                  "key": "FIGHT_PROP_HP",
+                  "label": "HP",
+                  "unit": "",
+                  "values": [
+                    {
+                      "level": 20,
+                      "value": 4780.0
+                    }
+                  ]
+                }
+              ],
+              "substats": [
+                {
+                  "key": "FIGHT_PROP_ATTACK",
+                  "label": "ATK",
+                  "unit": "",
+                  "values": [
+                    13.62,
+                    15.56,
+                    17.51,
+                    19.45,
+                    48.63
+                  ]
+                },
+                {
+                  "key": "FIGHT_PROP_ATTACK_PERCENT",
+                  "label": "ATK",
+                  "unit": "%",
+                  "values": [
+                    4.08,
+                    4.66,
+                    5.25,
+                    5.83,
+                    14.57
+                  ]
+                },
+                {
+                  "key": "FIGHT_PROP_CHARGE_EFFICIENCY",
+                  "label": "Energy Recharge",
+                  "unit": "%",
+                  "values": [
+                    4.53,
+                    5.18,
+                    5.83,
+                    6.4799999999999995,
+                    16.189999999999998
+                  ]
+                },
+                {
+                  "key": "FIGHT_PROP_CRITICAL",
+                  "label": "CRIT Rate",
+                  "unit": "%",
+                  "values": [
+                    2.7199999999999998,
+                    3.11,
+                    3.5000000000000004,
+                    3.8899999999999997,
+                    9.71
+                  ]
+                },
+                {
+                  "key": "FIGHT_PROP_CRITICAL_HURT",
+                  "label": "CRIT DMG",
+                  "unit": "%",
+                  "values": [
+                    5.4399999999999995,
+                    6.22,
+                    6.99,
+                    7.7700000000000005,
+                    19.43
+                  ]
+                },
+                {
+                  "key": "FIGHT_PROP_DEFENSE",
+                  "label": "DEF",
+                  "unit": "",
+                  "values": [
+                    16.2,
+                    18.52,
+                    20.83,
+                    23.15,
+                    57.87
+                  ]
+                },
+                {
+                  "key": "FIGHT_PROP_DEFENSE_PERCENT",
+                  "label": "DEF",
+                  "unit": "%",
+                  "values": [
+                    5.1,
+                    5.83,
+                    6.5600000000000005,
+                    7.290000000000001,
+                    18.21
+                  ]
+                },
+                {
+                  "key": "FIGHT_PROP_ELEMENT_MASTERY",
+                  "label": "Elemental Mastery",
+                  "unit": "",
+                  "values": [
+                    16.32,
+                    18.65,
+                    20.98,
+                    23.31,
+                    58.28
+                  ]
+                },
+                {
+                  "key": "FIGHT_PROP_HP_PERCENT",
+                  "label": "HP",
+                  "unit": "%",
+                  "values": [
+                    4.08,
+                    4.66,
+                    5.25,
+                    5.83,
+                    14.57
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "material:104161",
+        "language": "en",
+        "name": "Shivada Jade Sliver",
+        "category": "material",
+        "subtype": "Character Ascension Material",
+        "rarity": 2,
+        "description": "Character Ascension material.",
+        "story": "",
+        "state": "source-record",
+        "rawIds": [
+          "104161"
+        ],
+        "documentIds": [
+          "agd:en:material:Material:104161"
+        ],
+        "sources": [
+          {
+            "repo": "DimbreathBot/AnimeGameData",
+            "commit": "bd35e243fa436f141f015cf221a6e19d0c34b7ca",
+            "path": "ExcelBinOutput/MaterialExcelConfigData.json",
+            "locator": "/2165",
+            "url": "https://github.com/DimbreathBot/AnimeGameData/blob/bd35e243fa436f141f015cf221a6e19d0c34b7ca/ExcelBinOutput/MaterialExcelConfigData.json"
+          }
+        ],
+        "icon": {
+          "identifier": "",
+          "url": null,
+          "provider": "none",
+          "status": "missing"
+        },
+        "attributes": [
+          {
+            "label": "Recipe ingredients",
+            "value": "Agnidus Agate Sliver × 1; Dust of Azoth × 1"
+          },
+          {
+            "label": "Recipe ingredients",
+            "value": "Varunada Lazurite Sliver × 1; Dust of Azoth × 1"
+          },
+          {
+            "label": "Recipe ingredients",
+            "value": "Nagadus Emerald Sliver × 1; Dust of Azoth × 1"
+          },
+          {
+            "label": "Recipe ingredients",
+            "value": "Vajrada Amethyst Sliver × 1; Dust of Azoth × 1"
+          },
+          {
+            "label": "Recipe ingredients",
+            "value": "Vayuda Turquoise Sliver × 1; Dust of Azoth × 1"
+          },
+          {
+            "label": "Recipe ingredients",
+            "value": "Prithiva Topaz Sliver × 1; Dust of Azoth × 1"
+          }
+        ],
+        "acquisition": [
+          "Purchase from the Souvenir Shop",
+          "Check the Enemies Tab in the Adventurer Handbook",
+          "Obtained from the Crafting Bench Conversion Tab"
+        ],
+        "coverage": {
+          "acquisition": "complete",
+          "description": "complete",
+          "image": "complete",
+          "name": "complete",
+          "recipes": "complete",
+          "relations": "not-applicable",
+          "stats": "not-applicable",
+          "story": "upstream-missing"
+        }
+      }
+    ]
+  },
+  "documents": {
+    "zh-CN": {
+      "id": "agd:zh-CN:character:Avatar:10000002",
+      "title": "神里绫华",
+      "type": "character",
+      "language": "zh-CN",
+      "text": "稻妻「社奉行」神里家的大小姐。端庄而文雅，聪慧又坚韧。",
+      "source": {
+        "repo": "DimbreathBot/AnimeGameData",
+        "commit": "bd35e243fa436f141f015cf221a6e19d0c34b7ca",
+        "path": "ExcelBinOutput/AvatarExcelConfigData.json",
+        "locator": "/1",
+        "url": "https://github.com/DimbreathBot/AnimeGameData/blob/bd35e243fa436f141f015cf221a6e19d0c34b7ca/ExcelBinOutput/AvatarExcelConfigData.json"
+      },
+      "metadata": {},
+      "relations": []
+    },
+    "en": {
+      "id": "agd:en:character:Avatar:10000002",
+      "title": "Kamisato Ayaka",
+      "type": "character",
+      "language": "en",
+      "text": "Daughter of the Yashiro Commission's Kamisato Clan. Dignified and elegant, as well as wise and strong.",
+      "source": {
+        "repo": "DimbreathBot/AnimeGameData",
+        "commit": "bd35e243fa436f141f015cf221a6e19d0c34b7ca",
+        "path": "ExcelBinOutput/AvatarExcelConfigData.json",
+        "locator": "/1",
+        "url": "https://github.com/DimbreathBot/AnimeGameData/blob/bd35e243fa436f141f015cf221a6e19d0c34b7ca/ExcelBinOutput/AvatarExcelConfigData.json"
+      },
+      "metadata": {},
+      "relations": []
+    }
+  }
+}

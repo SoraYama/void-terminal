@@ -314,7 +314,7 @@ test('characters: a material link supersedes a pending generic Museum transition
  await expect(page.locator('.museum-detail h2')).toHaveText('哀叙冰玉碎屑');expect(new URL(page.url()).searchParams.get('snapshotId')).toBe(snapshotId);
 });
 
-test('characters: browser Back restores language-specific list scroll after changing source language',async({page})=>{
+test('characters: browser Back restores language-specific list scroll after changing interface language',async({page})=>{
  await fixture(page);await page.route('**/api/characters?*',route=>{
   const params=new URL(route.request().url()).searchParams,language=params.get('language')||'zh-CN',element=params.get('element')||'Ice';
   const records=Array.from({length:48},(_,i)=>({...ayaka,id:`avatar:${10000100+i}`,name:`${language==='en'?'EN':'ZH'}-${element}-${i}`,language,element}));
@@ -322,7 +322,7 @@ test('characters: browser Back restores language-specific list scroll after chan
  });
  await page.goto('/characters?element=Ice&snapshotId='+snapshotId);await expect(page.locator('.character-card')).toHaveCount(48);
  const grid=page.locator('.character-grid-scroll');await grid.evaluate(el=>{el.scrollTop=360});await expect.poll(()=>page.evaluate(()=>history.state.characterScroll)).toBe(360);
- await navigateArchive(page,'设置');await choose(page,'资料语言','English sources');await page.getByRole('dialog',{name:'设置',exact:true}).getByRole('button',{name:'关闭',exact:true}).click();
+ await navigateArchive(page,'设置');await choose(page,'界面语言','English');await page.getByRole('dialog',{name:'Settings',exact:true}).getByRole('button',{name:'Close',exact:true}).click();
  await expect(page.locator('.character-card strong').first()).toHaveText('EN-Ice-0');await grid.evaluate(el=>{el.scrollTop=720});await expect.poll(()=>page.evaluate(()=>history.state.characterScroll)).toBe(720);
  await page.locator('.character-elements button[data-element="Grass"]').click();await expect(page.locator('.character-card strong').first()).toHaveText('EN-Grass-0');
  await page.goBack();await expect(page.locator('.character-card strong').first()).toHaveText('EN-Ice-0');await expect.poll(()=>grid.evaluate(el=>el.scrollTop)).toBe(720);
