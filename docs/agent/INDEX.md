@@ -1,4 +1,4 @@
-> **Last updated**: 2026-11-11 (地图与语言变更本地提交；停止远端操作，Git bundle 与地图数据离线交接)
+> **Last updated**: 2026-11-11 (Atlas 与英文正文已发布；完整 CI、真实生产地图/语言验收、备份和回滚记录)
 
 # Agent Notes
 
@@ -79,6 +79,7 @@
 
 | Note | Summary |
 | --- | --- |
+| [2026-11-11-atlas-release](misc/2026-11-11-atlas-release.md) | Atlas 9b77c4d 已发布；地图只读挂载/完整快照、账户一致性备份、Web-only 回滚、真实生产中英文与手机验收；CI apt DNS 与固定 CJK 字体修复 |
 | [2026-11-11-map-handoff](misc/2026-11-11-map-handoff.md) | 公司环境禁止 remote push 后停止发布；df1251a 与完整地图快照离线交接，Git bundle 恢复与接收端部署步骤 |
 | [2026-11-09-design-system](misc/2026-11-09-design-system.md) | Impeccable DESIGN.md、共享 PRODUCT.md、宣传页视觉稿偏好与 Next.js Live 配置；图鉴预览边界 |
 | [2026-11-07-hosted-release](misc/2026-11-07-hosted-release.md) | 47f8745 官网发布、schema v3 备份迁移及旧数据核对；SQLite 只读连接仍需 WAL 辅助文件；全邮箱开放、赞助挂载、grant 人工加点与真实设备验证边界 |
