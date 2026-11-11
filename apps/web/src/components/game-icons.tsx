@@ -1,4 +1,4 @@
-const navigationIcons={archive:'UI_BtnIcon_CodexBooks',compendium:'UI_BtnIcon_Bag',characters:'UI_BtnIcon_AvatarList'};
+const navigationIcons={archive:'UI_BtnIcon_CodexBooks',compendium:'UI_BtnIcon_Bag',characters:'UI_BtnIcon_AvatarList',map:'Map_Folded'};
 const elements=new Set(['Fire','Water','Wind','Electric','Ice','Rock','Grass']);
 const statIcons:Readonly<Record<string,string>>={
  BASE_HP:'UI_Icon_MaxHp',HP:'UI_Icon_MaxHp',HP_PERCENT:'UI_Icon_MaxHp',
@@ -13,7 +13,7 @@ const statIcons:Readonly<Record<string,string>>={
 };
 
 function GameIcon({asset,className,element}:{asset:string;className:string;element?:string}){
- const mask=`url("/assets/genshin-ui/${asset}.png")`;
+ const mask=`url("/assets/genshin-ui/${asset}.${asset==='Map_Folded'?'svg':'png'}")`;
  return <span className={`game-icon ${className}`} aria-hidden="true" data-element-icon={element} style={{maskImage:mask,WebkitMaskImage:mask}}/>;
 }
 export function NavigationIcon({module}:{module:keyof typeof navigationIcons}){return <GameIcon asset={navigationIcons[module]} className="game-navigation-icon"/>}

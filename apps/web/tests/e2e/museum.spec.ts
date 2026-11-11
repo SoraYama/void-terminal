@@ -188,8 +188,11 @@ test('museum: server pagination, filters, stale lists, errors and retry',async({
  fail=true;await page.getByRole('searchbox').fill('failure');await expect(page.locator('.museum-empty').getByRole('alert')).toContainText('Fixture unavailable');fail=false;await page.getByRole('button',{name:'重试',exact:true}).click();await expect(page.locator('.museum-card')).toContainText('护摩之杖');
 });
 test('museum: UI language, source language and theme remain shared with the shell',async({page},info)=>{
- test.skip(info.project.name==='mobile');await fixture(page);await page.goto('/museum');await page.getByRole('button',{name:'界面语言',exact:true}).click();await expect(page.getByRole('heading',{name:'Compendium',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Weapons',exact:true})).toHaveAttribute('aria-pressed','true');
- await page.getByRole('button',{name:'Settings',exact:true}).click();const pending=page.waitForRequest(r=>r.url().includes('/api/items?')&&new URL(r.url()).searchParams.get('language')==='en');await choose(page,'Source language','English sources');await page.keyboard.press('Escape');const request=await pending;expect(new URL(request.url()).searchParams.get('snapshotId')).toBe(snapshotId);
+ test.skip(info.project.name==='mobile');await fixture(page);await page.goto('/museum');await expect(page.locator('.museum-card')).toHaveCount(24);
+ const pending=page.waitForRequest(r=>r.url().includes('/api/items?')&&new URL(r.url()).searchParams.get('language')==='en');
+ await page.getByRole('button',{name:'界面语言',exact:true}).click();await expect(page.getByRole('heading',{name:'Compendium',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Weapons',exact:true})).toHaveAttribute('aria-pressed','true');
+ const request=await pending;expect(new URL(request.url()).searchParams.get('snapshotId')).toBe(snapshotId);
+ await page.getByRole('button',{name:'Settings',exact:true}).click();await expect(page.getByRole('combobox',{name:'Source language',exact:true})).toContainText('Chinese sources');await page.keyboard.press('Escape');
 });
 
 test('museum: warm return retains filtered items and list scroll without loading',async({page})=>{

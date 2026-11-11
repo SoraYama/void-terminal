@@ -34,7 +34,16 @@ export function CharacterWorkspace({locale,language,onOpenDocument,onAsk,onOpenM
  useEffect(()=>{if(!query||query.q===search)return;const timer=setTimeout(()=>{update({q:search,page:1,character:'',form:''},true);scroller.current?.scrollTo(0,0)},250);return()=>clearTimeout(timer)},[search,query,update]);
  const key=query?characterListQuery(query,language).toString():'';
  useEffect(()=>{if(!key)return;const abort=new AbortController();listKey.current=key;setError('');
-  const accept=(data:CharacterListResult)=>{setList(data);setLoading(false);if(!state.current?.snapshotId&&data.snapshotId)update({snapshotId:data.snapshotId},true)};
+  const accept=(data:CharacterListResult)=>{
+   const current=state.current;
+   // Region names are localized source values. The API returns all regions for
+   // this language/snapshot, independently of the active search and filters.
+   if(data.ready&&current?.region&&!data.regions.includes(current.region)){
+    abort.abort();setLoading(true);
+    update({region:'',page:1,...(!current.snapshotId&&data.snapshotId?{snapshotId:data.snapshotId}:{})},true);return;
+   }
+   setList(data);setLoading(false);if(!current?.snapshotId&&data.snapshotId)update({snapshotId:data.snapshotId},true);
+  };
   const cached=cache?.lists.get(key);if(cached){accept(cached);return}
   setLoading(true);setList(null);
   request<CharacterListResult>('/api/characters?'+key,{signal:abort.signal}).then(data=>{if(abort.signal.aborted)return;cache?.lists.set(key,data,[resolvedListKey(key,data.snapshotId)]);accept(data)}).catch(e=>{if(!abort.signal.aborted)setError(e.message)}).finally(()=>{if(!abort.signal.aborted)setLoading(false)});return()=>abort.abort();

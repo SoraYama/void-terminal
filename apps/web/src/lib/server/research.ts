@@ -13,6 +13,7 @@ import {
 } from "../contracts";
 import { AppError } from "./errors";
 import { knowledge } from "./knowledge";
+import {prepareMapResearch} from './map-research';
 import { record } from "./validation";
 import {
   expandLoreQuery,
@@ -552,6 +553,7 @@ export async function prepareResearch(
 ) {
   const answerLanguage = input.answerLanguage ?? input.language;
   const evidence = new Evidence(input);
+  const maps = await prepareMapResearch(input, signal, emit);
   const researchSelections: {
     query: string;
     types?: ContentType[];
@@ -626,7 +628,7 @@ export async function prepareResearch(
   const initialTypes = initialLoreTypes(initialQuery, input.types);
   let outlineLoaded = false;
   const region = overviewRegion(input.messages.at(-1)!.content, input.language);
-  if (region && (!input.types?.length || input.types.includes("quest"))) {
+  if (!maps.active && region && (!input.types?.length || input.types.includes("quest"))) {
     const params = new URLSearchParams({
       region,
       language: input.language,
@@ -677,16 +679,16 @@ export async function prepareResearch(
       // Older knowledge-service versions can fall back to ranked retrieval.
     }
   }
-  if (!outlineLoaded)
+  if (!maps.active && !outlineLoaded)
     await search(
       initialQuery,
       initialTypes,
       needsNarrativeContext(initialQuery),
     );
   // An inferred scope is only a retrieval preference, not a user constraint.
-  if (!evidence.sources.length && initialTypes && !input.types?.length)
+  if (!maps.active && !evidence.sources.length && initialTypes && !input.types?.length)
     await search(initialQuery, undefined, true);
-  if (!evidence.sources.length) {
+  if (!maps.active && !maps.cards.length && !evidence.sources.length) {
     emit({
       event: "text_delta",
       data: {
@@ -798,6 +800,7 @@ export async function prepareResearch(
   }
 
   const execute = async (name: string, args: Record<string, unknown>) => {
+    if (maps.tools.some(tool => tool.name === name)) return maps.execute(name, args);
     let result: string;
     if (
       name === "search_corpus" &&
@@ -836,7 +839,7 @@ export async function prepareResearch(
       const params = new URLSearchParams({
         q: args.query,
         language: input.language,
-        snapshotId: evidence.snapshotId!,
+        ...(evidence.snapshotId ? {snapshotId: evidence.snapshotId} : {}),
         page: "1",
         pageSize: "8",
         ...(type ? { type } : {}),
@@ -934,6 +937,7 @@ export async function prepareResearch(
     contextReads,
     initialQuery,
     execute,
-    tools: toolDefinitions.map((tool) => tool.function),
+    maps,
+    tools: [...toolDefinitions.map((tool) => tool.function), ...maps.tools],
   };
 }

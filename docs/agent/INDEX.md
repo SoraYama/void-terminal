@@ -1,4 +1,4 @@
-> **Last updated**: 2026-11-09 (记录回答图鉴卡片及 Impeccable 设计上下文初始化)
+> **Last updated**: 2026-11-11 (提瓦特舆图侧栏入口与独立查询；浏览正文跟随界面语言，修复本地化地区筛选)
 
 # Agent Notes
 
@@ -6,6 +6,15 @@
 
 | Note | Summary |
 | --- | --- |
+| [2026-11-11-chat-map](research/2026-11-11-chat-map.md) | Codex 对话 Canvas 示例与主站接入前的证据；后续站内地图实现见 feature/2026-11-11-map-chat |
+| [2026-11-10-map-geofences](research/2026-11-10-map-geofences.md) | 官方 7.2 原始围栏 583/597 区域，奥摩斯港 2 草神瞳三维核验；89,091 点持久缓存重建、127.0.0.1:48172 本地地图与 Canvas 核验页体验 |
+| [2026-11-10-map-agent](research/2026-11-10-map-agent.md) | 线上仍只有文本检索工具；本地地图查询已接 89,091 点与原始区域围栏，可回答奥摩斯港 2 草神瞳，未发布至站内 Agent |
+| [2026-11-10-map-hd](research/2026-11-10-map-hd.md) | 地图放大发糊：AppSample 15 级与官方 P0 同位置比较，按视野在线高清、Retina 选层、缓存限制、断网回退及全场景回归 |
+| [2026-11-10-atlas72](research/2026-11-10-atlas72.md) | AppSample 7.2 全量 89,091 点、7 场景、356 楼层图；六款 SVG 重绘、全资源筛选、1,691 神瞳落图与桌面/手机验收，1 名称缺失及 1 瓦片回退 |
+| [2026-11-10-fontaine-atlas](research/2026-11-10-fontaine-atlas.md) | AppSample 枫丹离线 Canvas 原型：瓦片投影、资源搜索筛选、褪色古堡 B1–B4 入口、旧日之海独立切图与桌面/手机验收 |
+| [2026-11-09-fontaine-map-match](research/2026-11-09-fontaine-map-match.md) | 7.1 快照与 AppSample 枫丹 18 类 1,817 点逐一配对；古堡 B1–B4 底图、6 神瞳与 3 入口／通路；旧日之海 46 神瞳单独对账 |
+| [2026-11-09-map-layer-audit](research/2026-11-09-map-layer-audit.md) | 7.1 同版本 108 瓦片叠加 1,460 神瞳；只有 54 个水神瞳带原始 z；旧日之海另有 46 个水神瞳，分层和入口需要独立数据 |
+| [2026-11-09-world-map-data](research/2026-11-09-world-map-data.md) | 提瓦特地图点位审计：7.1 快照 88,704 条、神瞳/宝箱/摩拉分类实测；材料 ID 可接群星图鉴与万象集录，底图与分层后续核验见 map-layer-audit |
 | [2026-11-05-navigation-names-icons](research/2026-11-05-navigation-names-icons.md) | 原文库更名候选、9 个原版 UI PNG 哈希核验与对比稿；用户后续选定尘世文卷及首选图标，实施见 feature |
 | [2026-11-05-characters](research/2026-11-05-characters.md) | 实施前审计与用户确认的群星图鉴游戏菜单式方案；后续实现见 feature 记录 |
 | [2026-11-03-data-audit](research/2026-11-03-data-audit.md) | AnimeGameData main ahead by 2 commits; genshin-db pin current but five-category import omits image/stats/curve; production SQLite item coverage, quest missing descriptions, unexpanded weapon templates and absent inventory UI |
@@ -16,6 +25,8 @@
 
 | Note | Summary |
 | --- | --- |
+| [2026-11-11-atlas-language](feature/2026-11-11-atlas-language.md) | /map 提瓦特舆图导航、真实目录与查询、URL恢复；locale/sourceLanguage隔离、英语正文、地区筛选旧链接修复与双语夹具验收 |
+| [2026-11-11-map-chat](feature/2026-11-11-map-chat.md) | 主站地图只读工具与 SSE 卡片协议、独立版本、高清 Canvas 和历史恢复；89,091 点，奥摩斯港 2 点，父子区域交集与多轮指代回归 |
 | [2026-11-09-answer-cards](feature/2026-11-09-answer-cards.md) | 2ce87db 官网发布：同快照角色／武器／圣遗物卡在回答正文左浮动；角色详情共用跨页头像池与独立元素筛选；武器星级移至图片下方 |
 | [2026-11-07-sponsor-config](feature/2026-11-07-sponsor-config.md) | 官网BSC地址二维码动态生成/保存，拒绝旧地址与自部署访问；原图/手机/桌面解码一致；支付宝及设备配置上线状态见 hosted-release |
 | [2026-11-06-hosted-free](feature/2026-11-06-hosted-free.md) | schema v3 每日 3 点优先、新人 20 点保留、跨午夜预留、Turnstile 与持久设备限流、官网赞助/BSC、自部署无账户流程；外部配置与生产验收分别记录 |
@@ -38,6 +49,7 @@
 
 | Note | Summary |
 | --- | --- |
+| [2026-11-10-map-portals](bugfix/2026-11-10-map-portals.md) | 全图入口误标「前往旧日之海」：按 targetMapKey 统一名称与跳转，门洞 SVG、六场景往返、键盘/触摸及入口上的双指缩放 |
 | [2026-11-09-archive-loading](bugfix/2026-11-09-archive-loading.md) | 群星图鉴和万象集录的详情慢请求原先切到独立读取/空状态；保留头像条、返回键及已知摘要，按详情布局占位，数值先显示「—」 |
 | [2026-11-06-mobile-hero-title](bugfix/2026-11-06-mobile-hero-title.md) | 首页中文标题在 iPhone Safari 上显示白块；将 RGB 亮度遮罩预先转成透明 PNG，保留字形、响应式尺寸和高对比度文字 |
 | [2026-11-06-rehearsal-revalidate](bugfix/2026-11-06-rehearsal-revalidate.md) | 每日刷新使通过的演练凭据过期；同源不可变候选在新目录完整重验，保留旧报告，重新审计当前基线 |
@@ -53,6 +65,7 @@
 
 | Note | Summary |
 | --- | --- |
+| [2026-11-10-map-ui](optimize/2026-11-10-map-ui.md) | 六条地图批注：原作折叠地图 SVG、全地区/独立场景导航、select 宽度和箭头留白、8 类神瞳汇总、精确编号查询、移除高清开关并默认高清 |
 | [2026-11-07-archive-visuals](optimize/2026-11-07-archive-visuals.md) | 档案渐变与会话内缓存、快照/滚动隔离；七元素卡片与原版星级/属性图标、旅行者补图及本地字体；原文暖缓存不应等待重复网络请求 |
 | [2026-11-03-sidebar-motion](optimize/2026-11-03-sidebar-motion.md) | Sidebar bottom status/toggle row, restored 145px v4 wordmark with English/Chinese line gap; reversible 280ms width/footer motion, mobile drawer/backdrop exit and reduced-motion checks |
 | [2026-11-03-library-ui](optimize/2026-11-03-library-ui.md) | library-workspace full-height reader and compact header; global native thumb fade including Radix portals; persistent 76px sidebar rail, mobile drawer and short-screen selected-passage actions |

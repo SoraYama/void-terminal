@@ -1,4 +1,5 @@
 import type { DeploymentMode } from './deployment';
+import type {MapCard} from './map-cards';
 import type { AnswerCard } from './answer-cards';
 export type Locale = 'zh-CN' | 'en';
 export type ContentType = 'quest'|'dialogue'|'book'|'weapon'|'artifact'|'material'|'furniture'|'character'|'voice'|'enemy'|'food'|'achievement'|'tcg'|'other';
@@ -17,11 +18,12 @@ export interface LibraryResult {items:DocumentSummary[];total:number;page:number
 export interface DocumentResult {document:Document;sources:Source[];snapshotId:string}
 export interface SourceResult {source:Source;context:Source[];related:DocumentSummary[]}
 export interface ModelProvider {baseUrl?:string;model?:string}
-export interface ChatRequest {messages:{role:'user'|'assistant';content:string}[];language:Locale;answerLanguage?:Locale;mode:'byok'|'shared';depth:'standard'|'deep';snapshotId?:string;types?:ContentType[];provider?:ModelProvider}
+export interface ChatRequest {messages:{role:'user'|'assistant';content:string}[];language:Locale;answerLanguage?:Locale;mode:'byok'|'shared';depth:'standard'|'deep';snapshotId?:string;mapSnapshotId?:string;types?:ContentType[];provider?:ModelProvider}
 export interface Usage {inputTokens:number;outputTokens:number}
 export type ChatEvent =
  | {event:'status';data:{stage:'searching'|'reading'|'writing';message?:string}}
  | {event:'sources';data:{sources:Citation[];snapshotId:string}}
+ | {event:'maps';data:{mapSnapshotId:string;maps:MapCard[]}}
  | {event:'text_delta';data:{text:string}}
- | {event:'done';data:{snapshotId:string;usage?:Usage;finishReason:string;citationWarnings?:string[];cards?:AnswerCard[]}}
+ | {event:'done';data:{snapshotId?:string;mapSnapshotId?:string;maps?:MapCard[];usage?:Usage;finishReason:string;citationWarnings?:string[];cards?:AnswerCard[]}}
  | {event:'error';data:{code:string;message:string;retryable:boolean}};

@@ -1,0 +1,62 @@
+import {test,expect} from '@playwright/test';
+import {navigateArchive} from '../helpers/archive-navigation-browser';
+
+test('atlas: home navigation opens a real map without a model key and restores its URL',async({page},info)=>{
+ test.skip(process.env.MAP_E2E_REAL_DATA!=='1','Prepare the audited local map snapshot.');
+ await page.addInitScript(theme=>{
+  if(!localStorage.getItem('void.preferences'))localStorage.setItem('void.preferences',JSON.stringify({theme,locale:'zh-CN',sourceLanguage:'zh-CN',mode:'byok'}));
+ },info.project.name==='mobile'?'dark':'light');
+ let chatRequests=0;page.on('request',request=>{if(new URL(request.url()).pathname==='/api/chat')chatRequests++});
+ await page.goto('/');await navigateArchive(page,'提瓦特舆图');
+ await expect(page).toHaveURL(/\/map\?/);
+ const workspace=page.locator('[data-map-workspace]');
+ await expect(workspace.getByRole('heading',{name:'提瓦特舆图',exact:true})).toBeVisible();
+ const card=workspace.locator('[data-map-card]'),canvas=card.locator('canvas');
+ await expect(card.locator('.resource-map-total strong')).toHaveText('2');
+ await expect(card).toContainText('奥摩斯港');
+ const location=page.url();
+ if(info.project.name==='mobile')await page.locator('.mobile-header').getByRole('button',{name:'中 / EN',exact:true}).click();
+ else await page.getByRole('button',{name:'界面语言',exact:true}).click();
+ await expect(workspace.getByRole('heading',{name:'Teyvat Atlas',exact:true})).toBeVisible();
+ await expect(card).toContainText('Port Ormos');await expect(card).toContainText('Dendroculus');
+ await expect(card).not.toContainText('阿陀河谷');
+ await expect(canvas).toHaveAttribute('data-pending-tiles','0',{timeout:25000});
+ await expect(canvas).toHaveAttribute('data-failed-tiles','0');
+ await expect(canvas).toHaveAttribute('data-tile-state','ready');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ await page.screenshot({path:info.outputPath('atlas.png'),fullPage:true,animations:'disabled'});
+ await navigateArchive(page,'New conversation');await navigateArchive(page,'Teyvat Atlas');
+ await expect(page).toHaveURL(location);await expect(card.locator('.resource-map-total strong')).toHaveText('2');
+ await page.reload();await expect(workspace.getByRole('heading',{name:'Teyvat Atlas',exact:true})).toBeVisible();
+ await expect(card.locator('.resource-map-total strong')).toHaveText('2');
+ await page.goBack();await expect(page).toHaveURL(/\/$/);
+ await page.goForward();await expect(page).toHaveURL(location);await expect(card).toContainText('Port Ormos');
+ expect(chatRequests).toBe(0);
+});
+
+test('atlas: selectors query another region and unsupported scenes show a limitation',async({page,request})=>{
+ test.skip(process.env.MAP_E2E_REAL_DATA!=='1','Prepare the audited local map snapshot.');
+ await page.addInitScript(()=>localStorage.setItem('void.preferences',JSON.stringify({theme:'dark',locale:'en',sourceLanguage:'zh-CN',mode:'byok'})));
+ await page.goto('/map');
+ const card=page.locator('[data-map-card]');
+ await expect(card).toContainText('Port Ormos');
+ await page.getByRole('combobox',{name:'Country',exact:true}).click();
+ await page.getByRole('option',{name:'Mondstadt',exact:true}).click();
+ await page.getByRole('searchbox',{name:'Search regions',exact:true}).fill('Windrise');
+ await page.getByRole('combobox',{name:'Region',exact:true}).click();
+ await page.getByRole('option',{name:'Windrise',exact:true}).click();
+ await page.getByRole('searchbox',{name:'Search resources',exact:true}).fill('Anemoculus');
+ await page.getByRole('combobox',{name:'Resource',exact:true}).click();
+ await page.getByRole('option',{name:'Anemoculus',exact:true}).click();
+ await expect(card).toContainText('Windrise');await expect(card.locator('.resource-map-total strong')).toHaveText('6');
+ await expect(card).toContainText('Some positions need review');
+ const selectedURL=page.url();await page.goBack();await expect(card).toContainText('Dendroculus');
+ await page.goForward();await expect(page).toHaveURL(selectedURL);await expect(card.locator('.resource-map-total strong')).toHaveText('6');
+ const catalogResponse=await request.get('/api/maps/catalog');expect(catalogResponse.status()).toBe(200);
+ const catalog=await catalogResponse.json();
+ const independent=catalog.regions.find((region:{sceneId:number;hasBoundary:boolean})=>region.sceneId!==3&&region.hasBoundary);
+ expect(independent).toBeTruthy();
+ await page.goto('/map?'+new URLSearchParams({region:String(independent.id),resource:'o403',snapshotId:catalog.snapshotId}));
+ await expect(page.getByRole('heading',{name:'This independent scene is not supported yet',exact:true})).toBeVisible();
+ await expect(card).toHaveCount(0);
+});
